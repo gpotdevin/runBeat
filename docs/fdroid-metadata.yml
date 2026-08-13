@@ -1,0 +1,50 @@
+# F-Droid inclusion request (sample metadata)
+
+Copy this into the [F-Droid data repository](https://gitlab.com/fdroid/fdroiddata)
+as `metadata/com.RunBeat.run.audio.yml` and submit a merge request.
+
+```yaml
+Categories:
+  - Audio
+  - Sports & Health
+License: GPL-3.0-or-later
+Author Name: Guillaume Potdevin
+Author Email: your.email@example.com
+Web Site: https://github.com/gpotdevin/runBeat
+Source Code: https://github.com/gpotdevin/runBeat
+Issue Tracker: https://github.com/gpotdevin/runBeat/issues
+Donate: none
+
+Auto Name: RunBeat
+Summary: BPM-based audio player for runners
+Description: |
+  RunBeat is a BPM-based audio player made for runners. It synchronizes music
+  with running cadence by adjusting tempo without changing pitch, using the
+  SoundTouch time-stretching engine. It includes automatic BPM detection
+  (aubio), tap-to-beat, cadence matching (default 172 BPM), playlists and CSV
+  BPM metadata, offline-first storage (Room), and background playback with
+  Bluetooth controls. The app is fully open source under the GPL v3.0 or later
+  and collects no data.
+
+Requires Root: no
+Repo Type: git
+Repo: https://github.com/gpotdevin/runBeat.git
+
+Builds:
+  - versionName: 1.0b
+    versionCode: 10500
+    commit: v1.0b
+    subdir: app
+    gradle:
+      - yes
+    prebuild: sed -i -e 's/mistral//' app/build.gradle
+
+Auto Update Mode: Version %v
+Update Checker: None
+```
+
+> Note: This is a ready-to-adapt template. The build/json fields above are
+> illustrative of the fdroidserver format; adjust `versionCode`/`commit` to
+> match the tag you publish and run `fdroid build -v com.RunBeat.run.audio`
+> locally to validate before submitting. See
+> https://f-droid.org/en/docs/Submitting_to_F-Droid/ for current requirements.

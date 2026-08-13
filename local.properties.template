@@ -1,0 +1,14 @@
+# Project local properties file template
+# Copy this file to local.properties and update paths for your environment
+
+# Android SDK location
+# Example: sdk.dir=/Users/username/Library/Android/sdk
+sdk.dir=
+
+# Android NDK location (optional)
+# Example: ndk.dir=/Users/username/Library/Android/sdk/ndk/25.1.8937393
+ndk.dir=
+
+# Java JDK location (optional)
+# Example: java.home=/Users/username/Library/Java/JavaVirtualMachines/jdk-17.jdk/Contents/Home
+java.home=

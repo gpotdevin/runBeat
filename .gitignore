@@ -1,0 +1,93 @@
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Android
+*.iml
+*.idea
+*.ipr
+*.iws
+*.apk
+*.ap_
+*.aab
+
+# Gradle
+.gradle/
+build/
+dist/
+
+# Local properties
+local.properties
+
+# Logs
+*.log
+
+# Environment
+.env
+.venv/
+env/
+venv/
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+
+# Artifacts
+artifacts/
+
+# Node (if used)
+node_modules/
+package-lock.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local tool installations (JDK, Android SDK, etc.)
+tools/
+tools
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+
+# Test scripts and artifacts
+test_bpm.sh
+test_bpm.py
+Test*.class
+*.wav
+
+# Keystores and signing files
+*.keystore
+*.jks
+bpm_release.keystore
+
+# Sensitive files
+sudo_pass.txt
+Guillaume.md
+
+# Data files
+music_bpm.csv
+commands.txt
+build-counter.txt
+
+# Local dev scratch
+requirements/
+
+# CMake build directories
+.cxx/
+

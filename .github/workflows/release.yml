@@ -1,0 +1,66 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish release AAB
+    runs-on: ubuntu-latest
+
+    env:
+      BPM_RELEASE_STORE_FILE: ${{ secrets.BPM_RELEASE_STORE_FILE }}
+      BPM_RELEASE_STORE_PASSWORD: ${{ secrets.BPM_RELEASE_STORE_PASSWORD }}
+      BPM_RELEASE_KEY_ALIAS: ${{ secrets.BPM_RELEASE_KEY_ALIAS }}
+      BPM_RELEASE_KEY_PASSWORD: ${{ secrets.BPM_RELEASE_KEY_PASSWORD }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install NDK and CMake (for aubio native module)
+        run: |
+          sdkmanager "platforms;android-34" "build-tools;34.0.0" \
+            "ndk;25.2.9519653" "cmake;3.22.1" --sdk_root=$ANDROID_HOME
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          echo "ndk.dir=$ANDROID_HOME/ndk/25.2.9519653" >> local.properties
+
+      - name: Decode release keystore
+        run: |
+          echo "${{ secrets.BPM_RELEASE_KEYSTORE_BASE64 }}" | base64 --decode > bpm-release.keystore
+          echo "BPM_RELEASE_STORE_FILE=bpm-release.keystore" >> "$GITHUB_ENV"
+
+      - name: Build release bundle
+        run: ./gradlew :app:bundleRelease
+
+      - name: Upload AAB
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release
+          path: app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: app/build/outputs/bundle/release/app-release.aab
+          generate_release_notes: true

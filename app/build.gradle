@@ -1,0 +1,162 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+    id 'com.google.dagger.hilt.android'
+    id 'kotlin-kapt'  // For Hilt
+}
+
+repositories {
+    google()
+    mavenCentral()
+    maven { url 'https://jitpack.io' }
+}
+
+android {
+    namespace 'com.bpmapp.audio'
+    compileSdk 34
+
+    // Read and increment build counter for version tracking
+    def counterFile = file("${project.rootDir}/build-counter.txt")
+    def buildNumber = counterFile.exists() ? counterFile.text.trim().toInteger() : 1
+    
+    // Increment counter for next build
+    counterFile.text = (buildNumber + 1).toString()
+
+    defaultConfig {
+        applicationId "com.RunBeat.run.audio"
+        minSdk 26
+        targetSdk 34
+        versionCode buildNumber
+        versionName "1.0b"
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        release {
+            // Signing secrets come from environment variables only (no secrets in the repo).
+            // Set these via CI/CD or local environment:
+            // BPM_RELEASE_STORE_FILE, BPM_RELEASE_STORE_PASSWORD,
+            // BPM_RELEASE_KEY_ALIAS, BPM_RELEASE_KEY_PASSWORD
+            storeFile file(System.getenv('BPM_RELEASE_STORE_FILE') ?: '../RunBeat.keystore')
+            storePassword System.getenv('BPM_RELEASE_STORE_PASSWORD')
+            keyAlias System.getenv('BPM_RELEASE_KEY_ALIAS') ?: 'RunBeat_app'
+            keyPassword System.getenv('BPM_RELEASE_KEY_PASSWORD')
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.release
+        }
+    }
+    
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+    
+    buildFeatures {
+        compose true
+        viewBinding true
+    }
+    
+    composeOptions {
+        kotlinCompilerExtensionVersion '1.5.0'
+    }
+    
+    packagingOptions {
+        resources {
+            excludes += '/META-INF/{AL2.0,LGPL2.1}'
+        }
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+}
+
+dependencies {
+    // Core
+    implementation 'androidx.core:core-ktx:1.12.0'
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'com.google.android.material:material:1.10.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    
+    // Compose
+    implementation "androidx.compose.ui:ui:1.5.3"
+    implementation "androidx.compose.material3:material3:1.1.2"
+    implementation "androidx.compose.ui:ui-tooling-preview:1.5.3"
+    implementation "androidx.activity:activity-compose:1.8.0"
+    implementation "androidx.lifecycle:lifecycle-viewmodel-compose:2.6.2"
+    implementation "androidx.navigation:navigation-compose:2.7.4"
+    implementation "androidx.compose.material:material-icons-extended:1.5.3"
+    
+    // ExoPlayer
+    implementation 'androidx.media3:media3-exoplayer:1.2.1'
+    implementation 'androidx.media3:media3-ui:1.2.1'
+    implementation 'androidx.media3:media3-session:1.2.1'
+    implementation 'androidx.media3:media3-exoplayer-dash:1.2.1'
+    implementation 'androidx.media3:media3-exoplayer-hls:1.2.1'
+    implementation 'androidx.media:media:1.6.0'
+    
+    // SoundTouch for time-stretching (LGPL)
+    // Using hipxel/soundtouch-android library for high-quality time-stretching
+    // Source: https://github.com/hipxel/soundtouch-android
+    implementation project(':soundtouch-android')
+    
+    // Aubio library for BPM detection
+    implementation project(':aubio')
+    
+    // Alternative: junyuecao wrapper (requires JitPack auth)
+    // implementation 'io.github.junyuecao:soundtouch:1.0.1'
+
+    // FFmpeg for audio format conversion (LGPL)
+    // Note: mobile-ffmpeg and FFmpegKit have dependency resolution issues
+    // For now, using Android's MediaCodec API which is built-in
+    // To enable FFmpeg/FFmpegKit, uncomment one of these:
+    // implementation 'com.arthenica:mobile-ffmpeg-min:4.4.LTS'
+    // implementation 'com.arthenica:mobile-ffmpeg-full:4.4.LTS'
+    // implementation 'com.arthenica:ffmpeg-kit-full:6.0-2.LTS'  // FFmpegKit (recommended)
+    // And add appropriate repository if needed
+
+    // Room (Database)
+    implementation "androidx.room:room-runtime:2.6.0"
+    implementation "androidx.room:room-ktx:2.6.0"
+    kapt "androidx.room:room-compiler:2.6.0"
+    
+    // Hilt (Dependency Injection)
+    implementation "com.google.dagger:hilt-android:2.48"
+    kapt "com.google.dagger:hilt-compiler:2.48"
+    implementation "androidx.hilt:hilt-navigation-compose:1.1.0"
+    
+    // Coroutines
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3"
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3"
+    implementation "androidx.lifecycle:lifecycle-runtime-ktx:2.6.2"
+    
+    // Testing
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.mockito:mockito-core:5.3.1'
+    testImplementation 'org.mockito.kotlin:mockito-kotlin:5.2.1'
+    testImplementation 'org.robolectric:robolectric:4.11.1'
+    testImplementation 'androidx.test:core:1.5.0'
+    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
+    testImplementation "org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3"
+    androidTestImplementation 'androidx.compose.ui:ui-test-junit4:1.5.3'
+    debugImplementation 'androidx.compose.ui:ui-tooling:1.5.3'
+    
+
+    
+    // AndroidX Test
+    androidTestImplementation 'androidx.test:runner:1.5.2'
+    androidTestImplementation 'androidx.test:rules:1.5.0'
+}

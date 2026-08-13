@@ -1,0 +1,1073 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+package com.bpmapp.audio.viewmodel
+
+import android.annotation.SuppressLint
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import android.os.Environment
+import android.os.Handler
+import android.os.Looper
+import android.provider.MediaStore
+import android.util.Log
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import androidx.media3.common.MediaItem
+import com.bpmapp.audio.audio.BpmResolver
+import com.bpmapp.audio.audio.MetadataEditor
+import com.bpmapp.audio.audio.PlayerRepository
+import com.bpmapp.audio.audio.TrackRepository
+import com.bpmapp.audio.data.AppDatabase
+import com.bpmapp.audio.data.Playlist
+import com.bpmapp.audio.data.PlaylistDao
+import com.bpmapp.audio.data.PlaylistTrack
+import com.bpmapp.audio.data.Track
+import com.bpmapp.audio.data.TrackSource
+import com.bpmapp.audio.util.PermissionUtils
+import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.util.UUID
+import javax.inject.Inject
+
+/**
+ * ViewModel for LibraryScreen
+ * Manages track library, CSV import, and system library scanning
+ */
+// The @ApplicationContext field references the application scope (a process-wide singleton),
+// so retaining it in this ViewModel does not leak any Activity or short-lived component.
+@SuppressLint("StaticFieldLeak")
+@HiltViewModel
+class LibraryViewModel @Inject constructor(
+    private val trackRepository: TrackRepository,
+    private val bpmResolver: BpmResolver,
+    private val playerRepository: PlayerRepository,
+    appDatabase: AppDatabase,
+    @ApplicationContext private val context: Context
+) : ViewModel() {
+    
+    private val trackDao = appDatabase.trackDao()
+    private val playlistDao: PlaylistDao = appDatabase.playlistDao()
+    
+    companion object {
+        private const val TAG = "LibraryViewModel"
+    }
+    
+    // All tracks from repository
+    val allTracks = trackRepository.allTracks
+    
+    // Search state
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
+    
+    // Category filter state (album, artist, genre)
+    private val _selectedArtists = MutableStateFlow<Set<String>>(emptySet())
+    val selectedArtists: StateFlow<Set<String>> = _selectedArtists.asStateFlow()
+    
+    private val _selectedAlbums = MutableStateFlow<Set<String>>(emptySet())
+    val selectedAlbums: StateFlow<Set<String>> = _selectedAlbums.asStateFlow()
+    
+    private val _selectedGenres = MutableStateFlow<Set<String>>(emptySet())
+    val selectedGenres: StateFlow<Set<String>> = _selectedGenres.asStateFlow()
+    
+    // Persisted filter/sort state. This ViewModel is Activity-scoped, so the library
+    // filters survive switching between the Library and Player destinations and can
+    // only be cleared manually by the user.
+    private val _showOnlyKnownBpm = MutableStateFlow(false)
+    val showOnlyKnownBpm: StateFlow<Boolean> = _showOnlyKnownBpm.asStateFlow()
+    
+    private val _filterBySpeedFactor = MutableStateFlow(false)
+    val filterBySpeedFactor: StateFlow<Boolean> = _filterBySpeedFactor.asStateFlow()
+    
+    private val _sortByBpm = MutableStateFlow(true)
+    val sortByBpm: StateFlow<Boolean> = _sortByBpm.asStateFlow()
+    
+    private val _sortByAlbum = MutableStateFlow(false)
+    val sortByAlbum: StateFlow<Boolean> = _sortByAlbum.asStateFlow()
+    
+    private val _sortByArtist = MutableStateFlow(false)
+    val sortByArtist: StateFlow<Boolean> = _sortByArtist.asStateFlow()
+    
+    private val _sortDescending = MutableStateFlow(false)
+    val sortDescending: StateFlow<Boolean> = _sortDescending.asStateFlow()
+    
+    private val _selectedTabIndex = MutableStateFlow(0)
+    val selectedTabIndex: StateFlow<Int> = _selectedTabIndex.asStateFlow()
+    
+    // Favorite tracks
+    val favoriteTracks: StateFlow<List<Track>> = trackDao.getFavoriteTracks()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    
+    // Playlists
+    val playlists: StateFlow<List<Playlist>> = playlistDao.getAllPlaylists()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    
+    // Playlist id -> ordered list of tracks
+    val playlistTrackMap: StateFlow<Map<String, List<Track>>> = combine(
+        playlistDao.getAllPlaylistTracks(),
+        allTracks
+    ) { relations, tracks ->
+        val tracksById = tracks.associateBy { it.id }
+        relations.groupBy { it.playlistId }
+            .mapValues { (_, rels) ->
+                rels.sortedBy { it.position }
+                    .mapNotNull { tracksById[it.trackId] }
+            }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+    
+    // Tracks filtered by search query and category filters
+    private val filteredTrackFlow: Flow<List<Track>> = combine(
+        allTracks,
+        _searchQuery,
+        _selectedArtists,
+        _selectedAlbums,
+        _selectedGenres
+    ) { tracks, query, artists, albums, genres ->
+        tracks.filter { track ->
+            val matchesQuery = query.isBlank() || track.matchesSearch(query)
+            val matchesArtist = artists.isEmpty() || (track.metadataArtist != null && artists.contains(track.metadataArtist))
+            val matchesAlbum = albums.isEmpty() || (track.metadataAlbum != null && albums.contains(track.metadataAlbum))
+            val matchesGenre = genres.isEmpty() || genres.contains(track.genre())
+            matchesQuery && matchesArtist && matchesAlbum && matchesGenre
+        }
+    }
+    
+    val filteredTracks: StateFlow<List<Track>> = filteredTrackFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    
+    // Available filter options derived from tracks matching the current filters
+    // Updating in real time so e.g. selecting a genre hides non-matching albums
+    val artistOptions: StateFlow<List<String>> = filteredTrackFlow
+        .map { tracks ->
+            tracks.mapNotNull { it.metadataArtist }
+                .filter { it.isNotBlank() }
+                .distinct()
+                .sorted()
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    
+    val albumOptions: StateFlow<List<String>> = filteredTrackFlow
+        .map { tracks ->
+            tracks.mapNotNull { it.metadataAlbum }
+                .filter { it.isNotBlank() }
+                .distinct()
+                .sorted()
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    
+    val genreOptions: StateFlow<List<String>> = filteredTrackFlow
+        .map { tracks ->
+            tracks.map { it.genre() }
+                .filter { it.isNotBlank() }
+                .distinct()
+                .sorted()
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    
+    // Loading state
+    private val _isLoading = MutableStateFlow(false)
+    val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
+    
+    // Import count (number of tracks imported in last operation)
+    private val _importCount = MutableStateFlow(0)
+    val importCount: StateFlow<Int> = _importCount.asStateFlow()
+    
+    // Error message
+    private val _errorMessage = MutableStateFlow<String?>(null)
+    val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
+    
+    // Library BPM analysis state
+    private val _isAnalyzingLibrary = MutableStateFlow(false)
+    val isAnalyzingLibrary: StateFlow<Boolean> = _isAnalyzingLibrary.asStateFlow()
+    
+    private val _analysisProgress = MutableStateFlow<Pair<Int, Int>>(0 to 0)
+    val analysisProgress: StateFlow<Pair<Int, Int>> = _analysisProgress.asStateFlow()
+    
+    private val _analysisResults = MutableStateFlow<Int>(0)
+    val analysisResults: StateFlow<Int> = _analysisResults.asStateFlow()
+    
+    // BPM resolution state (used when adding tracks to upcoming songs)
+    private val _isResolvingBpm = MutableStateFlow(false)
+    val isResolvingBpm: StateFlow<Boolean> = _isResolvingBpm.asStateFlow()
+    
+    private val _bpmResolutionProgress = MutableStateFlow<Pair<Int, Int>>(0 to 0)
+    val bpmResolutionProgress: StateFlow<Pair<Int, Int>> = _bpmResolutionProgress.asStateFlow()
+    
+    // Check if we have permission to read media
+    private fun hasReadMediaPermission(): Boolean {
+        // READ_MEDIA_AUDIO only exists on Android 13+ (API 33); older devices use READ_EXTERNAL_STORAGE
+        val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            Manifest.permission.READ_MEDIA_AUDIO
+        } else {
+            Manifest.permission.READ_EXTERNAL_STORAGE
+        }
+        return ContextCompat.checkSelfPermission(
+            context,
+            permission
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+    
+    // Set error message
+    fun setError(message: String) {
+        _errorMessage.value = message
+    }
+    
+    /**
+     * Import tracks from CSV file
+     * Uses a default base directory (external files directory) for resolving relative paths
+     */
+    fun importFromCsv(uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _isLoading.value = true
+            _errorMessage.value = null
+            
+            try {
+                // Use external files directory as base directory for CSV import
+                // This is where the app should store/access music files
+                val baseDirectory = context.getExternalFilesDir(null)?.absolutePath
+                
+                val count = trackRepository.importFromCsv(uri, baseDirectory)
+                _importCount.value = count
+                _isLoading.value = false
+                
+                if (count == 0) {
+                    _errorMessage.value = "No tracks were imported. Please check the CSV file format."
+                }
+            } catch (e: Exception) {
+                _isLoading.value = false
+                _errorMessage.value = "Failed to import CSV: ${e.message}"
+                Log.e(TAG, "CSV import error", e)
+            }
+        }
+    }
+    
+    /**
+     * Scan system music library and add tracks to the database
+     */
+    @SuppressLint("InlinedApi")
+    fun scanSystemLibrary() {
+        if (!hasReadMediaPermission()) {
+            _errorMessage.value = "Permission required to access system music library"
+            return
+        }
+        
+        viewModelScope.launch(Dispatchers.IO) {
+            _isLoading.value = true
+            _errorMessage.value = null
+            
+            var count = 0
+            
+            try {
+                val projection = buildList {
+                    add(MediaStore.Audio.Media._ID)
+                    add(MediaStore.Audio.Media.DISPLAY_NAME)
+                    add(MediaStore.Audio.Media.RELATIVE_PATH)
+                    add(MediaStore.Audio.Media.SIZE)
+                    add(MediaStore.Audio.Media.DURATION)
+                    add(MediaStore.Audio.Media.TITLE)
+                    add(MediaStore.Audio.Media.ARTIST)
+                    add(MediaStore.Audio.Media.ALBUM)
+                    // GENRE only exists on Android 11+ (API R); on older devices it is omitted
+                    // and the column index resolves to -1, leaving the genre null.
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        add(MediaStore.Audio.Media.GENRE)
+                    }
+                }.toTypedArray()
+                
+                val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0"
+                
+                val cursor = context.contentResolver.query(
+                    MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+                    projection,
+                    selection,
+                    null,
+                    null
+                )
+                
+                cursor?.use { c ->
+                    val idColumn = c.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
+                    val nameColumn = c.getColumnIndexOrThrow(MediaStore.Audio.Media.DISPLAY_NAME)
+                    val pathColumn = c.getColumnIndexOrThrow(MediaStore.Audio.Media.RELATIVE_PATH)
+                    val sizeColumn = c.getColumnIndexOrThrow(MediaStore.Audio.Media.SIZE)
+                    val durationColumn = c.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
+                    val titleColumn = c.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
+                    val artistColumn = c.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
+                    val albumColumn = c.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM)
+                    // -1 when GENRE was omitted from the projection (API < R)
+                    val genreColumn = c.getColumnIndex(MediaStore.Audio.Media.GENRE)
+                    
+                    while (c.moveToNext()) {
+                        val id = c.getLong(idColumn)
+                        val fileName = c.getString(nameColumn) ?: continue
+                        val relativePath = c.getString(pathColumn) ?: "."
+                        val size = c.getLong(sizeColumn)
+                        val duration = c.getLong(durationColumn)
+                        val title = c.getString(titleColumn)
+                        val artist = c.getString(artistColumn)
+                        val album = c.getString(albumColumn)
+                        val genre = if (genreColumn >= 0) c.getString(genreColumn) else null
+                        
+                        // Create content URI for the track
+                        val uri = Uri.withAppendedPath(
+                            MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+                            id.toString()
+                        )
+                        
+                        // Create track
+                        val track = trackRepository.createTrack(
+                            filePath = uri.toString(),
+                            fileName = fileName,
+                            relativePath = relativePath,
+                            bpm = null, // BPM unknown from system library
+                            fileSizeBytes = if (size > 0) size else null,
+                            durationMs = if (duration > 0) duration else null,
+                            source = TrackSource.SYSTEM,
+                            metadataTitle = title,
+                            metadataArtist = artist,
+                            metadataAlbum = album,
+                            metadataGenre = genre
+                        )
+                        
+                        // Add/update the track
+                        // If a track with the same filename and size already exists
+                        // (e.g. imported from CSV), its metadata is merged with the
+                        // system library data and ID3 tags instead of being skipped
+                        try {
+                            val success = trackRepository.addOrMergeSystemTrack(track)
+                            if (success) {
+                                count++
+                                Log.d(TAG, "Scanned system track: $fileName")
+                            } else {
+                                Log.w(TAG, "Failed to add system track: $fileName")
+                            }
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Failed to add system track: $fileName", e)
+                        }
+                    }
+                }
+                
+                _importCount.value = count
+                _isLoading.value = false
+                
+                if (count == 0) {
+                    _errorMessage.value = "No tracks found in system music library"
+                } else {
+                    Log.i(TAG, "Scanned $count tracks from system library")
+                }
+                
+            } catch (e: Exception) {
+                _isLoading.value = false
+                _errorMessage.value = "Failed to scan system library: ${e.message}"
+                Log.e(TAG, "System library scan error", e)
+            }
+        }
+    }
+    
+    /**
+     * Update BPM for a track
+     */
+    fun updateTrackBpm(trackId: String, bpm: Float?) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                trackRepository.updateBpm(trackId, bpm)
+                Log.d(TAG, "Updated BPM for track: $trackId to $bpm")
+            } catch (e: Exception) {
+                _errorMessage.value = "Failed to update BPM: ${e.message}"
+                Log.e(TAG, "BPM update error", e)
+            }
+        }
+    }
+    
+    /**
+     * Delete a track from the library
+     */
+    fun deleteTrack(trackId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                trackRepository.deleteTrack(trackId)
+                Log.d(TAG, "Deleted track: $trackId")
+            } catch (e: Exception) {
+                _errorMessage.value = "Failed to delete track: ${e.message}"
+                Log.e(TAG, "Track deletion error", e)
+            }
+        }
+    }
+    
+    /**
+     * Delete all tracks from the library
+     */
+    fun deleteAllTracks() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                trackRepository.deleteAllTracks()
+                Log.d(TAG, "Deleted all tracks")
+            } catch (e: Exception) {
+                _errorMessage.value = "Failed to delete tracks: ${e.message}"
+                Log.e(TAG, "Delete all tracks error", e)
+            }
+        }
+    }
+    
+    /**
+     * Clear import count
+     */
+    fun clearImportCount() {
+        _importCount.value = 0
+    }
+    
+    /**
+     * Clear error message
+     */
+    fun clearError() {
+        _errorMessage.value = null
+    }
+    
+    // ==================== Search & Filter State ====================
+    
+    /**
+     * Update the search query
+     */
+    fun onSearchQueryChange(query: String) {
+        _searchQuery.value = query
+    }
+    
+    /**
+     * Clear the search query
+     */
+    fun clearSearch() {
+        _searchQuery.value = ""
+    }
+    
+    /**
+     * Toggle a selected artist filter
+     */
+    fun toggleArtist(artist: String) {
+        _selectedArtists.value = if (artist in _selectedArtists.value) {
+            _selectedArtists.value - artist
+        } else {
+            _selectedArtists.value + artist
+        }
+    }
+    
+    /**
+     * Toggle a selected album filter
+     */
+    fun toggleAlbum(album: String) {
+        _selectedAlbums.value = if (album in _selectedAlbums.value) {
+            _selectedAlbums.value - album
+        } else {
+            _selectedAlbums.value + album
+        }
+    }
+    
+    /**
+     * Toggle a selected genre filter
+     */
+    fun toggleGenre(genre: String) {
+        _selectedGenres.value = if (genre in _selectedGenres.value) {
+            _selectedGenres.value - genre
+        } else {
+            _selectedGenres.value + genre
+        }
+    }
+    
+    /**
+     * Update the "BPM known" filter
+     */
+    fun setShowOnlyKnownBpm(enabled: Boolean) {
+        _showOnlyKnownBpm.value = enabled
+    }
+    
+    /**
+     * Update the "speed factor within 0.9-1.1" filter
+     */
+    fun setFilterBySpeedFactor(enabled: Boolean) {
+        _filterBySpeedFactor.value = enabled
+    }
+    
+    /**
+     * Set the primary sort key (true = sort by BPM, mutually exclusive with album/artist)
+     */
+    fun setSortByBpm(enabled: Boolean) {
+        _sortByBpm.value = enabled
+    }
+    
+    /**
+     * Set the primary sort key to album (mutually exclusive with BPM/artist)
+     */
+    fun setSortByAlbum(enabled: Boolean) {
+        _sortByAlbum.value = enabled
+    }
+    
+    /**
+     * Set the primary sort key to artist (mutually exclusive with BPM/album)
+     */
+    fun setSortByArtist(enabled: Boolean) {
+        _sortByArtist.value = enabled
+    }
+    
+    /**
+     * Set the sort direction (true = descending)
+     */
+    fun setSortDescending(enabled: Boolean) {
+        _sortDescending.value = enabled
+    }
+    
+    /**
+     * Set the active library tab (0 = All, 1 = Playlists, 2 = Favorites)
+     */
+    fun setSelectedTabIndex(index: Int) {
+        _selectedTabIndex.value = index
+    }
+    
+    /**
+     * Reset every library filter and sort option back to its default.
+     * Called manually by the user via the "Clear filters" control.
+     */
+    fun clearAllFilters() {
+        _searchQuery.value = ""
+        _selectedArtists.value = emptySet()
+        _selectedAlbums.value = emptySet()
+        _selectedGenres.value = emptySet()
+        _showOnlyKnownBpm.value = false
+        _filterBySpeedFactor.value = false
+        _sortByBpm.value = true
+        _sortByAlbum.value = false
+        _sortByArtist.value = false
+        _sortDescending.value = false
+    }
+    
+    // ==================== Favorites ====================
+    
+    /**
+     * Toggle the favorite flag for a track
+     */
+    fun toggleFavorite(trackId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val track = trackDao.getTrackById(trackId).firstOrNull()
+                if (track != null) {
+                    trackDao.updateFavorite(trackId, !track.isFavorite)
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "Failed to update favorite: ${e.message}"
+                Log.e(TAG, "Favorite toggle error", e)
+            }
+        }
+    }
+    
+    // ==================== Playlists ====================
+    
+    /**
+     * Create a new playlist
+     */
+    fun createPlaylist(name: String) {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val id = UUID.randomUUID().toString()
+                playlistDao.insertOrReplace(Playlist(id = id, name = trimmed))
+            } catch (e: Exception) {
+                _errorMessage.value = "Failed to create playlist: ${e.message}"
+                Log.e(TAG, "Playlist creation error", e)
+            }
+        }
+    }
+    
+    /**
+     * Rename an existing playlist
+     */
+    fun renamePlaylist(playlistId: String, newName: String) {
+        val trimmed = newName.trim()
+        if (trimmed.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val playlist = playlistDao.getPlaylistById(playlistId)
+                if (playlist != null) {
+                    playlistDao.update(playlist.copy(name = trimmed))
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "Failed to rename playlist: ${e.message}"
+                Log.e(TAG, "Playlist rename error", e)
+            }
+        }
+    }
+    
+    /**
+     * Delete a playlist and its track membership
+     */
+    fun deletePlaylist(playlistId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                playlistDao.delete(playlistId)
+                playlistDao.deleteTracksForPlaylist(playlistId)
+            } catch (e: Exception) {
+                _errorMessage.value = "Failed to delete playlist: ${e.message}"
+                Log.e(TAG, "Playlist deletion error", e)
+            }
+        }
+    }
+
+    /**
+     * Add the currently selected tracks to a playlist (no-op if already present)
+     */
+    fun addSelectedTracksToPlaylist(playlistId: String, trackIds: List<String>) {
+        if (trackIds.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                addTracksToPlaylistInternal(playlistId, trackIds)
+            } catch (e: Exception) {
+                _errorMessage.value = "Failed to add selected tracks to playlist: ${e.message}"
+                Log.e(TAG, "Add selected tracks to playlist error", e)
+            }
+        }
+    }
+
+    /**
+     * Create a new playlist containing the given tracks
+     * Returns the new playlist id, or null when the name is blank or trackIds is empty
+     */
+    fun createPlaylistWithTracks(name: String, trackIds: List<String>): String? {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty() || trackIds.isEmpty()) {
+            _errorMessage.value = "Playlist name and at least one track are required"
+            return null
+        }
+        val id = UUID.randomUUID().toString()
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                playlistDao.insertOrReplace(Playlist(id = id, name = trimmed))
+                insertPlaylistTracksWithPositions(id, trackIds, startPosition = 0)
+            } catch (e: Exception) {
+                _errorMessage.value = "Failed to create playlist: ${e.message}"
+                Log.e(TAG, "Create playlist with tracks error", e)
+            }
+        }
+        return id
+    }
+
+    /**
+     * Replace the contents of a playlist with the given tracks (positions 0..n-1)
+     */
+    fun updatePlaylistTracks(playlistId: String, trackIds: List<String>) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                playlistDao.deleteTracksForPlaylist(playlistId)
+                if (trackIds.isEmpty()) return@launch
+                insertPlaylistTracksWithPositions(playlistId, trackIds, startPosition = 0)
+            } catch (e: Exception) {
+                _errorMessage.value = "Failed to update playlist: ${e.message}"
+                Log.e(TAG, "Update playlist tracks error", e)
+            }
+        }
+    }
+
+    /**
+     * Mark multiple tracks as favorites
+     */
+    fun addTracksToFavorites(trackIds: List<String>) {
+        if (trackIds.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                trackDao.updateFavorites(trackIds, true)
+            } catch (e: Exception) {
+                _errorMessage.value = "Failed to update favorites: ${e.message}"
+                Log.e(TAG, "Add tracks to favorites error", e)
+            }
+        }
+    }
+
+    /**
+     * Extract track ids from a list of MediaItems (from the "trackId" extra)
+     */
+    fun trackIdsFromMediaItems(mediaItems: List<MediaItem>): List<String> {
+        return mediaItems.mapNotNull { mediaItem ->
+            mediaItem.mediaMetadata?.extras?.getString("trackId")
+        }
+    }
+
+    /**
+     * Add the given trackIds to a playlist, skipping any already present
+     * and continuing positions from the current max position
+     */
+    private suspend fun addTracksToPlaylistInternal(playlistId: String, trackIds: List<String>) {
+        if (trackIds.isEmpty()) return
+        val existing = playlistDao.getPlaylistTracksOnce(playlistId)
+        val existingIds = existing.map { it.trackId }.toSet()
+        val newTracks = trackIds.filter { it !in existingIds }
+        if (newTracks.isEmpty()) return
+        val startPosition = (existing.maxOfOrNull { it.position } ?: -1) + 1
+        insertPlaylistTracksWithPositions(playlistId, newTracks, startPosition = startPosition)
+    }
+
+    /**
+     * Insert the given trackIds into a playlist with consecutive positions
+     * starting from startPosition
+     */
+    private suspend fun insertPlaylistTracksWithPositions(
+        playlistId: String,
+        trackIds: List<String>,
+        startPosition: Int
+    ) {
+        val relations = trackIds.mapIndexed { index, trackId ->
+            PlaylistTrack(playlistId = playlistId, trackId = trackId, position = startPosition + index)
+        }
+        playlistDao.insertPlaylistTracks(relations)
+    }
+    
+    /**
+     * Remove a track from a playlist
+     */
+    fun removeTrackFromPlaylist(playlistId: String, trackId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                playlistDao.deleteTrackFromPlaylist(playlistId, trackId)
+            } catch (e: Exception) {
+                _errorMessage.value = "Failed to remove track from playlist: ${e.message}"
+                Log.e(TAG, "Remove from playlist error", e)
+            }
+        }
+    }
+    
+    /**
+     * Get a MediaItem for a track to play it
+     * Includes BPM information in the media metadata for display in playlist
+     */
+    fun getMediaItemForTrack(track: Track): MediaItem {
+        // Use track.id directly if it's already a valid URI
+        // For APP tracks from CSV import, track.id contains the full file:// URI
+        val uriString = if (track.id.startsWith("file://") || track.id.startsWith("content://")) {
+            track.id
+        } else if (track.source == TrackSource.APP) {
+            // Fallback: construct file URI from relativePath and fileName
+            val path = if (track.relativePath == ".") {
+                track.fileName
+            } else {
+                "${track.relativePath}/${track.fileName}"
+            }
+            "file:///$path"
+        } else {
+            track.id
+        }
+        
+        return MediaItem.Builder()
+            .setUri(Uri.parse(uriString))
+            .setMediaMetadata(
+                androidx.media3.common.MediaMetadata.Builder()
+                    .setTitle(track.metadataTitle ?: track.fileName)
+                    .setArtist(track.metadataArtist ?: "Unknown")
+                    .setAlbumTitle(track.metadataAlbum ?: "Unknown")
+                    .apply {
+                        val extras = Bundle().apply {
+                            putString("trackId", track.id)
+                            putString("bpm", track.bpm?.toString() ?: "")
+                            putString("fileName", track.fileName)
+                            putLong("durationMs", track.durationMs ?: 0L)
+                        }
+                        setExtras(extras)
+                    }
+                    .build()
+            )
+            .build()
+    }
+    
+    /**
+     * Analyze BPM for all tracks in library
+     * Skips tracks that already have BPM set
+     */
+    fun analyzeLibraryBpm() {
+        viewModelScope.launch(Dispatchers.IO) {
+            _isAnalyzingLibrary.value = true
+            _errorMessage.value = null
+            
+            try {
+                val tracks = trackRepository.allTracks.firstOrNull() ?: emptyList()
+                val total = tracks.size
+                var completed = 0
+                var successCount = 0
+                
+                tracks.forEach { track ->
+                    if (track.bpm != null && track.bpm > 0) {
+                        completed++
+                        _analysisProgress.value = completed to total
+                        return@forEach
+                    }
+                    
+                    try {
+                        val bpm = bpmResolver.resolveBpmForTrack(track)
+                        
+                        if (bpm != null && bpm > 0) {
+                            successCount++
+                            playerRepository.updateBpmForTrack(track.id, bpm)
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to analyze BPM for track ${track.id}", e)
+                    }
+                    
+                    completed++
+                    _analysisProgress.value = completed to total
+                }
+                
+                _analysisResults.value = successCount
+                
+            } catch (e: Exception) {
+                _errorMessage.value = "Library analysis failed: ${e.message}"
+                Log.e(TAG, "Library BPM analysis error", e)
+            } finally {
+                _isAnalyzingLibrary.value = false
+            }
+        }
+    }
+    
+    /**
+     * Clear analysis results state
+     */
+    fun clearAnalysisResults() {
+        _analysisResults.value = 0
+        _analysisProgress.value = 0 to 0
+    }
+
+    // ==================== BPM Resolution (upcoming songs) ====================
+
+    /**
+     * Resolve the BPM for a single track if it is not already known in the database.
+     * Reads ID3 tags first, then falls back to automatic Aubio detection, and persists
+     * any resolved value to the database.
+     *
+     * @param track Track to resolve BPM for
+     * @param onResult Callback with the resolved BPM (null when unresolvable/unchanged)
+     */
+    fun resolveBpmForTrackIfNeeded(track: Track, onResult: (Float?) -> Unit = {}) {
+        if (track.bpm != null && track.bpm > 0) return
+        _isResolvingBpm.value = true
+        _bpmResolutionProgress.value = 0 to 1
+        viewModelScope.launch(Dispatchers.IO) {
+            val bpm = try {
+                val resolved = bpmResolver.resolveBpmForTrack(track)
+                _bpmResolutionProgress.value = 1 to 1
+                if (resolved != null && resolved > 0) {
+                    Log.d(TAG, "Resolved BPM for ${track.fileName}: $resolved")
+                    playerRepository.updateBpmForTrack(track.id, resolved)
+                }
+                resolved
+            } catch (e: Exception) {
+                _errorMessage.value = "Failed to resolve BPM: ${e.message}"
+                Log.e(TAG, "BPM resolution error", e)
+                null
+            }
+            // The callback may touch the player (e.g. apply the cadence-matched speed),
+            // so it must run on the main thread.
+            withContext(Dispatchers.Main) {
+                onResult(bpm)
+                _isResolvingBpm.value = false
+            }
+        }
+    }
+
+    /**
+     * When a track starts playing from the player, sync any known BPM from the library
+     * into the playlist tile, or auto-detect it when it is unknown (persisting the result).
+     *
+     * @param mediaItem The media item that just started playing (may carry the trackId extra)
+     * @param onResult Callback with the BPM that is now known for the track (null when unresolved)
+     */
+    fun resolveBpmForCurrentPlaybackIfNeeded(mediaItem: MediaItem?, onResult: (Float?) -> Unit = {}) {
+        val trackId = mediaItem?.mediaMetadata?.extras?.getString("trackId") ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            val track = trackRepository.allTracks.firstOrNull()?.firstOrNull { it.id == trackId }
+                ?: return@launch
+            val knownBpm = track.bpm?.takeIf { it > 0 }
+            if (knownBpm != null) {
+                playerRepository.updateBpmForTrack(track.id, knownBpm)
+                withContext(Dispatchers.Main) {
+                    onResult(knownBpm)
+                }
+            } else {
+                resolveBpmForTrackIfNeeded(track) { bpm ->
+                    onResult(bpm?.takeIf { it > 0 })
+                }
+            }
+        }
+    }
+
+    /**
+     * Resolve BPM for multiple tracks that don't have one yet.
+     * Used e.g. when loading an entire library list into the upcoming songs playlist.
+     *
+     * @param tracks Tracks to resolve BPM for (already-known BPMs are skipped)
+     * @param onProgress Optional callback with (completed, total) after each track
+     * @param onCompleted Optional callback with (resolvedCount, total)
+     */
+    fun resolveBmpsForTracksIfNeeded(
+        tracks: List<Track>,
+        onProgress: ((completed: Int, total: Int) -> Unit)? = null,
+        onCompleted: ((resolvedCount: Int, total: Int) -> Unit)? = null
+    ) {
+        val pending = tracks.filter { it.bpm == null || it.bpm <= 0 }
+        if (pending.isEmpty()) {
+            onCompleted?.invoke(0, tracks.size)
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            _isResolvingBpm.value = true
+            _bpmResolutionProgress.value = 0 to pending.size
+            // Callbacks may touch the player, so post them on the main thread
+            val mainHandler = Handler(Looper.getMainLooper())
+            var completed = 0
+            var resolvedCount = 0
+            try {
+                bpmResolver.resolveBpmForTracks(pending) { _, total, bpm ->
+                    completed++
+                    val track = pending.getOrNull(completed - 1)
+                    if (bpm != null && bpm > 0) {
+                        resolvedCount++
+                        if (track != null) {
+                            playerRepository.updateBpmForTrack(track.id, bpm)
+                        }
+                    }
+                    _bpmResolutionProgress.value = completed to total
+                    onProgress?.let { cb ->
+                        mainHandler.post { cb(completed, total) }
+                    }
+                }
+                mainHandler.post { onCompleted?.invoke(resolvedCount, pending.size) }
+            } catch (e: Exception) {
+                _errorMessage.value = "Failed to resolve BPMs: ${e.message}"
+                Log.e(TAG, "Batch BPM resolution error", e)
+                mainHandler.post { onCompleted?.invoke(resolvedCount, pending.size) }
+            } finally {
+                _isResolvingBpm.value = false
+            }
+        }
+    }
+
+    // ==================== Metadata Editing State ====================
+
+    // Metadata editing state
+    private val _isSavingMetadata = MutableStateFlow(false)
+    val isSavingMetadata: StateFlow<Boolean> = _isSavingMetadata.asStateFlow()
+
+    private val _metadataSaveProgress = MutableStateFlow<Pair<Int, Int>>(0 to 0)
+    val metadataSaveProgress: StateFlow<Pair<Int, Int>> = _metadataSaveProgress.asStateFlow()
+
+    private val _metadataSaveResults = MutableStateFlow<Int>(0)
+    val metadataSaveResults: StateFlow<Int> = _metadataSaveResults.asStateFlow()
+
+    private val _metadataError = MutableStateFlow<String?>(null)
+    val metadataError: StateFlow<String?> = _metadataError.asStateFlow()
+
+    /**
+     * Check if MediaMetadataEditor is available on this device
+     */
+    fun isMetadataEditingAvailable(): Boolean {
+        return trackRepository.isMetadataEditingAvailable()
+    }
+
+    /**
+     * Save BPM to file metadata for a specific track
+     */
+    fun saveBpmToFileMetadata(trackId: String, bpm: Float) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _isSavingMetadata.value = true
+            _metadataError.value = null
+
+            try {
+                val success = trackRepository.saveBpmToFileMetadata(trackId, bpm)
+                if (success) {
+                    _metadataSaveResults.value = 1
+                } else {
+                    _metadataError.value = "Failed to save BPM to file metadata"
+                }
+            } catch (e: Exception) {
+                _metadataError.value = "Error saving BPM: ${e.message}"
+                Log.e(TAG, "Error saving BPM to file metadata", e)
+            } finally {
+                _isSavingMetadata.value = false
+            }
+        }
+    }
+
+    /**
+     * Sync BPM from database to file metadata for all tracks
+     * Uses parallel processing for better performance
+     */
+    fun syncAllBpmToFileMetadata() {
+        viewModelScope.launch(Dispatchers.IO) {
+            _isSavingMetadata.value = true
+            _metadataError.value = null
+            _metadataSaveProgress.value = 0 to 0
+
+            try {
+                trackRepository.syncAllBpmToFileMetadata(
+                    concurrency = 4, // Use 4 concurrent workers
+                    onProgress = { progress ->
+                        _metadataSaveProgress.value = progress.completed to progress.total
+                    }
+                )
+
+                // The progress callback will handle the final count
+                // We'll get the final result from the progress updates
+
+            } catch (e: Exception) {
+                _metadataError.value = "Error syncing BPM to files: ${e.message}"
+                Log.e(TAG, "Error syncing all BPM to file metadata", e)
+            } finally {
+                _isSavingMetadata.value = false
+            }
+        }
+    }
+    
+    /**
+     * Get explanation for file access permission
+     */
+    fun getFileAccessExplanation(): String {
+        return PermissionUtils.getFileAccessExplanation()
+    }
+
+    /**
+     * Clear metadata save state
+     */
+    fun clearMetadataSaveState() {
+        _metadataSaveResults.value = 0
+        _metadataSaveProgress.value = 0 to 0
+        _metadataError.value = null
+    }
+}
+
+/**
+ * Case-insensitive search match against title, artist, album, filename, or genre
+ */
+private fun Track.matchesSearch(query: String): Boolean {
+    val q = query.trim().lowercase()
+    if (q.isEmpty()) return true
+    return metadataTitle?.lowercase()?.contains(q) == true ||
+        metadataArtist?.lowercase()?.contains(q) == true ||
+        metadataAlbum?.lowercase()?.contains(q) == true ||
+        fileName.lowercase().contains(q) ||
+        genre().lowercase().contains(q)
+}
+
+/**
+ * Genre label from the track's metadata (ID3 tag)
+ * Returns "Unknown" when no ID3 genre tag is available
+ */
+private fun Track.genre(): String {
+    return metadataGenre?.takeIf { it.isNotBlank() } ?: "Unknown"
+}

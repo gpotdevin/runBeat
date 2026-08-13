@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">RunBeat</string>
+
+    <!-- Main Activity -->
+    <string name="now_playing">Now Playing</string>
+
+    <!-- Player Controls -->
+    <string name="stop">Stop</string>
+
+    <!-- Notification Channel -->
+    <string name="notification_channel_name">Audio Playback</string>
+    <string name="notification_channel_description">Notification channel for audio playback controls</string>
+
+    <!-- Notification Actions -->
+    <string name="notification_action_play">Play</string>
+    <string name="notification_action_pause">Pause</string>
+    <string name="notification_action_previous">Previous</string>
+    <string name="notification_action_next">Next</string>
+    <string name="notification_action_speed_on">Speed On</string>
+    <string name="notification_action_speed_off">Speed Off</string>
+
+    <!-- Intro / Help -->
+    <string name="intro_title">Welcome to RunBeat</string>
+    <string name="intro_paragraph_1">RunBeat is a BPM-based audio player designed for runners. It adjusts the tempo of your music (time-stretching without changing the pitch) so your playlist always matches your target running cadence.</string>
+    <string name="intro_paragraph_2">Pick a target cadence for your run (default 172 BPM, range 160-195) and RunBeat continuously matches the music to it as you run.</string>
+    <string name="intro_paragraph_3">Track BPMs are detected automatically using Aubio, can be entered by tapping along to the beat, or imported from pre-analyzed CSV files.</string>
+    <string name="intro_get_started">Get Started</string>
+    <string name="intro_got_it">Got it</string>
+    <string name="help_intro_title">Introduction</string>
+    <string name="help_intro_description">About RunBeat and how it works</string>
+    <string name="help_intro_view">View</string>
+    <string name="help_section_title">HELP</string>
+
+    <!-- About -->
+    <string name="about_repo_title">Project repository</string>
+    <string name="about_repo_description">View the RunBeat source code on GitHub</string>
+    <string name="about_repo_url">https://github.com/gpotdevin/runBeat</string>
+</resources>

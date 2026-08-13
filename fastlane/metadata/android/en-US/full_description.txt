@@ -1,0 +1,22 @@
+RunBeat is a BPM-based audio player made for runners. It synchronizes your music with your running cadence by adjusting the tempo of your songs without changing the pitch, so every step lands on the beat.
+
+KEY FEATURES:
+
+• TEMPO MATCHING
+Speed up or slow down tracks without pitch distortion, using the SoundTouch time-stretching engine. Match playback to your cadence automatically.
+
+• CADENCE TARGETS
+Set your target step frequency (default 172 BPM, range 160-195 BPM). RunBeat continuously adjusts playback speed to keep your rhythm while you run.
+
+• BPM DETECTION
+Automatic tempo detection powered by aubio analyzes your library, or tap along manually with the tap-to-beat tool when you want instant results.
+
+• PLAYBACK
+Full library browsing with playlists and BPM metadata. Playback continues in the background with a media notification and Bluetooth controls, so you can run hands-free.
+
+• OFFLINE-FIRST
+Your music, BPM data, and playlists live in a local Room database. No account, no tracking, no data collection.
+
+RunBeat is open source (GPLv3). Source: https://github.com/gpotdevin/runBeat
+
+Get ready. Set the pace. Run in rhythm.

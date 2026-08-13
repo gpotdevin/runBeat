@@ -1,0 +1,34 @@
+# NOTICES
+
+RunBeat is licensed under the GNU General Public License v3.0 or later
+(see `LICENSE`). This project incorporates third-party components. Their
+copyrights and licenses are listed below. Full license texts are included
+in the respective vendor directories.
+
+## Bundled/vendored components
+
+| Component | Version | License | Source |
+|-----------|---------|---------|--------|
+| aubio | 0.5.0 (vendored fork) | GPLv3 | https://github.com/aubio/aubio — see `aubio/COPYING` and `aubio/README.md` |
+| soundtouch-android | latest (vendored fork) | LGPLv2.1 + Apache 2.0 | https://github.com/hipxel/soundtouch-android — see `soundtouch-android/LICENSE*.txt` |
+
+## Maven/Gradle dependencies
+
+| Component | License | Upstream |
+|-----------|---------|----------|
+| androidx.media3 (ExoPlayer) | Apache 2.0 | https://github.com/androidx/media |
+| androidx.core / appcompat / material | Apache 2.0 | https://github.com/androidx/androidx |
+| Jetpack Compose | Apache 2.0 | https://github.com/androidx/androidx |
+| Room | Apache 2.0 | https://github.com/androidx/androidx |
+| Lifecycle / Navigation | Apache 2.0 | https://github.com/androidx/androidx |
+| Hilt / Dagger | Apache 2.0 | https://github.com/google/dagger |
+| Kotlin / kotlinx-coroutines | Apache 2.0 | https://github.com/JetBrains/kotlin |
+| JUnit / Mockito / Robolectric | EPL 1.0 / MIT / MIT | testing only |
+
+## Notes
+
+- aubio is statically linked into the app and is licensed under the GPL v3,
+  which is why the entire RunBeat application is distributed under the
+  GPL v3.0 or later.
+- soundtouch-android's core SoundTouch library is LGPL v2.1; its Android
+  bindings are Apache 2.0.

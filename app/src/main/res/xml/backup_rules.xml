@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- This file defines the backup rules for Auto Backup for Apps. -->
+    <!-- It specifies which files should be backed up. -->
+    <!-- The include attribute specifies which files/directories to include. -->
+    <!-- The exclude attribute specifies which files/directories to exclude. -->
+</full-backup-content>

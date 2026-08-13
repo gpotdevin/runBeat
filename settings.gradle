@@ -1,0 +1,15 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        google()
+        mavenCentral()
+        maven { url 'https://jitpack.io' }
+    }
+}
+
+rootProject.name = "RunBeat"
+include ':app'
+include ':soundtouch-android'
+include ':aubio'

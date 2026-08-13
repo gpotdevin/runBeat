@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <!-- This file defines the data extraction rules for Android 12+ -->
+    <!-- It specifies which data should be extracted for user transfer -->
+</data-extraction-rules>
