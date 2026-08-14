@@ -17,12 +17,20 @@ android {
     namespace 'com.bpmapp.audio'
     compileSdk 34
 
-    // Read and increment build counter for version tracking
+    // versionCode is derived from the git commit count so it is deterministic
+    // and always increasing, both locally and in CI. Falls back to the
+    // build-counter.txt file when git is unavailable.
+    def gitVersionCode = -1
+    try {
+        def gitCmd = ['git', 'rev-list', '--count', 'HEAD'].execute(null, projectDir)
+        gitCmd.waitFor()
+        if (gitCmd.exitValue() == 0) {
+            gitVersionCode = gitCmd.text.trim().toInteger()
+        }
+    } catch (Exception ignored) {
+    }
     def counterFile = file("${project.rootDir}/build-counter.txt")
-    def buildNumber = counterFile.exists() ? counterFile.text.trim().toInteger() : 1
-    
-    // Increment counter for next build
-    counterFile.text = (buildNumber + 1).toString()
+    def buildNumber = gitVersionCode > 0 ? gitVersionCode : (counterFile.exists() ? counterFile.text.trim().toInteger() : 1)
 
     defaultConfig {
         applicationId "com.RunBeat.run.audio"
