@@ -6,7 +6,7 @@ This project builds with the Gradle wrapper; no global Gradle install is require
 
 - **JDK 17** (the project targets Java/Kotlin `JVM 17`)
 - **Android SDK** with platforms `android-34`
-- **Android NDK** (required for the `aubio` native module)
+- **Android NDK** version `25.1.8937393` (required for the `aubio` native module)
 - **CMake** (used by the `aubio` native build)
 
 ## Environment setup
@@ -15,7 +15,7 @@ This project builds with the Gradle wrapper; no global Gradle install is require
 
    ```bash
    git clone https://github.com/gpotdevin/runBeat.git
-   cd bpm-app
+   cd runBeat
    ```
 
 2. Create `local.properties` pointing at your SDK/NDK. A template is provided:
@@ -77,7 +77,7 @@ repo). The signing configuration in `app/build.gradle` reads:
 ```bash
 export BPM_RELEASE_STORE_FILE=/path/to/bpm-release.keystore
 export BPM_RELEASE_STORE_PASSWORD=your_store_password
-export BPM_RELEASE_KEY_ALIAS=bpm_app
+export BPM_RELEASE_KEY_ALIAS=RunBeat_app
 export BPM_RELEASE_KEY_PASSWORD=your_key_password
 ./gradlew :app:bundleRelease
 ```

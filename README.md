@@ -1,6 +1,9 @@
 # RunBeat
 
-![RunBeat](illustrations/logo.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="illustrations/logo-dark.svg">
+  <img src="illustrations/logo.svg" alt="RunBeat" width="160">
+</picture>
 
 [![License: GPLv3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
@@ -20,10 +23,12 @@
 
 ## Screenshots
 
-<img src="illustrations/Player.png" width="250"/>
-<img src="illustrations/Library.png" width="250"/>
-<img src="illustrations/Cadensematcher.png" width="250"/>
-<img src="illustrations/Settings.png" width="250"/>
+<p align="center">
+  <img src="illustrations/Player.png" width="220"/>
+  <img src="illustrations/Library.png" width="220"/>
+  <img src="illustrations/Cadensematcher.png" width="220"/>
+  <img src="illustrations/Settings.png" width="220"/>
+</p>
 
 ## Installation
 
@@ -41,10 +46,10 @@
 
    ```bash
    git clone https://github.com/gpotdevin/runBeat.git
-   cd bpm-app
+   cd runBeat
    ```
 
-2. Set up an Android development environment (SDK, NDK 26+, CMake).
+2. Set up an Android development environment (SDK, NDK 25.1.8937393, CMake).
 3. Build:
 
    ```bash
@@ -96,4 +101,3 @@ See [NOTICES](NOTICES) for the full component list and license details.
 ## Support
 
 - **Issues**: [GitHub Issues](https://github.com/gpotdevin/runBeat/issues)
-- **Email**: your.email@example.com
