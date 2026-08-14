@@ -25,7 +25,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -39,9 +39,9 @@ jobs:
       - name: Install NDK and CMake (for aubio native module)
         run: |
           sdkmanager "platforms;android-34" "build-tools;34.0.0" \
-            "ndk;25.2.9519653" "cmake;3.22.1" --sdk_root=$ANDROID_HOME
+            "ndk;25.1.8937393" "cmake;3.22.1" --sdk_root=$ANDROID_HOME
           echo "sdk.dir=$ANDROID_HOME" > local.properties
-          echo "ndk.dir=$ANDROID_HOME/ndk/25.2.9519653" >> local.properties
+          echo "ndk.dir=$ANDROID_HOME/ndk/25.1.8937393" >> local.properties
 
       - name: Decode release keystore
         run: |
