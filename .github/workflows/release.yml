@@ -46,7 +46,7 @@ jobs:
       - name: Decode release keystore
         run: |
           echo "${{ secrets.BPM_RELEASE_KEYSTORE_BASE64 }}" | base64 --decode > bpm-release.keystore
-          echo "BPM_RELEASE_STORE_FILE=bpm-release.keystore" >> "$GITHUB_ENV"
+          echo "BPM_RELEASE_STORE_FILE=${{ github.workspace }}/bpm-release.keystore" >> "$GITHUB_ENV"
 
       - name: Build release APK and AAB
         run: ./gradlew :app:assembleRelease :app:bundleRelease
