@@ -46,6 +46,30 @@ First public beta release of RunBeat.
 
 ## [Unreleased]
 
+### Added
+
+- Cadence-matching rhythm groups: **Binary** (1.0x / 2.0x) and **Ternary**
+  (1.5x / 3.0x), replacing the four individual rhythm-factor chips.
+- CSV import under **Settings → Advanced**, with an inline description of the
+  expected CSV format.
+- Warning banner and confirmation dialog when using tap-to-beat while playback
+  speed is adjusted, so the tapped BPM reflects the actual tempo.
+- "About" section in Settings with a link to the project repository.
+
+### Changed
+
+- Manual tap BPM is now written back to the track library and, where possible,
+  to the file's ID3 tag.
+- Manual BPM entry now uses a dedicated numeric input field.
+- CSV import removed from the library overflow menu (moved to Settings →
+  Advanced).
+
+### Fixed
+
+- Manual tap detection (tapped BPM now reflects the current playback tempo).
+- Excessive memory usage when analyzing long tracks (decoding stops once the
+  analysis window is covered).
+
 ### Planned
 
 - Import existing playlists (M3U, PLS).

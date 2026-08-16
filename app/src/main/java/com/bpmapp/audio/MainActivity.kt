@@ -190,6 +190,7 @@ class MainActivity : ComponentActivity() {
                                 composable(com.bpmapp.audio.ui.navigation.NavDestination.SETTINGS.route) {
                                     SettingsScreen(
                                         onNavigateBack = { navController.popBackStack() },
+                                        libraryViewModel = libraryViewModel,
                                         modifier = Modifier
                                             .fillMaxSize()
                                             .padding(paddingValues)

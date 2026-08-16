@@ -5,7 +5,6 @@ package com.bpmapp.audio.ui
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Build
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -67,7 +66,6 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.HelpOutline
-import androidx.compose.material.icons.filled.ImportExport
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Star
@@ -278,15 +276,6 @@ fun LibraryScreen(
             viewModel.scanSystemLibrary()
         } else {
             viewModel.setError("Permission denied. Cannot scan music library without storage permission.")
-        }
-    }
-    
-    // CSV import launcher
-    val csvImportLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
-        uri?.let { selectedUri ->
-            viewModel.importFromCsv(selectedUri)
         }
     }
     
@@ -527,22 +516,6 @@ fun LibraryScreen(
                                         } else {
                                             MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                                         }
-                                    )
-                                }
-                            )
-                            
-                            DropdownMenuItem(
-                                text = { Text("Import CSV", style = MaterialTheme.typography.bodyMedium) },
-                                onClick = { 
-                                    csvImportLauncher.launch("*/*")
-                                    showOverflowMenu = false
-                                },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.Filled.ImportExport,
-                                        contentDescription = "Import CSV",
-                                        modifier = Modifier.size(18.dp),
-                                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                                     )
                                 }
                             )

@@ -15,9 +15,9 @@
 
 - **Tempo Adjustment**: Change music speed without affecting pitch (using SoundTouch).
 - **BPM Detection**: Automatic (via aubio) and manual (tap-to-beat) BPM detection.
-- **Cadence Matching**: Automatically adjusts playback to match your running cadence (default: 172 BPM, range: 160-195 BPM).
+- **Cadence Matching**: Automatically adjusts playback to match your running cadence (default: 172 BPM, range: 160-195 BPM). Choose **Binary** (1x / 2x) or **Ternary** (1.5x / 3x) beat subdivisions to keep your steps in time with the music.
 - **Find Your Music**: Easy filtering of your tracks by Genre, Artist, Album, Name (leveraging Android Library metadata).
-- **Playlist Support**: Playlists and CSV-based BPM metadata.
+- **Playlist Support**: Playlists and CSV-based BPM import (Settings → Advanced).
 - **Offline-First**: All data stored locally (Room database).
 - **Background Playback**: Foreground service with notifications and Bluetooth controls.
 

@@ -264,6 +264,41 @@ class CadenceMatcherTest {
         assertTrue("Should contain Sixth", patternNames.contains("Sixth"))
     }
     
+    // ==================== getRhythmGroups Tests ====================
+    
+    @Test
+    fun testGetRhythmGroups_ReturnsTwoGroups() {
+        val groups = cadenceMatcher.getRhythmGroups()
+        
+        assertEquals("Should return 2 rhythm groups", 2, groups.size)
+    }
+    
+    @Test
+    fun testGetRhythmGroups_BinaryAndTernaryFactors() {
+        val groups = cadenceMatcher.getRhythmGroups()
+        val binary = groups.find { it.name == "Binary" }
+        val ternary = groups.find { it.name == "Ternary" }
+        
+        assertNotNull("Should contain Binary group", binary)
+        assertNotNull("Should contain Ternary group", ternary)
+        assertEquals("Binary factors should be {1.0, 2.0}", setOf(1.0f, 2.0f), binary!!.factors)
+        assertEquals("Ternary factors should be {1.5, 3.0}", setOf(1.5f, 3.0f), ternary!!.factors)
+    }
+    
+    @Test
+    fun testGroupIsSelected_AllOrNothing() {
+        val groups = cadenceMatcher.getRhythmGroups()
+        val binary = groups.find { it.name == "Binary" }
+        val ternary = groups.find { it.name == "Ternary" }
+        
+        assertTrue("Binary should be selected when all factors selected",
+            cadenceMatcher.groupIsSelected(binary!!, setOf(1.0f, 2.0f)))
+        assertFalse("Binary should NOT be selected with only {1.0f}",
+            cadenceMatcher.groupIsSelected(binary, setOf(1.0f)))
+        assertTrue("Ternary should be selected when all factors selected",
+            cadenceMatcher.groupIsSelected(ternary!!, setOf(1.5f, 3.0f)))
+    }
+    
     // ==================== Edge Cases ====================
     
     @Test

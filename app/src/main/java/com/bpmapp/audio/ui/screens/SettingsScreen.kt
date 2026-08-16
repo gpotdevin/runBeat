@@ -2,6 +2,9 @@
 
 package com.bpmapp.audio.ui.screens
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -17,11 +20,15 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,6 +44,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.bpmapp.audio.R
 import com.bpmapp.audio.ui.theme.AppSpacing
+import com.bpmapp.audio.viewmodel.LibraryViewModel
 import com.bpmapp.audio.viewmodel.SettingsViewModel
 
 /**
@@ -47,9 +55,11 @@ import com.bpmapp.audio.viewmodel.SettingsViewModel
 @Composable
 fun SettingsScreen(
     modifier: Modifier = Modifier,
-    onNavigateBack: () -> Unit = {}
+    onNavigateBack: () -> Unit = {},
+    libraryViewModel: LibraryViewModel? = null
 ) {
     val viewModel: SettingsViewModel = hiltViewModel()
+    val libVm = libraryViewModel ?: hiltViewModel<LibraryViewModel>()
     val context = LocalContext.current
     
     // Collect all settings from ViewModel
@@ -66,11 +76,36 @@ fun SettingsScreen(
     // Help / intro dialog state
     var showIntroDialog by remember { mutableStateOf(false) }
     
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState()),
-    ) {
+    val snackbarHostState = remember { SnackbarHostState() }
+    val importCount by libVm.importCount.collectAsState(0)
+    val csvImportError by libVm.errorMessage.collectAsState(null)
+
+    LaunchedEffect(importCount) {
+        if (importCount > 0) {
+            snackbarHostState.showSnackbar("Imported $importCount tracks")
+            libVm.clearImportCount()
+        }
+    }
+    LaunchedEffect(csvImportError) {
+        csvImportError?.let { snackbarHostState.showSnackbar(it) }
+    }
+    
+    val csvImportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let { libVm.importFromCsv(it) }
+    }
+    
+    Scaffold(
+        modifier = modifier.fillMaxSize(),
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .verticalScroll(rememberScrollState()),
+        ) {
         // Top App Bar
         TopAppBar(
             title = { 
@@ -143,6 +178,52 @@ fun SettingsScreen(
                         checked = dynamicColors,
                         onCheckedChange = { viewModel.setDynamicColors(it) },
                         modifier = Modifier.padding(end = AppSpacing.sm)
+                    )
+                }
+            }
+            
+            
+            
+            // ADVANCED Section
+            SettingsSection(title = "⚙️ ADVANCED") {
+                SettingItem(
+                    title = "Import CSV",
+                    description = "Import tracks and BPM values from a CSV file"
+                ) {
+                    TextButton(onClick = { csvImportLauncher.launch("*/*") }) {
+                        Text(
+                            text = "Import",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = AppSpacing.xxs),
+                    verticalArrangement = Arrangement.spacedBy(AppSpacing.xxxs)
+                ) {
+                    Text(
+                        text = "CSV format — one track per line (header line is skipped):",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "relative_path,filename,bpm,file_size_bytes[,title,artist,album,genre]",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "Example: GoGo_Penguin/A_Humdrum_Star,1-2-Raven-320.mp3,152.0,12166665,Song Title,Artist Name,Album Name",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "Filenames containing commas must be quoted.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -250,6 +331,7 @@ fun SettingsScreen(
                 }
             }
         }
+    }
     }
 
     // HELP / INTRO DIALOG

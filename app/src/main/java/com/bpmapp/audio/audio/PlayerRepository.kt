@@ -69,6 +69,11 @@ class PlayerRepository @Inject constructor(
     // Defaults to on to match the in-app cadence matching toggle.
     private val _speedCorrectionEnabled = MutableStateFlow(true)
     val speedCorrectionEnabled: StateFlow<Boolean> = _speedCorrectionEnabled.asStateFlow()
+
+    // Current playback speed factor (1.0 = normal). Single source of truth for the
+    // actual tempo; updated whenever setPlaybackSpeed is called.
+    private val _playbackSpeed = MutableStateFlow(1.0f)
+    val playbackSpeed: StateFlow<Float> = _playbackSpeed.asStateFlow()
     
     // Rhythm patterns (factors) the user selected for cadence matching.
     // Single source of truth shared by the in-app player and the notification
@@ -254,6 +259,7 @@ class PlayerRepository @Inject constructor(
     fun setPlaybackSpeed(speed: Float) {
         // Clamp to reasonable range for music playback
         val clampedSpeed = speed.coerceIn(TempoStretcher.RUNNER_MIN_TEMPO, TempoStretcher.RUNNER_MAX_TEMPO)
+        _playbackSpeed.value = clampedSpeed
         tempoStretcher.setTempoFactor(clampedSpeed)
         updatePlayerState()
     }

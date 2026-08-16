@@ -6,10 +6,10 @@ KEY FEATURES:
 Speed up or slow down tracks without pitch distortion, using the SoundTouch time-stretching engine. Match playback to your cadence automatically.
 
 • CADENCE TARGETS
-Set your target step frequency (default 172 BPM, range 160-195 BPM). RunBeat continuously adjusts playback speed to keep your rhythm while you run.
+Set your target step frequency (default 172 BPM, range 160-195 BPM). RunBeat continuously adjusts playback speed to keep your rhythm while you run. Choose how the beat divides — Binary (1x/2x) or Ternary (1.5x/3x) — so every step lands in time with the music.
 
 • BPM DETECTION
-Automatic tempo detection powered by aubio analyzes your library, or tap along manually with the tap-to-beat tool when you want instant results.
+Automatic tempo detection powered by aubio analyzes your library, tap along manually with the tap-to-beat tool, or import pre-analyzed BPM values from a CSV file (Settings → Advanced).
 
 • PLAYBACK
 Full library browsing with playlists and BPM metadata. Playback continues in the background with a media notification and Bluetooth controls, so you can run hands-free.

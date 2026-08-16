@@ -29,6 +29,12 @@ class CadenceMatcher {
             RhythmPattern(3.0f, "Sixth", "Run on every sixth beat")
         )
         
+        // Rhythm groups presented to the user, grouping the four factors
+        private val RHYTHM_GROUPS = listOf(
+            RhythmGroup("Binary", "Run on every beat (1.0x) or every half-beat (2.0x)", setOf(1.0f, 2.0f)),
+            RhythmGroup("Ternary", "Run on every dotted-quarter (1.5x) or every sixth note (3.0x)", setOf(1.5f, 3.0f))
+        )
+        
         // Speed factor clamp range
         const val MIN_SPEED_FACTOR = 0.75f
         const val MAX_SPEED_FACTOR = 1.25f
@@ -44,6 +50,15 @@ class CadenceMatcher {
         val factor: Float,        // r: multiplier for BPM
         val name: String,         // Display name
         val description: String   // User-friendly description
+    )
+    
+    /**
+     * Group of rhythm factors presented together to the user
+     */
+    data class RhythmGroup(
+        val name: String,
+        val description: String,
+        val factors: Set<Float>
     )
     
     /**
@@ -204,4 +219,15 @@ class CadenceMatcher {
     fun getRhythmPatterns(): List<RhythmPattern> {
         return RHYTHM_PATTERNS
     }
+    
+    /**
+     * Get all rhythm groups presented to the user
+     */
+    fun getRhythmGroups(): List<RhythmGroup> = RHYTHM_GROUPS
+    
+    /**
+     * Check whether all factors of a group are selected
+     */
+    fun groupIsSelected(group: RhythmGroup, selectedFactors: Set<Float>): Boolean =
+        group.factors.all { it in selectedFactors }
 }

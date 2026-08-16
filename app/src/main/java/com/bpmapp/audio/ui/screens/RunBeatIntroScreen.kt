@@ -116,5 +116,11 @@ fun RunBeatIntroContent() {
             color = MaterialTheme.colorScheme.onSurface,
             textAlign = TextAlign.Center
         )
+        Text(
+            text = stringResource(R.string.intro_paragraph_4),
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+            textAlign = TextAlign.Center
+        )
     }
 }

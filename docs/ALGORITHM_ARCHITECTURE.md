@@ -134,6 +134,8 @@ Where:
 | Triplet | 1.5 | Run on every dotted quarter |
 | Sixth | 3.0 | Run on every sixth beat |
 
+These four factors are presented to the user as two groups: **Binary** {1.0, 2.0} and **Ternary** {1.5, 3.0}.
+
 ### 2.2 Algorithm Implementation
 
 **Main Matching Function:**
@@ -405,7 +407,7 @@ Unit tests in `BpmDetectorTest.kt` (12 tests) verify:
 | DEFAULT_CADENCE | 172 | Default target running cadence |
 | MIN_SPEED_FACTOR | 0.75 | Minimum playback speed |
 | MAX_SPEED_FACTOR | 1.25 | Maximum playback speed |
-| RHYTHM_PATTERNS | [1.0, 2.0, 1.5, 3.0] | Rhythm multipliers |
+| RHYTHM_PATTERNS | [1.0, 2.0, 1.5, 3.0] | Rhythm multipliers (grouped as Binary {1.0, 2.0} and Ternary {1.5, 3.0}) |
 
 ### 7.3 Tempo Stretching
 | Parameter | Value | Description |

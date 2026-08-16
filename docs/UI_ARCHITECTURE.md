@@ -19,7 +19,7 @@ app/src/main/java/com/bpmapp/audio/
 │   │   └── BottomNav.kt          # NavDestination enum + BottomNavigationBar
 │   ├── screens/            # Main application screens
 │   │   ├── BpmToolsScreen.kt    # Tabbed BPM tools (Cadence/Detect/Manual)
-│   │   └── SettingsScreen.kt    # Application settings (4 sections)
+│   │   └── SettingsScreen.kt    # Application settings (6 sections)
 │   ├── components/         # Reusable UI components
 │   │   └── TrackCard.kt         # Compact library track row
 │   ├── theme/              # Design system and theming
@@ -75,7 +75,7 @@ app/src/main/java/com/bpmapp/audio/
 
 **Layout Structure**:
 - **TopAppBar**: Title, Search icon (toggles inline search field), Overflow menu
-  - Overflow menu: Scan Library, Import CSV, Clear Library, Sync Metadata
+  - Overflow menu: Scan Library, Clear Library, Sync Metadata
 - **Tabs**: `All` / `Playlists` / `Favorites` (TabRow)
 - **Filter Chips**: BPM Known, Speed 0.9-1.1 (All tab only) + compact Artist / Album / Genre chip rows
 - **Track List**: LazyColumn of `TrackCard` components (compact, ~56dp row height)
@@ -91,7 +91,7 @@ app/src/main/java/com/bpmapp/audio/
 - Add-to-playlist dialog supports **new or existing** playlists, for a single track or a batch of selected tracks
 - Dynamic filter updates: selecting a genre/artist/album hides non-matching options in the other filter chips (options derived from `filteredTrackFlow`)
 - TrackCard overflow menu: Play (Replace Current), **Add to Playlist**, Edit BPM, Delete
-- CSV import and system library scanning
+- System library scanning (CSV import lives under Settings → Advanced)
 - Library-wide BPM analysis with progress overlay
 - Track selection for playback
 
@@ -104,7 +104,7 @@ app/src/main/java/com/bpmapp/audio/
 
 **Layout Structure**:
 - **TabRow**: 3 tabs - Cadence Matcher (default), Detect BPM, Manual Entry
-- **Cadence Matcher tab**: Target cadence slider (150-195) + `-`/`+` buttons, rhythm pattern chips for multipliers **1.0x / 1.5x / 2.0x / 3.0x** (multi-select, default all selected, persisted via SharedPreferences), Cadence Matches list (pattern + speed factor)
+- **Cadence Matcher tab**: Target cadence slider (150-195) + `-`/`+` buttons, rhythm group chips **Binary (1.0x / 2.0x)** and **Ternary (1.5x / 3.0x)** (two multi-select groups, default all selected, persisted via SharedPreferences), Cadence Matches list (pattern + speed factor)
 - **Detect BPM tab**: Tap area ("Tap beat to detect BPM"), Aubio detection button, Use/Clear buttons
 - **Manual Entry tab**: Numeric keypad BPM input, Save button ("Save BPM to file ID3 tag")
 
@@ -112,7 +112,7 @@ app/src/main/java/com/bpmapp/audio/
 - Shared state via `BpmToolsViewModel`
 - Default tab: Cadence Matcher
 - Aubio-based automatic BPM detection
-- Rhythm patterns represent the multiplier factor (1.0, 1.5, 2.0, 3.0) applied by the cadence-matching algorithm
+- Rhythm patterns are presented as two multi-select groups: Binary (1.0x / 2.0x) and Ternary (1.5x / 3.0x), applied by the cadence-matching algorithm
 
 **Navigation**:
 - Reached via bottom navigation (BPM Tools tab)
@@ -120,11 +120,13 @@ app/src/main/java/com/bpmapp/audio/
 ### 3.4 SettingsScreen (`ui/screens/SettingsScreen.kt`)
 **Purpose**: Application settings and preferences
 
-**Layout Structure** (4 sections):
+**Layout Structure** (6 sections):
 - **🎵 PLAYBACK**: Default Cadence (slider 150-195), Auto-Apply Cadence Match (toggle)
 - **📚 LIBRARY**: Auto-Scan on Startup (toggle), Default Sort (dropdown: BPM ▼/▲, Title, Artist, Album)
 - **🎨 APPEARANCE**: Theme (dropdown: System/Light/Dark), Dynamic Colors (toggle)
-- **ℹ️ ABOUT**: Version, Licenses (SoundTouch, Aubio)
+- **⚙️ ADVANCED**: Import CSV (with inline CSV format description)
+- **❓ HELP**: Introduction (shows the intro/help dialog)
+- **ℹ️ ABOUT**: Project repository link, Version, Licenses (SoundTouch, Aubio)
 
 **Key Features**:
 - All settings persisted to `SharedPreferences` via `SettingsViewModel`
@@ -297,7 +299,7 @@ app/src/main/java/com/bpmapp/audio/
 - `currentPlaybackSpeed`: Actual playback speed
 - `cadenceMatchResult`: Result from cadence matching algorithm (applied globally via `findBestCadenceMatch`)
 - `applyCadenceMatch`: Whether to apply cadence matching
-- `selectedRhythmPatterns`: Set of selected rhythm patterns, loaded from SharedPreferences (default: all four patterns)
+- `selectedRhythmPatterns`: Set of selected rhythm patterns, grouped as Binary/Ternary in the UI while the underlying storage remains a Set of factors, loaded from SharedPreferences (default: all four patterns)
 - `tapBpm`: BPM detected from tapping
 - `isTapping`: Tapping state for visual feedback
 - `autoDetectedBpm`: BPM from automatic Aubio detection
@@ -340,7 +342,7 @@ app/src/main/java/com/bpmapp/audio/
 - `selectedTabIndex`: Active tab (0 = Cadence Matcher, default)
 - `targetCadence`: Target cadence (150-195)
 - `currentTrackBpm`: BPM of current track
-- `selectedRhythmPatterns`: Set of rhythm multipliers (`1.0f`, `1.5f`, `2.0f`, `3.0f`), default `{1.0f, 1.5f, 2.0f, 3.0f}` (all selected), persisted via SharedPreferences
+- `selectedRhythmPatterns`: Set of rhythm multipliers (`1.0f`, `1.5f`, `2.0f`, `3.0f`), presented to the user as Binary/Ternary groups while the underlying storage remains a Set of factors, default `{1.0f, 1.5f, 2.0f, 3.0f}` (all selected), persisted via SharedPreferences
 - `rhythmMatches`: Cadence matches for the selected rhythm patterns
 - `detectedBpm`: BPM detected via tap or Aubio
 - `isDetectingBpm`: Aubio detection in progress
@@ -608,14 +610,14 @@ This enables design verification and development without running the full app.
 |-----------|------|-------|-------------|
 | MainActivity | `MainActivity.kt` | 1078 | Entry point, Scaffold + NavHost + BottomNavigationBar, inline PlayerScreen (PlaybackControlsSection, TempoAndBpmSection, PlaylistSection), shuffle + save-playlist UI |
 | LibraryScreen | `ui/LibraryScreen.kt` | 2012 | Music library management (tabs + chips, multi-select, playlists, favorites) |
-| BpmToolsScreen | `ui/screens/BpmToolsScreen.kt` | 626 | Tabbed BPM tools screen |
-| SettingsScreen | `ui/screens/SettingsScreen.kt` | 327 | Application settings (4 sections) |
+| BpmToolsScreen | `ui/screens/BpmToolsScreen.kt` | 694 | Tabbed BPM tools screen |
+| SettingsScreen | `ui/screens/SettingsScreen.kt` | 423 | Application settings (6 sections) |
 | TrackCard | `ui/components/TrackCard.kt` | 372 | Compact library track row (tempo below title) |
 | BottomNav | `ui/navigation/BottomNav.kt` | 107 | NavDestination enum + BottomNavigationBar |
 | PlayerViewModel | `viewmodel/PlayerViewModel.kt` | 196 | Player state management |
 | LibraryViewModel | `viewmodel/LibraryViewModel.kt` | 1071 | Library state management (search, filters, playlists, batch ops) |
 | PlayerRepository | `audio/PlayerRepository.kt` | 573 | Playback state, playlist, ExoPlayer, shuffle |
-| BpmToolsViewModel | `viewmodel/BpmToolsViewModel.kt` | 292 | BPM tools shared state |
+| BpmToolsViewModel | `viewmodel/BpmToolsViewModel.kt` | 330 | BPM tools shared state |
 | SettingsViewModel | `viewmodel/SettingsViewModel.kt` | 151 | Settings persistence (SharedPreferences) |
 | Theme | `ui/theme/Theme.kt` | 285 | Design system, BPM colors |
 | TouchTargets | `ui/theme/TouchTargets.kt` | 12 | Touch target standards |

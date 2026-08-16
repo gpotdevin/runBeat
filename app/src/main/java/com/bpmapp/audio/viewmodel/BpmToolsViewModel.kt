@@ -22,7 +22,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
-import java.util.Locale
 import javax.inject.Inject
 
 /**
@@ -42,7 +41,6 @@ class BpmToolsViewModel @Inject constructor(
         private const val TAG = "BpmToolsViewModel"
         private const val MIN_CADENCE = 150
         private const val MAX_CADENCE = 195
-        private val ALL_RHYTHM_PATTERNS = listOf(1.0f, 1.5f, 2.0f, 3.0f)
     }
     
     // Tab state
@@ -67,6 +65,9 @@ class BpmToolsViewModel @Inject constructor(
     // Detect BPM Tab State
     private val _detectedBpm = MutableStateFlow<Int?>(null)
     val detectedBpm: StateFlow<Int?> = _detectedBpm.asStateFlow()
+
+    private val _detectedFromTap = MutableStateFlow(false)
+    val detectedFromTap: StateFlow<Boolean> = _detectedFromTap.asStateFlow()
     
     private val _isDetectingBpm = MutableStateFlow(false)
     val isDetectingBpm: StateFlow<Boolean> = _isDetectingBpm.asStateFlow()
@@ -84,6 +85,8 @@ class BpmToolsViewModel @Inject constructor(
     
     private val _currentTrack = MutableStateFlow<MediaItem?>(null)
     val currentTrack: StateFlow<MediaItem?> = _currentTrack.asStateFlow()
+
+    val playbackSpeed: StateFlow<Float> = playerRepository.playbackSpeed
     
     private val cadenceMatcher = CadenceMatcher()
 
@@ -123,12 +126,17 @@ class BpmToolsViewModel @Inject constructor(
         updateRhythmMatches()
     }
     
-    fun toggleRhythmPattern(pattern: Float) {
+    fun getRhythmGroups(): List<CadenceMatcher.RhythmGroup> = cadenceMatcher.getRhythmGroups()
+
+    fun isGroupSelected(group: CadenceMatcher.RhythmGroup, selected: Set<Float>): Boolean =
+        cadenceMatcher.groupIsSelected(group, selected)
+
+    fun toggleRhythmGroup(group: CadenceMatcher.RhythmGroup) {
         val current = _selectedRhythmPatterns.value
-        val updated = if (pattern in current) {
-            current - pattern
+        val updated = if (cadenceMatcher.groupIsSelected(group, current)) {
+            current - group.factors
         } else {
-            current + pattern
+            current + group.factors
         }
         _selectedRhythmPatterns.value = updated
         playerRepository.setSelectedRhythmPatterns(updated)
@@ -200,19 +208,37 @@ class BpmToolsViewModel @Inject constructor(
         // Only update if BPM is in reasonable range
         if (bpm in 40..200) {
             _detectedBpm.value = bpm
+            _detectedFromTap.value = true
         }
     }
     
     fun clearDetectedBpm() {
         _detectedBpm.value = null
+        _detectedFromTap.value = false
         _tapTimes.value = emptyList()
     }
     
+    private fun currentTrackId(): String? {
+        val mediaItem = playerRepository.currentTrack.value ?: return null
+        val mediaUri = mediaItem.localConfiguration?.uri ?: return null
+        val rawTrackId = mediaItem.mediaMetadata?.extras?.getString("trackId")
+        return rawTrackId?.takeIf { it.isNotBlank() } ?: mediaUri.toString()
+    }
+
     fun useDetectedBpm() {
-        _detectedBpm.value?.let { bpm ->
-            setCurrentTrackBpm(bpm.toFloat())
-            _manualBpmInput.value = bpm.toString()
+        val bpm = _detectedBpm.value ?: return
+        val trackId = currentTrackId()
+        if (trackId == null) {
+            _errorMessage.value = "No track selected. Play a track first."
+            return
         }
+        setCurrentTrackBpm(bpm.toFloat())
+        _manualBpmInput.value = bpm.toString()
+        playerRepository.updateBpmForTrack(trackId, bpm.toFloat())
+        viewModelScope.launch(Dispatchers.IO) {
+            trackRepository.updateBpm(trackId, bpm.toFloat())
+        }
+        _errorMessage.value = null
     }
     
     fun detectBpmWithAubio() {
@@ -248,6 +274,7 @@ class BpmToolsViewModel @Inject constructor(
                 
                 if (bpm != null && bpm > 0) {
                     _detectedBpm.value = bpm.toInt()
+                    _detectedFromTap.value = false
                     setCurrentTrackBpm(bpm)
                     playerRepository.updateBpmForTrack(trackId, bpm)
                 } else {
@@ -274,21 +301,30 @@ class BpmToolsViewModel @Inject constructor(
             if (bpm in 40..200) {
                 setCurrentTrackBpm(bpm.toFloat())
                 _detectedBpm.value = bpm
+                val trackId = currentTrackId()
+                if (trackId == null) {
+                    _errorMessage.value = "No track selected. Play a track first."
+                    return@let
+                }
+                playerRepository.updateBpmForTrack(trackId, bpm.toFloat())
+                viewModelScope.launch(Dispatchers.IO) {
+                    try {
+                        trackRepository.updateBpm(trackId, bpm.toFloat())
+                        val written = trackRepository.saveBpmToFileMetadata(trackId, bpm.toFloat())
+                        _errorMessage.value = if (written) {
+                            "BPM saved to track and file ID3 tag"
+                        } else {
+                            "BPM saved to track library (could not write to file metadata)"
+                        }
+                    } catch (e: Exception) {
+                        _errorMessage.value = "Failed to save BPM: ${e.message}"
+                    }
+                }
             }
         }
     }
     
     fun clearError() {
         _errorMessage.value = null
-    }
-    
-    // Get rhythm patterns for display
-    fun getRhythmPatterns(): List<Float> {
-        return ALL_RHYTHM_PATTERNS
-    }
-    
-    // Get display name for rhythm pattern
-    fun getRhythmPatternDisplayName(pattern: Float): String {
-        return String.format(Locale.getDefault(), "%.1fx", pattern)
     }
 }

@@ -25,6 +25,7 @@
     <string name="intro_paragraph_1">RunBeat is a BPM-based audio player designed for runners. It adjusts the tempo of your music (time-stretching without changing the pitch) so your playlist always matches your target running cadence.</string>
     <string name="intro_paragraph_2">Pick a target cadence for your run (default 172 BPM, range 160-195) and RunBeat continuously matches the music to it as you run.</string>
     <string name="intro_paragraph_3">Track BPMs are detected automatically using Aubio, can be entered by tapping along to the beat, or imported from pre-analyzed CSV files.</string>
+    <string name="intro_paragraph_4">To keep your steps in time with the music, choose how the beat divides: Binary (1x or 2x, a two-beat subdivision) or Ternary (1.5x or 3x, a three-beat subdivision). Enable one or both and RunBeat picks the closest match.</string>
     <string name="intro_get_started">Get Started</string>
     <string name="intro_got_it">Got it</string>
     <string name="help_intro_title">Introduction</string>
