@@ -44,7 +44,7 @@ First public beta release of RunBeat.
 - Removed sensitive configuration from the repository in preparation for
   public release; release signing moved to environment variables.
 
-## [Unreleased]
+## [1.0.1] - 2026-08-16
 
 ### Added
 
@@ -75,3 +75,5 @@ First public beta release of RunBeat.
 - Import existing playlists (M3U, PLS).
 - Drag-and-drop playlist reordering.
 - Convert git history to a clean public history (see `docs/HISTORY_CLEANUP.md`).
+
+## [Unreleased]

@@ -439,7 +439,7 @@ fun PlayerScreen(
                 )
                 "v${packageInfo.versionName}"
             } catch (e: Exception) {
-                "v1.0.x"
+                "v1.0.1"
             }
         }
         Row(
