@@ -29,7 +29,8 @@ import javax.inject.Singleton
 class PlayerRepository @Inject constructor(
     @ApplicationContext private val context: Context,
     private val exoPlayer: ExoPlayer,
-    private val tempoStretcher: TempoStretcher
+    private val tempoStretcher: TempoStretcher,
+    private val modeBeepPlayer: ModeBeepPlayer
 ) {
 
     companion object {
@@ -37,6 +38,10 @@ class PlayerRepository @Inject constructor(
         private val DEFAULT_RHYTHM_PATTERNS = listOf(1.0f, 1.5f, 2.0f, 3.0f)
         private const val PREFS_NAME = "AppSettings"
         private const val KEY_SELECTED_RHYTHM_PATTERNS = "selected_rhythm_patterns"
+
+        // Rhythm-mode beep signal at track start (2 = binary, 3 = ternary).
+        private const val KEY_MODE_BEEP_SIGNAL = "mode_beep_signal"
+        private const val DEFAULT_MODE_BEEP_SIGNAL = true
     }
     
     // State management
@@ -88,7 +93,16 @@ class PlayerRepository @Inject constructor(
 
     // Shuffled order of playlist indices used when shuffle is enabled
     private val _shuffleOrder = MutableStateFlow<List<Int>>(emptyList())
-    
+
+    // Whether to play a binary/ternary beep signal when a track starts.
+    // Persisted to SharedPreferences. Default: on.
+    private val _modeBeepSignal = MutableStateFlow(loadModeBeepSignal())
+    val modeBeepSignal: StateFlow<Boolean> = _modeBeepSignal.asStateFlow()
+
+    // Track id for which a mode beep was already emitted, so the signal only
+    // fires once per track start (not on every play/resume).
+    private var lastBeepedTrackId: String? = null
+
     init {
         updatePlayerState()
         
@@ -156,6 +170,7 @@ class PlayerRepository @Inject constructor(
         _error.value = null
         _playlist.value = listOf(mediaItem)
         _currentTrack.value = mediaItem
+        lastBeepedTrackId = null
         Log.d("PlayerRepository", "Loading media item: ${mediaItem.mediaMetadata.title}, URI: ${mediaItem.localConfiguration?.uri}")
         try {
             exoPlayer.setMediaItem(mediaItem)
@@ -180,6 +195,7 @@ class PlayerRepository @Inject constructor(
             exoPlayer.prepare()
             exoPlayer.playWhenReady = true
             updatePlayerState()
+            maybePlayModeBeep()
         } catch (e: Exception) {
             Log.e("PlayerRepository", "Error preparing media item: ${mediaItem.mediaId}", e)
             _error.value = "Error: Could not prepare media for playback"
@@ -195,6 +211,7 @@ class PlayerRepository @Inject constructor(
             exoPlayer.pause()
         } else {
             exoPlayer.play()
+            maybePlayModeBeep()
         }
         updatePlayerState()
     }
@@ -205,6 +222,7 @@ class PlayerRepository @Inject constructor(
     fun play() {
         exoPlayer.play()
         updatePlayerState()
+        maybePlayModeBeep()
     }
 
     /**
@@ -307,6 +325,21 @@ class PlayerRepository @Inject constructor(
         val parsed = stored?.mapNotNull { it.toFloatOrNull() }?.toSet().orEmpty()
         return parsed.ifEmpty { DEFAULT_RHYTHM_PATTERNS.toSet() }
     }
+
+    /**
+     * Toggle the rhythm-mode beep signal at track start. Persisted across sessions.
+     */
+    fun setModeBeepSignal(enabled: Boolean) {
+        _modeBeepSignal.value = enabled
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_MODE_BEEP_SIGNAL, enabled)
+            .apply()
+    }
+
+    private fun loadModeBeepSignal(): Boolean =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_MODE_BEEP_SIGNAL, DEFAULT_MODE_BEEP_SIGNAL)
     
     /**
      * Best cadence match for the given BPM and target cadence, restricted to the
@@ -363,6 +396,41 @@ class PlayerRepository @Inject constructor(
         val matchResult = bestCadenceMatch(bpm, _targetCadence.value)
         if (matchResult.rhythmPattern.factor > 0) {
             setPlaybackSpeed(matchResult.speedFactor)
+        }
+    }
+
+    /**
+     * Play a binary (2 beeps) or ternary (3 beeps) signal for the current track.
+     *
+     * Conditions: the signal setting is on, speed correction is enabled, and the
+     * track BPM is known. Fires at most once per track via [lastBeepedTrackId].
+     */
+    private fun maybePlayModeBeep() {
+        if (!_modeBeepSignal.value) return
+        if (!_speedCorrectionEnabled.value) return
+
+        val item = _currentTrack.value ?: return
+        // Dedup key: prefer the persisted track id, fall back to the media id so
+        // items without extras still only signal once per track start.
+        val dedupKey = item.mediaMetadata.extras?.getString("trackId") ?: item.mediaId
+        if (dedupKey == lastBeepedTrackId) return
+
+        val bpm = currentTrackBpm()
+        if (bpm == null || bpm <= 0) return
+
+        val factor = bestCadenceMatch(bpm, _targetCadence.value).rhythmPattern.factor
+        val count = modeBeepPlayer.beepCountForFactor(factor)
+        if (count > 0) {
+            lastBeepedTrackId = dedupKey
+            // Duck the music to 30% of its current volume while the beeps play,
+            // then restore the original volume once they finish.
+            val originalVolume = exoPlayer.volume
+            val duckedVolume = (originalVolume * 0.3f).coerceIn(0f, 1f)
+            modeBeepPlayer.beep(
+                count,
+                onStart = { exoPlayer.volume = duckedVolume },
+                onFinish = { exoPlayer.volume = originalVolume }
+            )
         }
     }
 

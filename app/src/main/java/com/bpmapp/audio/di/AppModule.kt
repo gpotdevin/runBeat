@@ -7,6 +7,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.room.Room
 import com.bpmapp.audio.audio.CadenceMatcher
 import com.bpmapp.audio.audio.MetadataEditor
+import com.bpmapp.audio.audio.ModeBeepPlayer
 import com.bpmapp.audio.audio.PlayerRepository
 import com.bpmapp.audio.audio.SoundTouchManager
 import com.bpmapp.audio.audio.TempoStretcher
@@ -38,9 +39,10 @@ object AppModule {
     fun providePlayerRepository(
         @ApplicationContext context: Context, 
         exoPlayer: ExoPlayer,
-        tempoStretcher: TempoStretcher
+        tempoStretcher: TempoStretcher,
+        modeBeepPlayer: ModeBeepPlayer
     ): PlayerRepository {
-        return PlayerRepository(context, exoPlayer, tempoStretcher)
+        return PlayerRepository(context, exoPlayer, tempoStretcher, modeBeepPlayer)
     }
     
     // TempoStretcher with SoundTouch integration

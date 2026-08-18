@@ -4,6 +4,19 @@ All notable changes to RunBeat are documented in this file. Format based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1] - 2026-08-17
+
+### Added
+
+- Rhythm-mode beep signal at track start: two short beeps announce **Binary**
+  mode (1.0x / 2.0x), three beeps announce **Ternary** mode (1.5x / 3.0x).
+  The music is briefly ducked while the beeps play, then restored. Can be
+  disabled under **Settings → Playback → Rhythm mode beep**.
+
+### Changed
+
+- Beep tones spaced out for a clearer double/triple distinction.
+
 ## [1.0b] - 2026-08-12
 
 First public beta release of RunBeat.

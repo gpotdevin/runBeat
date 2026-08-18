@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.bpmapp.audio.audio.PlayerRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,7 +23,8 @@ import javax.inject.Inject
 @HiltViewModel
 @SuppressLint("StaticFieldLeak") // @ApplicationContext field is application-scoped
 class SettingsViewModel @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val playerRepository: PlayerRepository
 ) : ViewModel() {
     
     companion object {
@@ -61,6 +63,10 @@ class SettingsViewModel @Inject constructor(
     // Appearance settings
     private val _dynamicColors = MutableStateFlow(getDynamicColors())
     val dynamicColors: StateFlow<Boolean> = _dynamicColors.asStateFlow()
+
+    // Playback: rhythm-mode beep signal at track start (delegated to the repository,
+    // which is the single source of truth at playback time).
+    val modeBeepSignal: StateFlow<Boolean> = playerRepository.modeBeepSignal
     
     // Getters for SharedPreferences
     private fun getDefaultCadence(): Int = prefs.getInt(KEY_DEFAULT_CADENCE, DEFAULT_DEFAULT_CADENCE)
@@ -95,6 +101,10 @@ class SettingsViewModel @Inject constructor(
             _dynamicColors.value = value
             prefs.edit().putBoolean(KEY_DYNAMIC_COLORS, value).apply()
         }
+    }
+
+    fun setModeBeepSignal(value: Boolean) {
+        playerRepository.setModeBeepSignal(value)
     }
     
     // Get version info

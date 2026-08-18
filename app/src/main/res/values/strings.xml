@@ -37,4 +37,8 @@
     <string name="about_repo_title">Project repository</string>
     <string name="about_repo_description">View the RunBeat source code on GitHub</string>
     <string name="about_repo_url">https://github.com/gpotdevin/runBeat</string>
+
+    <!-- Settings: Playback -->
+    <string name="setting_mode_beep_title">Rhythm mode beep</string>
+    <string name="setting_mode_beep_description">Play 2 beeps for binary or 3 for ternary when a track starts with speed correction on</string>
 </resources>

@@ -64,6 +64,7 @@ fun SettingsScreen(
     
     // Collect all settings from ViewModel
     val autoApplyCadenceMatch by viewModel.autoApplyCadenceMatch.collectAsState()
+    val modeBeepSignal by viewModel.modeBeepSignal.collectAsState()
     val autoScanOnStartup by viewModel.autoScanOnStartup.collectAsState()
     val dynamicColors by viewModel.dynamicColors.collectAsState()
     
@@ -143,6 +144,17 @@ fun SettingsScreen(
                     Switch(
                         checked = autoApplyCadenceMatch,
                         onCheckedChange = { viewModel.setAutoApplyCadenceMatch(it) },
+                        modifier = Modifier.padding(end = AppSpacing.sm)
+                    )
+                }
+                // Rhythm mode beep signal
+                SettingItem(
+                    title = stringResource(R.string.setting_mode_beep_title),
+                    description = stringResource(R.string.setting_mode_beep_description)
+                ) {
+                    Switch(
+                        checked = modeBeepSignal,
+                        onCheckedChange = { viewModel.setModeBeepSignal(it) },
                         modifier = Modifier.padding(end = AppSpacing.sm)
                     )
                 }
