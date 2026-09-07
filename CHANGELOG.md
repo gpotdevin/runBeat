@@ -4,6 +4,35 @@ All notable changes to RunBeat are documented in this file. Format based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2] - 2026-09-07
+
+### Added
+
+- **Browse-by dimension selector** on the Library tab: choose one of
+  Artist / Album / Genre / Path at a time, with one active chip row shown
+  instead of three stacked rows. Switching dimension does not clear
+  selections made in other dimensions.
+- **Path drill-down browsing**: when browsing by Path, drill from a base
+  folder into sub-folders (and deeper levels), with a breadcrumb overview
+  of the current selection.
+
+### Changed
+
+- Library search and the BPM-known / speed-factor filters now live in the
+  ViewModel (`baseFilteredTrackFlow`), so the dimension chip options reflect
+  those filters. The screen only applies sorting.
+- Per-dimension chip option flows no longer prune their own selection
+  (non-self-pruning), keeping chips visible for multi-select; other
+  dimensions and BPM/speed filters still prune options.
+- `filteredTracks` is now unsorted from the ViewModel; sorting is a
+  display concern handled in `LibraryScreen`.
+
+### Fixed
+
+- UI architecture documentation synced with the current library browsing
+  UI and previously-unsynced sections (intro overlay, watermark, portrait
+  lock, tap-detect speed warning).
+
 ## [1.1] - 2026-08-17
 
 ### Added

@@ -152,6 +152,7 @@ import com.bpmapp.audio.ui.theme.speedFactorColor
 import com.bpmapp.audio.ui.theme.touchTarget
 import com.bpmapp.audio.util.PermissionUtils
 import com.bpmapp.audio.viewmodel.LibraryViewModel
+import com.bpmapp.audio.viewmodel.LibraryViewModel.BrowseDimension
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -203,6 +204,9 @@ fun LibraryScreen(
     val artistOptions by viewModel.artistOptions.collectAsState(emptyList())
     val albumOptions by viewModel.albumOptions.collectAsState(emptyList())
     val genreOptions by viewModel.genreOptions.collectAsState(emptyList())
+    val pathOptions by viewModel.pathOptions.collectAsState(listOf(emptyList()))
+    val browseDimension by viewModel.browseDimension.collectAsState()
+    val selectedPathLevels by viewModel.selectedPathLevels.collectAsState()
     val filteredBaseTracks by viewModel.filteredTracks.collectAsState(emptyList())
     val favoriteTracks by viewModel.favoriteTracks.collectAsState(emptyList())
     val playlists by viewModel.playlists.collectAsState(emptyList())
@@ -282,43 +286,19 @@ fun LibraryScreen(
     // Check if any filter is active
     val hasActiveFilter = remember(
         showOnlyKnownBpm, filterBySpeedFactor, searchQuery,
-        selectedArtists, selectedAlbums, selectedGenres
+        selectedArtists, selectedAlbums, selectedGenres,
+        selectedPathLevels
     ) {
         showOnlyKnownBpm || filterBySpeedFactor || searchQuery.isNotBlank() ||
-            selectedArtists.isNotEmpty() || selectedAlbums.isNotEmpty() || selectedGenres.isNotEmpty()
+            selectedArtists.isNotEmpty() || selectedAlbums.isNotEmpty() || selectedGenres.isNotEmpty() ||
+            selectedPathLevels.any { it.isNotEmpty() }
     }
 
-    // Filtered and sorted tracks
-    val filteredTracks = remember(filteredBaseTracks, showOnlyKnownBpm, filterBySpeedFactor, sortByBpm, sortByAlbum, sortByArtist, sortDescending, targetCadence) {
+    // Filtered and sorted tracks. Search, BPM-known and speed-factor filtering
+    // now live in the ViewModel so the dimension chip options reflect those
+    // filters too; the screen only applies sorting here.
+    val filteredTracks = remember(filteredBaseTracks, sortByBpm, sortByAlbum, sortByArtist, sortDescending) {
         filteredBaseTracks
-            .filter { track ->
-                // Filter by BPM status
-                val bpmFilter = if (showOnlyKnownBpm) {
-                    track.bpm != null && track.bpm > 0
-                } else {
-                    true
-                }
-                
-                // Filter by speed factor range [0.9, 1.1]
-                val speedFactorFilter = if (!filterBySpeedFactor) {
-                    true
-                } else {
-                    track.bpm?.let { bpm ->
-                        val matchResult = cadenceMatcher.findOptimalMatch(
-                            detectedBpm = bpm.toFloat(),
-                            targetCadence = targetCadence.toFloat()
-                        )
-                        if (matchResult.rhythmPattern.factor > 0) {
-                            val speedFactor = targetCadence.toFloat() / (bpm * matchResult.rhythmPattern.factor)
-                            speedFactor >= 0.9f && speedFactor <= 1.1f
-                        } else {
-                            false
-                        }
-                     } ?: false
-                }
-                
-                bpmFilter && speedFactorFilter
-            }
             .sortedWith(
                 when {
                     sortByBpm -> {
@@ -649,86 +629,161 @@ fun LibraryScreen(
                     }
                 }
                 
-                // Album, Artist, Genre filter chips (All tab only)
-                if (selectedTabIndex == 0 &&
-                    (artistOptions.isNotEmpty() || albumOptions.isNotEmpty() || genreOptions.isNotEmpty())
-                ) {
+                // Browse-by dimension selector + chips (All tab only). One
+                // dimension is visible at a time; switching dimension does not
+                // clear selections made in other dimensions.
+                if (selectedTabIndex == 0) {
+                    val dimensionOptions = listOf(
+                        BrowseDimension.ARTIST to "Artist",
+                        BrowseDimension.ALBUM to "Album",
+                        BrowseDimension.GENRE to "Genre",
+                        BrowseDimension.PATH to "Path"
+                    )
+                    val activeOptions: List<String> = when (browseDimension) {
+                        BrowseDimension.ARTIST -> artistOptions
+                        BrowseDimension.ALBUM -> albumOptions
+                        BrowseDimension.GENRE -> genreOptions
+                        BrowseDimension.PATH -> pathOptions.getOrElse(0) { emptyList() }
+                    }
                     Column(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(AppSpacing.xxs)
                     ) {
-                        if (artistOptions.isNotEmpty()) {
+                        // Segmented "Browse by" selector
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(AppSpacing.xxxs),
+                            contentPadding = PaddingValues(horizontal = AppSpacing.sm),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            item {
+                                Text(
+                                    "Browse by",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(end = AppSpacing.xxs)
+                                )
+                            }
+                            items(dimensionOptions.size) { index ->
+                                val (dimension, label) = dimensionOptions[index]
+                                FilterChip(
+                                    label = label,
+                                    selected = browseDimension == dimension,
+                                    onSelected = { viewModel.setBrowseDimension(dimension) },
+                                    color = MaterialTheme.colorScheme.secondary
+                                )
+                            }
+                        }
+
+                        // Chips for the active dimension
+                        if (activeOptions.isNotEmpty()) {
+                            // Breadcrumb prefix for Path dimension: shows the
+                            // current drill-down path as a read-only label
+                            // inside the same scrollable row as the level-0
+                            // chips so the user can scroll to see the full path.
+                            val pathBreadcrumb = if (browseDimension == BrowseDimension.PATH) {
+                                selectedPathLevels
+                                    .mapIndexedNotNull { _, selection ->
+                                        if (selection.isEmpty()) null
+                                        else selection.joinToString(", ") { it.substringAfterLast('/') }
+                                    }
+                                    .joinToString(" → ")
+                            } else null
+
                             LazyRow(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(AppSpacing.xxxs),
                                 contentPadding = PaddingValues(horizontal = AppSpacing.sm),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                item {
-                                    Text(
-                                        "Artist",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.padding(end = AppSpacing.xxs)
-                                    )
+                                if (pathBreadcrumb != null && pathBreadcrumb.isNotBlank()) {
+                                    item {
+                                        Text(
+                                            "$pathBreadcrumb:",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.padding(end = AppSpacing.xxs),
+                                            maxLines = 1
+                                        )
+                                    }
                                 }
-                                items(artistOptions, key = { it }) { artist ->
-                                    FilterChip(
-                                        label = artist,
-                                        selected = selectedArtists.contains(artist),
-                                        onSelected = { viewModel.toggleArtist(artist) },
-                                        color = MaterialTheme.colorScheme.tertiary
-                                    )
+                                items(activeOptions, key = { it }) { option ->
+                                    when (browseDimension) {
+                                        BrowseDimension.ARTIST -> FilterChip(
+                                            label = option,
+                                            selected = selectedArtists.contains(option),
+                                            onSelected = { viewModel.toggleArtist(option) },
+                                            color = MaterialTheme.colorScheme.tertiary
+                                        )
+                                        BrowseDimension.ALBUM -> FilterChip(
+                                            label = option,
+                                            selected = selectedAlbums.contains(option),
+                                            onSelected = { viewModel.toggleAlbum(option) },
+                                            color = MaterialTheme.colorScheme.secondary
+                                        )
+                                        BrowseDimension.GENRE -> FilterChip(
+                                            label = option,
+                                            selected = selectedGenres.contains(option),
+                                            onSelected = { viewModel.toggleGenre(option) },
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                        BrowseDimension.PATH -> {
+                                            val level0 = selectedPathLevels.getOrElse(0) { emptySet() }
+                                            FilterChip(
+                                                label = option,
+                                                selected = level0.contains(option),
+                                                onSelected = {
+                                                    viewModel.setPathLevel0(
+                                                        if (level0.contains(option)) null else option
+                                                    )
+                                                },
+                                                color = MaterialTheme.colorScheme.tertiary
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
-                        if (albumOptions.isNotEmpty()) {
-                            LazyRow(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(AppSpacing.xxxs),
-                                contentPadding = PaddingValues(horizontal = AppSpacing.sm),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                item {
-                                    Text(
-                                        "Album",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.padding(end = AppSpacing.xxs)
-                                    )
-                                }
-                                items(albumOptions, key = { it }) { album ->
-                                    FilterChip(
-                                        label = album,
-                                        selected = selectedAlbums.contains(album),
-                                        onSelected = { viewModel.toggleAlbum(album) },
-                                        color = MaterialTheme.colorScheme.secondary
-                                    )
-                                }
-                            }
-                        }
-                        if (genreOptions.isNotEmpty()) {
-                            LazyRow(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(AppSpacing.xxxs),
-                                contentPadding = PaddingValues(horizontal = AppSpacing.sm),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                item {
-                                    Text(
-                                        "Genre",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.padding(end = AppSpacing.xxs)
-                                    )
-                                }
-                                items(genreOptions, key = { it }) { genre ->
-                                    FilterChip(
-                                        label = genre,
-                                        selected = selectedGenres.contains(genre),
-                                        onSelected = { viewModel.toggleGenre(genre) },
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
+
+                        // Path drill-down: deeper folder levels, rendered as a
+                        // stack of chip rows (one per depth). Each row appears
+                        // only when the parent level has a selection.
+                        if (browseDimension == BrowseDimension.PATH && pathOptions.size > 1) {
+                            // One chip row per drill-down level (depth 1+).
+                            for (depth in 1 until pathOptions.size) {
+                                val levelOptions = pathOptions[depth]
+                                if (levelOptions.isEmpty()) break
+                                val parentLabel = selectedPathLevels
+                                    .getOrElse(depth - 1) { emptySet() }
+                                    .joinToString(", ") { it.substringAfterLast('/') }
+                                val levelSelection = selectedPathLevels.getOrElse(depth) { emptySet() }
+                                LazyRow(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.xxxs),
+                                    contentPadding = PaddingValues(horizontal = AppSpacing.sm),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    item {
+                                        Text(
+                                            "in $parentLabel",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.padding(end = AppSpacing.xxs),
+                                            maxLines = 1,
+                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                        )
+                                    }
+                                    items(levelOptions, key = { "$depth-$it" }) { pathPrefix ->
+                                        FilterChip(
+                                            label = pathPrefix.substringAfterLast('/'),
+                                            selected = levelSelection.contains(pathPrefix),
+                                            onSelected = { viewModel.togglePathAtDepth(depth, pathPrefix) },
+                                            color = if (depth % 2 == 1)
+                                                MaterialTheme.colorScheme.secondary
+                                            else
+                                                MaterialTheme.colorScheme.tertiary
+                                        )
+                                    }
                                 }
                             }
                         }

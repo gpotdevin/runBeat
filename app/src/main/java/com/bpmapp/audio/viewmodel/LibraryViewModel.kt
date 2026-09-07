@@ -19,6 +19,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem
 import com.bpmapp.audio.audio.BpmResolver
+import com.bpmapp.audio.audio.CadenceMatcher
 import com.bpmapp.audio.audio.MetadataEditor
 import com.bpmapp.audio.audio.PlayerRepository
 import com.bpmapp.audio.audio.TrackRepository
@@ -39,7 +40,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.firstOrNull
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -64,6 +64,10 @@ class LibraryViewModel @Inject constructor(
     
     private val trackDao = appDatabase.trackDao()
     private val playlistDao: PlaylistDao = appDatabase.playlistDao()
+
+    // Used for the "Speed 0.9-1.1" library filter, which mirrors the per-track
+    // speed-factor computation shown on TrackCard.
+    private val cadenceMatcher = CadenceMatcher()
     
     companion object {
         private const val TAG = "LibraryViewModel"
@@ -85,6 +89,22 @@ class LibraryViewModel @Inject constructor(
     
     private val _selectedGenres = MutableStateFlow<Set<String>>(emptySet())
     val selectedGenres: StateFlow<Set<String>> = _selectedGenres.asStateFlow()
+
+    // Browse dimension: controls which single category chip row is visible on
+    // the All tab. Selecting a dimension does not activate or deactivate any
+    // filter; it only changes which set of chips is displayed. Selections made
+    // in one dimension persist when switching to another.
+    enum class BrowseDimension { ARTIST, ALBUM, GENRE, PATH }
+    private val _browseDimension = MutableStateFlow(BrowseDimension.ARTIST)
+    val browseDimension: StateFlow<BrowseDimension> = _browseDimension.asStateFlow()
+
+    // Path drill-down (N-level). Level 0 is single-select (the base folder);
+    // deeper levels are multi-select within the chosen parent. Each entry
+    // stores full path prefixes (e.g. "Music/GoGo_Penguin"). The list grows
+    // dynamically as the user drills down; level d is always one deeper than
+    // the deepest selection, ready for the next drill.
+    private val _selectedPathLevels = MutableStateFlow<List<Set<String>>>(listOf(emptySet()))
+    val selectedPathLevels: StateFlow<List<Set<String>>> = _selectedPathLevels.asStateFlow()
     
     // Persisted filter/sort state. This ViewModel is Activity-scoped, so the library
     // filters survive switching between the Library and Player destinations and can
@@ -131,54 +151,140 @@ class LibraryViewModel @Inject constructor(
             }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
     
-    // Tracks filtered by search query and category filters
-    private val filteredTrackFlow: Flow<List<Track>> = combine(
+    // Base filter: search query + BPM-known + speed-factor (within 0.9-1.1).
+    // Everything that is NOT a category/dimension filter. Dimension option
+    // flows and the final track list both build on top of this, so the chip
+    // rows reflect the BPM/speed filters exactly as the track list does.
+    private val baseFilteredTrackFlow: Flow<List<Track>> = combine(
         allTracks,
         _searchQuery,
-        _selectedArtists,
-        _selectedAlbums,
-        _selectedGenres
-    ) { tracks, query, artists, albums, genres ->
+        _showOnlyKnownBpm,
+        _filterBySpeedFactor,
+        playerRepository.targetCadence
+    ) { tracks, query, showKnownBpm, filterSpeed, targetCadence ->
         tracks.filter { track ->
             val matchesQuery = query.isBlank() || track.matchesSearch(query)
-            val matchesArtist = artists.isEmpty() || (track.metadataArtist != null && artists.contains(track.metadataArtist))
-            val matchesAlbum = albums.isEmpty() || (track.metadataAlbum != null && albums.contains(track.metadataAlbum))
-            val matchesGenre = genres.isEmpty() || genres.contains(track.genre())
-            matchesQuery && matchesArtist && matchesAlbum && matchesGenre
+            val matchesBpm = !showKnownBpm || (track.bpm != null && track.bpm > 0)
+            val matchesSpeed = !filterSpeed || track.matchesSpeedFactor(targetCadence)
+            matchesQuery && matchesBpm && matchesSpeed
         }
     }
-    
+
+    // Bundled dimension selections so the final flow and each option flow can
+    // combine a single dimension-selection flow instead of five separate ones.
+    private data class DimensionSelections(
+        val artists: Set<String>,
+        val albums: Set<String>,
+        val genres: Set<String>,
+        val pathLevels: List<Set<String>>
+    )
+
+    private val dimensionSelections: Flow<DimensionSelections> = combine(
+        _selectedArtists,
+        _selectedAlbums,
+        _selectedGenres,
+        _selectedPathLevels
+    ) { artists, albums, genres, pathLevels ->
+        DimensionSelections(artists, albums, genres, pathLevels)
+    }
+
+    // Final filtered list (search + BPM/speed + all dimensions), unsorted.
+    // Sorting is a display concern and stays in the screen.
+    private val filteredTrackFlow: Flow<List<Track>> = combine(
+        baseFilteredTrackFlow,
+        dimensionSelections
+    ) { tracks, sel ->
+        tracks.filter { it.matchesDimensions(sel.artists, sel.albums, sel.genres, sel.pathLevels) }
+    }
+
     val filteredTracks: StateFlow<List<Track>> = filteredTrackFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    
-    // Available filter options derived from tracks matching the current filters
-    // Updating in real time so e.g. selecting a genre hides non-matching albums
-    val artistOptions: StateFlow<List<String>> = filteredTrackFlow
-        .map { tracks ->
-            tracks.mapNotNull { it.metadataArtist }
+
+    // Category filter options. Each option flow excludes its own dimension
+    // (by passing an empty selection for it) so the chips stay visible and
+    // multi-select works. The other dimensions and the BPM/speed filters
+    // still prune the options, so the chips always reflect the already-
+    // filtered list.
+    val artistOptions: StateFlow<List<String>> = combine(
+        baseFilteredTrackFlow,
+        _selectedAlbums,
+        _selectedGenres,
+        _selectedPathLevels
+    ) { tracks, albums, genres, pathLevels ->
+        tracks
+            .filter { it.matchesDimensions(emptySet(), albums, genres, pathLevels) }
+            .mapNotNull { it.metadataArtist }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .sorted()
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val albumOptions: StateFlow<List<String>> = combine(
+        baseFilteredTrackFlow,
+        _selectedArtists,
+        _selectedGenres,
+        _selectedPathLevels
+    ) { tracks, artists, genres, pathLevels ->
+        tracks
+            .filter { it.matchesDimensions(artists, emptySet(), genres, pathLevels) }
+            .mapNotNull { it.metadataAlbum }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .sorted()
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val genreOptions: StateFlow<List<String>> = combine(
+        baseFilteredTrackFlow,
+        _selectedArtists,
+        _selectedAlbums,
+        _selectedPathLevels
+    ) { tracks, artists, albums, pathLevels ->
+        tracks
+            .filter { it.matchesDimensions(artists, albums, emptySet(), pathLevels) }
+            .map { it.genre() }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .sorted()
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // N-level path drill-down options. pathOptions[d] is the list of full
+    // path prefixes (length d+1) available at level d. Level 0 is always
+    // computed; deeper levels appear only when the parent level has a
+    // selection. Each level excludes its own selection (non-self-pruning).
+    val pathOptions: StateFlow<List<List<String>>> = combine(
+        baseFilteredTrackFlow,
+        _selectedArtists,
+        _selectedAlbums,
+        _selectedGenres,
+        _selectedPathLevels
+    ) { tracks, artists, albums, genres, pathLevels ->
+        val result = mutableListOf<List<String>>()
+        // Level 0: base folders, no path filter applied.
+        result.add(
+            tracks
+                .filter { it.matchesDimensions(artists, albums, genres, emptyList()) }
+                .map { it.pathPrefix(1) }
                 .filter { it.isNotBlank() }
                 .distinct()
                 .sorted()
-        }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    
-    val albumOptions: StateFlow<List<String>> = filteredTrackFlow
-        .map { tracks ->
-            tracks.mapNotNull { it.metadataAlbum }
+        )
+        // Deeper levels: options under the parent selection at the previous level.
+        var depth = 1
+        while (depth < 32) {
+            val parentSelections = pathLevels.getOrElse(depth - 1) { emptySet() }
+            if (parentSelections.isEmpty()) break
+            val options = tracks
+                .filter { it.matchesDimensions(artists, albums, genres, pathLevels.take(depth)) }
+                .map { it.pathPrefix(depth + 1) }
                 .filter { it.isNotBlank() }
                 .distinct()
                 .sorted()
+            if (options.isEmpty()) break
+            result.add(options)
+            depth++
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    
-    val genreOptions: StateFlow<List<String>> = filteredTrackFlow
-        .map { tracks ->
-            tracks.map { it.genre() }
-                .filter { it.isNotBlank() }
-                .distinct()
-                .sorted()
-        }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        result
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), listOf(emptyList()))
     
     // Loading state
     private val _isLoading = MutableStateFlow(false)
@@ -315,7 +421,7 @@ class LibraryViewModel @Inject constructor(
                     while (c.moveToNext()) {
                         val id = c.getLong(idColumn)
                         val fileName = c.getString(nameColumn) ?: continue
-                        val relativePath = c.getString(pathColumn) ?: "."
+                        val relativePath = c.getString(pathColumn)?.trimEnd('/')?.ifEmpty { "." } ?: "."
                         val size = c.getLong(sizeColumn)
                         val duration = c.getLong(durationColumn)
                         val title = c.getString(titleColumn)
@@ -486,6 +592,46 @@ class LibraryViewModel @Inject constructor(
             _selectedGenres.value + genre
         }
     }
+
+    /**
+     * Select which category dimension's chip row is shown on the All tab.
+     * Does not change any active filter; only the visible chip row.
+     */
+    fun setBrowseDimension(dimension: BrowseDimension) {
+        _browseDimension.value = dimension
+    }
+
+    /**
+     * Select the base folder (level 0) for the Path drill-down. Pass null to
+     * clear the entire path dimension. Changing the base folder clears all
+     * deeper levels, since they are relative to it.
+     */
+    fun setPathLevel0(folder: String?) {
+        if (folder == null) {
+            _selectedPathLevels.value = listOf(emptySet())
+        } else {
+            _selectedPathLevels.value = listOf(setOf(folder), emptySet())
+        }
+    }
+
+    /**
+     * Toggle a folder selection at the given depth (depth >= 1). Clearing or
+     * adding a selection at this depth truncates all deeper levels, since
+     * they depend on this level's selection.
+     */
+    fun togglePathAtDepth(depth: Int, path: String) {
+        if (depth < 1) return
+        val current = _selectedPathLevels.value
+        // Ensure the list is large enough to index this depth.
+        val padded = current.toMutableList()
+        while (padded.size <= depth) padded.add(emptySet())
+        val levelSet = padded[depth].toMutableSet()
+        if (path in levelSet) levelSet.remove(path) else levelSet.add(path)
+        // Truncate everything deeper than this level, then append the updated
+        // level plus one empty level ready for the next drill.
+        val truncated = padded.subList(0, depth).toList()
+        _selectedPathLevels.value = truncated + listOf(levelSet.toSet(), emptySet())
+    }
     
     /**
      * Update the "BPM known" filter
@@ -545,6 +691,7 @@ class LibraryViewModel @Inject constructor(
         _selectedArtists.value = emptySet()
         _selectedAlbums.value = emptySet()
         _selectedGenres.value = emptySet()
+        _selectedPathLevels.value = listOf(emptySet())
         _showOnlyKnownBpm.value = false
         _filterBySpeedFactor.value = false
         _sortByBpm.value = true
@@ -1070,4 +1217,59 @@ private fun Track.matchesSearch(query: String): Boolean {
  */
 private fun Track.genre(): String {
     return metadataGenre?.takeIf { it.isNotBlank() } ?: "Unknown"
+}
+
+/**
+ * Whether the track passes all four dimension filters. Passing an empty set
+ * (or an empty list for the path dimension) for a dimension disables that
+ * filter, which is how the per-dimension option flows exclude their own
+ * dimension so chips stay visible for multi-select.
+ *
+ * Path matching uses the deepest non-empty level in [pathLevels]: the track's
+ * prefix at that depth must be in the set. Level d stores prefixes of length
+ * d+1 (e.g. level 0 = "Music", level 1 = "Music/GoGo_Penguin").
+ */
+private fun Track.matchesDimensions(
+    artists: Set<String>,
+    albums: Set<String>,
+    genres: Set<String>,
+    pathLevels: List<Set<String>>
+): Boolean {
+    val matchesArtist = artists.isEmpty() || (metadataArtist != null && artists.contains(metadataArtist))
+    val matchesAlbum = albums.isEmpty() || (metadataAlbum != null && albums.contains(metadataAlbum))
+    val matchesGenre = genres.isEmpty() || genres.contains(genre())
+    val matchesPath = run {
+        var deepest = -1
+        for (i in pathLevels.indices) {
+            if (pathLevels[i].isNotEmpty()) deepest = i
+        }
+        if (deepest < 0) true else pathLevels[deepest].contains(pathPrefix(deepest + 1))
+    }
+    return matchesArtist && matchesAlbum && matchesGenre && matchesPath
+}
+
+/**
+ * Whether the track's optimal cadence-match speed factor falls within the
+ * playable [0.9, 1.1] range for the given target cadence. Mirrors the per-track
+ * speed-factor computation shown on TrackCard.
+ */
+private fun Track.matchesSpeedFactor(targetCadence: Float): Boolean {
+    val bpm = bpm ?: return false
+    if (bpm <= 0f) return false
+    val match = CadenceMatcher().findOptimalMatch(bpm.toFloat(), targetCadence)
+    if (match.rhythmPattern.factor <= 0f) return false
+    val factor = targetCadence / (bpm * match.rhythmPattern.factor)
+    return factor in 0.9f..1.1f
+}
+
+/**
+ * First [depth] segments of [relativePath] joined by '/', used as the path
+ * prefix at the given drill-down level. Returns "" if the track has fewer than
+ * [depth] segments. The path is trimmed of any trailing slash (system-scanned
+ * tracks may store one) before splitting.
+ */
+private fun Track.pathPrefix(depth: Int): String {
+    if (depth <= 0) return ""
+    val parts = relativePath.trimEnd('/').split('/', limit = depth + 1)
+    return if (parts.size >= depth) parts.take(depth).joinToString("/") else ""
 }
