@@ -31,9 +31,9 @@ Repo Type: git
 Repo: https://github.com/gpotdevin/runBeat.git
 
 Builds:
-  - versionName: 1.0.1
-    versionCode: 11
-    commit: v1.0.1
+  - versionName: 1.2
+    versionCode: 14
+    commit: v1.2
     subdir: app
     gradle:
       - yes
