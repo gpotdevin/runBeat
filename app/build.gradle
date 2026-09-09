@@ -37,7 +37,7 @@ android {
         minSdk 26
         targetSdk 34
         versionCode buildNumber
-        versionName "1.2"
+        versionName "1.2.1"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -78,7 +78,7 @@ android {
     }
     
     composeOptions {
-        kotlinCompilerExtensionVersion '1.5.0'
+        kotlinCompilerExtensionVersion '1.5.8'
     }
     
     packagingOptions {
