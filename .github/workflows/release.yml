@@ -34,16 +34,17 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v3
+        continue-on-error: true
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
       - name: Install NDK and CMake (for aubio native module)
         run: |
-          sdkmanager "platforms;android-34" "build-tools;34.0.0" \
-            "ndk;25.1.8937393" "cmake;3.22.1" --sdk_root=$ANDROID_HOME
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" \
+            "ndk;26.1.10909125" "cmake;3.22.1" --sdk_root=$ANDROID_HOME
           echo "sdk.dir=$ANDROID_HOME" > local.properties
-          echo "ndk.dir=$ANDROID_HOME/ndk/25.1.8937393" >> local.properties
+          echo "ndk.dir=$ANDROID_HOME/ndk/26.1.10909125" >> local.properties
 
       - name: Decode release keystore
         run: |
