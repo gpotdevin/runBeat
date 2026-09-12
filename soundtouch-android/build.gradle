@@ -10,11 +10,11 @@ repositories {
 
 android {
 	namespace 'com.hipxel.soundtouch'
-	compileSdk 34
+	compileSdk 36
 
 	defaultConfig {
-		minSdkVersion 19
-		targetSdkVersion 34
+		minSdkVersion 21
+		targetSdkVersion 36
 		versionCode 1
 		versionName "1.0"
 
