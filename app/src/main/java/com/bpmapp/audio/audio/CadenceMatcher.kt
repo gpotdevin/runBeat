@@ -1,7 +1,7 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
-
 package com.bpmapp.audio.audio
 
+import androidx.annotation.StringRes
+import com.bpmapp.audio.R
 import kotlin.math.abs
 
 /**
@@ -23,16 +23,16 @@ class CadenceMatcher {
         
         // Rhythm patterns: quarter note (1), eighth note (2), triplet of quarters (1.5), sixth note (3)
         private val RHYTHM_PATTERNS = listOf(
-            RhythmPattern(1.0f, "Quarter", "Run on every beat"),
-            RhythmPattern(2.0f, "Eighth", "Run on every half beat"),
-            RhythmPattern(1.5f, "Triplet", "Run on every dotted quarter"),
-            RhythmPattern(3.0f, "Sixth", "Run on every sixth beat")
+            RhythmPattern(1.0f, "Quarter", "Run on every beat", R.string.rhythm_quarter, R.string.rhythm_quarter_desc),
+            RhythmPattern(2.0f, "Eighth", "Run on every half beat", R.string.rhythm_eighth, R.string.rhythm_eighth_desc),
+            RhythmPattern(1.5f, "Triplet", "Run on every dotted quarter", R.string.rhythm_triplet, R.string.rhythm_triplet_desc),
+            RhythmPattern(3.0f, "Sixth", "Run on every sixth beat", R.string.rhythm_sixth, R.string.rhythm_sixth_desc)
         )
         
         // Rhythm groups presented to the user, grouping the four factors
         private val RHYTHM_GROUPS = listOf(
-            RhythmGroup("Binary", "Run on every beat (1.0x) or every half-beat (2.0x)", setOf(1.0f, 2.0f)),
-            RhythmGroup("Ternary", "Run on every dotted-quarter (1.5x) or every sixth note (3.0x)", setOf(1.5f, 3.0f))
+            RhythmGroup("Binary", "Run on every beat (1.0x) or every half-beat (2.0x)", setOf(1.0f, 2.0f), R.string.rhythm_group_binary, R.string.rhythm_group_binary_desc),
+            RhythmGroup("Ternary", "Run on every dotted-quarter (1.5x) or every sixth note (3.0x)", setOf(1.5f, 3.0f), R.string.rhythm_group_ternary, R.string.rhythm_group_ternary_desc)
         )
         
         // Speed factor clamp range
@@ -48,8 +48,10 @@ class CadenceMatcher {
      */
     data class RhythmPattern(
         val factor: Float,        // r: multiplier for BPM
-        val name: String,         // Display name
-        val description: String   // User-friendly description
+        val name: String,         // Internal identifier (used in tests)
+        val description: String,  // Internal description
+        @StringRes val nameRes: Int,       // Display name resource
+        @StringRes val descriptionRes: Int // Display description resource
     )
     
     /**
@@ -58,7 +60,9 @@ class CadenceMatcher {
     data class RhythmGroup(
         val name: String,
         val description: String,
-        val factors: Set<Float>
+        val factors: Set<Float>,
+        @StringRes val nameRes: Int,
+        @StringRes val descriptionRes: Int
     )
     
     /**
@@ -70,7 +74,9 @@ class CadenceMatcher {
         val adjustment: Float,            // |f - 1|: how much speed changes
         val isAdjustable: Boolean,        // true if f is within [0.75, 1.25]
         val calculatedBpm: Float,         // BPM after adjustment: BPM * r * f
-        val message: String               // User-facing message
+        val message: String,              // Internal message (for tests)
+        @StringRes val messageRes: Int,    // Display message resource
+        val messageArgs: Array<Any> = emptyArray()  // Format args for messageRes
     )
     
     /**
@@ -103,7 +109,8 @@ class CadenceMatcher {
                 adjustment = 0f,
                 isAdjustable = false,
                 calculatedBpm = 0f,
-                message = "Invalid BPM: must be > 0"
+                message = "Invalid BPM: must be > 0",
+                messageRes = R.string.cadence_match_error_invalid_bpm
             )
         }
         
@@ -127,7 +134,8 @@ class CadenceMatcher {
                 adjustment = 0f,
                 isAdjustable = false,
                 calculatedBpm = 0f,
-                message = "No valid match found"
+                message = "No valid match found",
+                messageRes = R.string.cadence_match_error_no_match
             )
         
         // Check if best candidate is within valid range
@@ -139,10 +147,14 @@ class CadenceMatcher {
         } else {
             "No valid rhythm match (speed would be ${"%.2f".format(bestCandidate.speedFactor)}x)"
         }
-        
+        val messageRes = if (isValid) R.string.cadence_match_success else R.string.cadence_match_invalid
+        val messageArgs: Array<Any> = if (isValid) arrayOf(bestCandidate.rhythmPattern.name.lowercase(), bestCandidate.speedFactor) else arrayOf(bestCandidate.speedFactor)
+
         return bestCandidate.copy(
             isAdjustable = isValid,
-            message = message
+            message = message,
+            messageRes = messageRes,
+            messageArgs = messageArgs
         )
     }
     
@@ -169,7 +181,8 @@ class CadenceMatcher {
             adjustment = adjustment,
             isAdjustable = false, // Will be set by caller
             calculatedBpm = calculatedBpm,
-            message = ""
+            message = "",
+            messageRes = 0
         )
     }
     
@@ -193,7 +206,8 @@ class CadenceMatcher {
                 adjustment = adjustment,
                 isAdjustable = isValid,
                 calculatedBpm = targetCadence,
-                message = if (isValid) "Valid" else "Out of range"
+                message = if (isValid) "Valid" else "Out of range",
+                messageRes = if (isValid) R.string.cadence_match_valid else R.string.cadence_match_out_of_range
             )
         }
     }

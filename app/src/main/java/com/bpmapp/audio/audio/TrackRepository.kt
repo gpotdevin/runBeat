@@ -1,5 +1,3 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
-
 package com.bpmapp.audio.audio
 
 import android.content.Context
@@ -387,7 +385,8 @@ class TrackRepository @Inject constructor(
         metadataTitle: String? = null,
         metadataArtist: String? = null,
         metadataAlbum: String? = null,
-        metadataGenre: String? = null
+        metadataGenre: String? = null,
+        metadataTrackNumber: String? = null
     ): Track {
         return Track(
             id = filePath,
@@ -401,6 +400,7 @@ class TrackRepository @Inject constructor(
             metadataArtist = metadataArtist,
             metadataAlbum = metadataAlbum,
             metadataGenre = metadataGenre,
+            metadataTrackNumber = metadataTrackNumber,
             lastUpdated = System.currentTimeMillis()
         )
     }
@@ -426,7 +426,8 @@ class TrackRepository @Inject constructor(
                     "title" to track.metadataTitle,
                     "artist" to track.metadataArtist,
                     "album" to track.metadataAlbum,
-                    "genre" to track.metadataGenre
+                    "genre" to track.metadataGenre,
+                    "trackNumber" to track.metadataTrackNumber
                 )
                 
                 val existingTrack = track.fileSizeBytes?.let { fileSize ->

@@ -1,5 +1,3 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
-
 package com.bpmapp.audio.ui.screens
 
 import androidx.compose.foundation.background
@@ -58,8 +56,10 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.bpmapp.audio.R
 import com.bpmapp.audio.ui.theme.AppSpacing
 import com.bpmapp.audio.ui.theme.BpmGreenLight
 import com.bpmapp.audio.ui.theme.ComponentSpacing
@@ -94,20 +94,20 @@ fun BpmToolsScreen(
             Tab(
                 selected = selectedTabIndex == 0,
                 onClick = { viewModel.selectTab(0) },
-                icon = { Icon(Icons.Filled.Tune, contentDescription = "Cadence Matcher") },
-                text = { Text("Cadence Matcher") }
+                icon = { Icon(Icons.Filled.Tune, contentDescription = stringResource(R.string.bpmtools_tab_matcher)) },
+                text = { Text(stringResource(R.string.bpmtools_tab_matcher)) }
             )
             Tab(
                 selected = selectedTabIndex == 1,
                 onClick = { viewModel.selectTab(1) },
-                icon = { Icon(Icons.Filled.Timer, contentDescription = "Tap Beat to Detect BPM") },
-                text = { Text("Tap Beat to Detect BPM") }
+                icon = { Icon(Icons.Filled.Timer, contentDescription = stringResource(R.string.bpmtools_tab_detect)) },
+                text = { Text(stringResource(R.string.bpmtools_tab_detect)) }
             )
             Tab(
                 selected = selectedTabIndex == 2,
                 onClick = { viewModel.selectTab(2) },
-                icon = { Icon(Icons.Filled.MusicNote, contentDescription = "Manual Entry") },
-                text = { Text("Manual Entry") }
+                icon = { Icon(Icons.Filled.MusicNote, contentDescription = stringResource(R.string.bpmtools_tab_manual)) },
+                text = { Text(stringResource(R.string.bpmtools_tab_manual)) }
             )
         }
 
@@ -140,7 +140,7 @@ fun CadenceMatcherTab(viewModel: BpmToolsViewModel) {
         verticalArrangement = Arrangement.spacedBy(AppSpacing.md)
     ) {
         Text(
-            text = "Cadence Matcher",
+            text = stringResource(R.string.bpmtools_cadence_matcher),
             style = MaterialTheme.typography.headlineSmall,
             color = MaterialTheme.colorScheme.onSurface
         )
@@ -167,7 +167,7 @@ fun CadenceMatcherTab(viewModel: BpmToolsViewModel) {
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Remove,
-                            contentDescription = "Decrease"
+                            contentDescription = stringResource(R.string.bpmtools_decrease)
                         )
                     }
                     Column(
@@ -175,12 +175,12 @@ fun CadenceMatcherTab(viewModel: BpmToolsViewModel) {
                         verticalArrangement = Arrangement.spacedBy(AppSpacing.xxs)
                     ) {
                         Text(
-                            text = "Target Cadence",
+                            text = stringResource(R.string.bpmtools_target_cadence),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                         )
                         Text(
-                            text = "$targetCadence BPM",
+                            text = stringResource(R.string.bpmtools_cadence_value, targetCadence),
                             style = MaterialTheme.typography.titleLarge,
                             color = MaterialTheme.colorScheme.onSurface
                         )
@@ -191,7 +191,7 @@ fun CadenceMatcherTab(viewModel: BpmToolsViewModel) {
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Add,
-                            contentDescription = "Increase"
+                            contentDescription = stringResource(R.string.bpmtools_increase)
                         )
                     }
                 }
@@ -217,7 +217,7 @@ fun CadenceMatcherTab(viewModel: BpmToolsViewModel) {
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.sm)
             ) {
                 Text(
-                    text = "Rhythm Pattern",
+                    text = stringResource(R.string.bpmtools_rhythm_pattern),
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -234,11 +234,11 @@ fun CadenceMatcherTab(viewModel: BpmToolsViewModel) {
                             FilterChip(
                                 selected = viewModel.isGroupSelected(group, selectedRhythmPatterns),
                                 onClick = { viewModel.toggleRhythmGroup(group) },
-                                label = { Text(text = group.name) },
+                                label = { Text(text = stringResource(group.nameRes)) },
                                 modifier = Modifier.fillMaxWidth()
                             )
                             Text(
-                                text = group.description,
+                                text = stringResource(group.descriptionRes),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                             )
@@ -261,7 +261,7 @@ fun CadenceMatcherTab(viewModel: BpmToolsViewModel) {
                     verticalArrangement = Arrangement.spacedBy(AppSpacing.sm)
                 ) {
                     Text(
-                        text = "Cadence Matches",
+                        text = stringResource(R.string.bpmtools_cadence_matches),
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface
                     )
@@ -276,12 +276,12 @@ fun CadenceMatcherTab(viewModel: BpmToolsViewModel) {
                                 verticalArrangement = Arrangement.spacedBy(AppSpacing.xxs)
                             ) {
                                 Text(
-                                    text = match.rhythmPattern.name,
+                                    text = stringResource(match.rhythmPattern.nameRes),
                                     style = MaterialTheme.typography.titleSmall,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
-                                    text = match.message,
+                                    text = if (match.messageRes != 0) stringResource(match.messageRes, *match.messageArgs) else match.message,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                                 )
@@ -314,7 +314,7 @@ fun DetectBpmTab(viewModel: BpmToolsViewModel) {
         verticalArrangement = Arrangement.spacedBy(AppSpacing.md)
     ) {
         Text(
-            text = "Detect BPM",
+            text = stringResource(R.string.bpmtools_detect_bpm),
             style = MaterialTheme.typography.headlineSmall,
             color = MaterialTheme.colorScheme.onSurface
         )
@@ -356,12 +356,12 @@ fun DetectBpmTab(viewModel: BpmToolsViewModel) {
                     } else {
                         Icon(
                             imageVector = Icons.Filled.GraphicEq,
-                            contentDescription = "Detect BPM with Aubio",
+                            contentDescription = stringResource(R.string.bpmtools_detect_with_aubio),
                             modifier = Modifier.size(AppSpacing.lg)
                         )
                     }
                     Text(
-                        text = if (isDetectingBpm) "Detecting..." else "Detect BPM with Aubio",
+                        text = if (isDetectingBpm) stringResource(R.string.bpmtools_detecting) else stringResource(R.string.bpmtools_detect_with_aubio),
                         style = MaterialTheme.typography.titleMedium
                     )
                 }
@@ -370,7 +370,7 @@ fun DetectBpmTab(viewModel: BpmToolsViewModel) {
 
         // Tap Area (secondary)
         Text(
-            text = "Or tap to beat manually",
+            text = stringResource(R.string.bpmtools_or_tap),
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
         )
@@ -393,8 +393,7 @@ fun DetectBpmTab(viewModel: BpmToolsViewModel) {
                     modifier = Modifier.size(AppSpacing.sm)
                 )
                 Text(
-                    text = "Playback speed is adjusted (${String.format(Locale.getDefault(), "%.2fx", playbackSpeed)}). " +
-                        "Taps won't reflect normal tempo.",
+                    text = stringResource(R.string.bpmtools_speed_adjusted, String.format(Locale.getDefault(), "%.2fx", playbackSpeed)),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onErrorContainer
                 )
@@ -425,19 +424,19 @@ fun DetectBpmTab(viewModel: BpmToolsViewModel) {
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Timer,
-                        contentDescription = "Tap here",
+                        contentDescription = stringResource(R.string.bpmtools_tap_here),
                         tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                         modifier = Modifier.size(AppSpacing.lg)
                     )
                     detectedBpm?.let { bpm ->
                         Text(
-                            text = String.format(Locale.getDefault(), "Detected: %d BPM", bpm),
+                            text = stringResource(R.string.bpmtools_detected_bpm, bpm),
                             style = MaterialTheme.typography.titleMedium,
                             color = BpmGreenLight
                         )
                     } ?: run {
                         Text(
-                            text = "Tap beat to detect BPM",
+                            text = stringResource(R.string.bpmtools_tap_beat),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                         )
@@ -469,7 +468,7 @@ fun DetectBpmTab(viewModel: BpmToolsViewModel) {
                 )
             ) {
                 Text(
-                    text = "Use",
+                    text = stringResource(R.string.bpmtools_use),
                     style = MaterialTheme.typography.labelLarge
                 )
             }
@@ -487,7 +486,7 @@ fun DetectBpmTab(viewModel: BpmToolsViewModel) {
                 )
             ) {
                 Text(
-                    text = "Clear",
+                    text = stringResource(R.string.bpmtools_clear),
                     style = MaterialTheme.typography.labelLarge
                 )
             }
@@ -507,12 +506,11 @@ fun DetectBpmTab(viewModel: BpmToolsViewModel) {
         AlertDialog(
             onDismissRequest = { showUseConfirm = false },
             title = {
-                Text("Use detected BPM?", style = MaterialTheme.typography.titleLarge)
+                Text(stringResource(R.string.bpmtools_use_title), style = MaterialTheme.typography.titleLarge)
             },
             text = {
                 Text(
-                    text = "Playback speed is adjusted (${String.format(Locale.getDefault(), "%.2fx", playbackSpeed)}). " +
-                        "The tapped BPM reflects the current tempo, not normal speed. Save it anyway?",
+                    text = stringResource(R.string.bpmtools_use_body, String.format(Locale.getDefault(), "%.2fx", playbackSpeed)),
                     style = MaterialTheme.typography.bodyMedium
                 )
             },
@@ -523,12 +521,12 @@ fun DetectBpmTab(viewModel: BpmToolsViewModel) {
                         viewModel.useDetectedBpm()
                     }
                 ) {
-                    Text("Use")
+                    Text(stringResource(R.string.bpmtools_use))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showUseConfirm = false }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.dialog_cancel))
                 }
             }
         )
@@ -546,7 +544,7 @@ fun ManualEntryTab(viewModel: BpmToolsViewModel) {
         verticalArrangement = Arrangement.spacedBy(AppSpacing.md)
     ) {
         Text(
-            text = "Manual Entry",
+            text = stringResource(R.string.bpmtools_manual_entry),
             style = MaterialTheme.typography.headlineSmall,
             color = MaterialTheme.colorScheme.onSurface
         )
@@ -563,7 +561,7 @@ fun ManualEntryTab(viewModel: BpmToolsViewModel) {
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.sm)
             ) {
                 Text(
-                    text = "Enter BPM",
+                    text = stringResource(R.string.bpmtools_enter_bpm),
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -578,7 +576,7 @@ fun ManualEntryTab(viewModel: BpmToolsViewModel) {
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Clear,
-                            contentDescription = "Clear"
+                            contentDescription = stringResource(R.string.bpmtools_clear)
                         )
                     }
                     OutlinedTextField(
@@ -590,7 +588,7 @@ fun ManualEntryTab(viewModel: BpmToolsViewModel) {
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         placeholder = {
                             Text(
-                                text = "Enter BPM value",
+                                text = stringResource(R.string.bpmtools_enter_bpm_hint),
                                 style = MaterialTheme.typography.bodyMedium
                             )
                         }
@@ -650,7 +648,7 @@ fun ManualEntryTab(viewModel: BpmToolsViewModel) {
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Clear,
-                            contentDescription = "Delete"
+                            contentDescription = stringResource(R.string.trackcard_delete)
                         )
                     }
                 }
@@ -670,7 +668,7 @@ fun ManualEntryTab(viewModel: BpmToolsViewModel) {
             )
         ) {
             Text(
-                text = "Save BPM to file ID3 tag",
+                text = stringResource(R.string.bpmtools_save_bpm_file),
                 style = MaterialTheme.typography.labelLarge
             )
         }

@@ -1,5 +1,3 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
-
 package com.bpmapp.audio.audio
 
 import android.content.Context
@@ -376,7 +374,14 @@ class MetadataEditor(private val context: Context) {
                 // Extract bpm (only available on Android 14+ via MediaMetadataRetriever)
                 // BPM is generally read through the MediaMetadataEditor path on API 33+.
                 result["bpm"] = null
-                
+
+                // Extract CD track number (returns strings like "3/12")
+                try {
+                    result["trackNumber"] = retriever.extractMetadata(
+                        MediaMetadataRetriever.METADATA_KEY_CD_TRACK_NUMBER
+                    )
+                } catch (_: Exception) { }
+
                 return result
                 
             } finally {

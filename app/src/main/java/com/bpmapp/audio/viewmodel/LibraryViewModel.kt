@@ -1,6 +1,6 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
-
 package com.bpmapp.audio.viewmodel
+
+import com.bpmapp.audio.R
 
 import android.annotation.SuppressLint
 import android.Manifest
@@ -353,11 +353,11 @@ class LibraryViewModel @Inject constructor(
                 _isLoading.value = false
                 
                 if (count == 0) {
-                    _errorMessage.value = "No tracks were imported. Please check the CSV file format."
+                    _errorMessage.value = context.getString(R.string.error_no_tracks_imported)
                 }
             } catch (e: Exception) {
                 _isLoading.value = false
-                _errorMessage.value = "Failed to import CSV: ${e.message}"
+                _errorMessage.value = context.getString(R.string.error_failed_import_csv, e.message ?: "")
                 Log.e(TAG, "CSV import error", e)
             }
         }
@@ -369,7 +369,7 @@ class LibraryViewModel @Inject constructor(
     @SuppressLint("InlinedApi")
     fun scanSystemLibrary() {
         if (!hasReadMediaPermission()) {
-            _errorMessage.value = "Permission required to access system music library"
+            _errorMessage.value = context.getString(R.string.error_permission_required_library)
             return
         }
         
@@ -389,6 +389,7 @@ class LibraryViewModel @Inject constructor(
                     add(MediaStore.Audio.Media.TITLE)
                     add(MediaStore.Audio.Media.ARTIST)
                     add(MediaStore.Audio.Media.ALBUM)
+                    add(MediaStore.Audio.Media.TRACK)
                     // GENRE only exists on Android 11+ (API R); on older devices it is omitted
                     // and the column index resolves to -1, leaving the genre null.
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -415,6 +416,7 @@ class LibraryViewModel @Inject constructor(
                     val titleColumn = c.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
                     val artistColumn = c.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
                     val albumColumn = c.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM)
+                    val trackColumn = c.getColumnIndexOrThrow(MediaStore.Audio.Media.TRACK)
                     // -1 when GENRE was omitted from the projection (API < R)
                     val genreColumn = c.getColumnIndex(MediaStore.Audio.Media.GENRE)
                     
@@ -428,6 +430,7 @@ class LibraryViewModel @Inject constructor(
                         val artist = c.getString(artistColumn)
                         val album = c.getString(albumColumn)
                         val genre = if (genreColumn >= 0) c.getString(genreColumn) else null
+                        val trackNumber = c.getInt(trackColumn).takeIf { it > 0 }?.toString()
                         
                         // Create content URI for the track
                         val uri = Uri.withAppendedPath(
@@ -447,7 +450,8 @@ class LibraryViewModel @Inject constructor(
                             metadataTitle = title,
                             metadataArtist = artist,
                             metadataAlbum = album,
-                            metadataGenre = genre
+                            metadataGenre = genre,
+                            metadataTrackNumber = trackNumber
                         )
                         
                         // Add/update the track
@@ -472,14 +476,14 @@ class LibraryViewModel @Inject constructor(
                 _isLoading.value = false
                 
                 if (count == 0) {
-                    _errorMessage.value = "No tracks found in system music library"
+                    _errorMessage.value = context.getString(R.string.error_no_tracks_found)
                 } else {
                     Log.i(TAG, "Scanned $count tracks from system library")
                 }
                 
             } catch (e: Exception) {
                 _isLoading.value = false
-                _errorMessage.value = "Failed to scan system library: ${e.message}"
+                _errorMessage.value = context.getString(R.string.error_failed_scan_library, e.message ?: "")
                 Log.e(TAG, "System library scan error", e)
             }
         }
@@ -494,7 +498,7 @@ class LibraryViewModel @Inject constructor(
                 trackRepository.updateBpm(trackId, bpm)
                 Log.d(TAG, "Updated BPM for track: $trackId to $bpm")
             } catch (e: Exception) {
-                _errorMessage.value = "Failed to update BPM: ${e.message}"
+                _errorMessage.value = context.getString(R.string.error_failed_update_bpm, e.message ?: "")
                 Log.e(TAG, "BPM update error", e)
             }
         }
@@ -509,7 +513,7 @@ class LibraryViewModel @Inject constructor(
                 trackRepository.deleteTrack(trackId)
                 Log.d(TAG, "Deleted track: $trackId")
             } catch (e: Exception) {
-                _errorMessage.value = "Failed to delete track: ${e.message}"
+                _errorMessage.value = context.getString(R.string.error_failed_delete_track, e.message ?: "")
                 Log.e(TAG, "Track deletion error", e)
             }
         }
@@ -524,7 +528,7 @@ class LibraryViewModel @Inject constructor(
                 trackRepository.deleteAllTracks()
                 Log.d(TAG, "Deleted all tracks")
             } catch (e: Exception) {
-                _errorMessage.value = "Failed to delete tracks: ${e.message}"
+                _errorMessage.value = context.getString(R.string.error_failed_delete_tracks, e.message ?: "")
                 Log.e(TAG, "Delete all tracks error", e)
             }
         }
@@ -713,7 +717,7 @@ class LibraryViewModel @Inject constructor(
                     trackDao.updateFavorite(trackId, !track.isFavorite)
                 }
             } catch (e: Exception) {
-                _errorMessage.value = "Failed to update favorite: ${e.message}"
+                _errorMessage.value = context.getString(R.string.error_failed_update_favorite, e.message ?: "")
                 Log.e(TAG, "Favorite toggle error", e)
             }
         }
@@ -732,7 +736,7 @@ class LibraryViewModel @Inject constructor(
                 val id = UUID.randomUUID().toString()
                 playlistDao.insertOrReplace(Playlist(id = id, name = trimmed))
             } catch (e: Exception) {
-                _errorMessage.value = "Failed to create playlist: ${e.message}"
+                _errorMessage.value = context.getString(R.string.error_failed_create_playlist, e.message ?: "")
                 Log.e(TAG, "Playlist creation error", e)
             }
         }
@@ -751,7 +755,7 @@ class LibraryViewModel @Inject constructor(
                     playlistDao.update(playlist.copy(name = trimmed))
                 }
             } catch (e: Exception) {
-                _errorMessage.value = "Failed to rename playlist: ${e.message}"
+                _errorMessage.value = context.getString(R.string.error_failed_rename_playlist, e.message ?: "")
                 Log.e(TAG, "Playlist rename error", e)
             }
         }
@@ -766,7 +770,7 @@ class LibraryViewModel @Inject constructor(
                 playlistDao.delete(playlistId)
                 playlistDao.deleteTracksForPlaylist(playlistId)
             } catch (e: Exception) {
-                _errorMessage.value = "Failed to delete playlist: ${e.message}"
+                _errorMessage.value = context.getString(R.string.error_failed_delete_playlist, e.message ?: "")
                 Log.e(TAG, "Playlist deletion error", e)
             }
         }
@@ -781,7 +785,7 @@ class LibraryViewModel @Inject constructor(
             try {
                 addTracksToPlaylistInternal(playlistId, trackIds)
             } catch (e: Exception) {
-                _errorMessage.value = "Failed to add selected tracks to playlist: ${e.message}"
+                _errorMessage.value = context.getString(R.string.error_failed_add_to_playlist, e.message ?: "")
                 Log.e(TAG, "Add selected tracks to playlist error", e)
             }
         }
@@ -794,7 +798,7 @@ class LibraryViewModel @Inject constructor(
     fun createPlaylistWithTracks(name: String, trackIds: List<String>): String? {
         val trimmed = name.trim()
         if (trimmed.isEmpty() || trackIds.isEmpty()) {
-            _errorMessage.value = "Playlist name and at least one track are required"
+            _errorMessage.value = context.getString(R.string.error_playlist_name_tracks_required)
             return null
         }
         val id = UUID.randomUUID().toString()
@@ -803,7 +807,7 @@ class LibraryViewModel @Inject constructor(
                 playlistDao.insertOrReplace(Playlist(id = id, name = trimmed))
                 insertPlaylistTracksWithPositions(id, trackIds, startPosition = 0)
             } catch (e: Exception) {
-                _errorMessage.value = "Failed to create playlist: ${e.message}"
+                _errorMessage.value = context.getString(R.string.error_failed_create_playlist, e.message ?: "")
                 Log.e(TAG, "Create playlist with tracks error", e)
             }
         }
@@ -820,7 +824,7 @@ class LibraryViewModel @Inject constructor(
                 if (trackIds.isEmpty()) return@launch
                 insertPlaylistTracksWithPositions(playlistId, trackIds, startPosition = 0)
             } catch (e: Exception) {
-                _errorMessage.value = "Failed to update playlist: ${e.message}"
+                _errorMessage.value = context.getString(R.string.error_failed_update_playlist, e.message ?: "")
                 Log.e(TAG, "Update playlist tracks error", e)
             }
         }
@@ -835,7 +839,7 @@ class LibraryViewModel @Inject constructor(
             try {
                 trackDao.updateFavorites(trackIds, true)
             } catch (e: Exception) {
-                _errorMessage.value = "Failed to update favorites: ${e.message}"
+                _errorMessage.value = context.getString(R.string.error_failed_update_favorites, e.message ?: "")
                 Log.e(TAG, "Add tracks to favorites error", e)
             }
         }
@@ -887,7 +891,7 @@ class LibraryViewModel @Inject constructor(
             try {
                 playlistDao.deleteTrackFromPlaylist(playlistId, trackId)
             } catch (e: Exception) {
-                _errorMessage.value = "Failed to remove track from playlist: ${e.message}"
+                _errorMessage.value = context.getString(R.string.error_failed_remove_from_playlist, e.message ?: "")
                 Log.e(TAG, "Remove from playlist error", e)
             }
         }
@@ -975,7 +979,7 @@ class LibraryViewModel @Inject constructor(
                 _analysisResults.value = successCount
                 
             } catch (e: Exception) {
-                _errorMessage.value = "Library analysis failed: ${e.message}"
+                _errorMessage.value = context.getString(R.string.error_library_analysis_failed, e.message ?: "")
                 Log.e(TAG, "Library BPM analysis error", e)
             } finally {
                 _isAnalyzingLibrary.value = false
@@ -1015,7 +1019,7 @@ class LibraryViewModel @Inject constructor(
                 }
                 resolved
             } catch (e: Exception) {
-                _errorMessage.value = "Failed to resolve BPM: ${e.message}"
+                _errorMessage.value = context.getString(R.string.error_failed_resolve_bpm, e.message ?: "")
                 Log.e(TAG, "BPM resolution error", e)
                 null
             }
@@ -1096,7 +1100,7 @@ class LibraryViewModel @Inject constructor(
                 }
                 mainHandler.post { onCompleted?.invoke(resolvedCount, pending.size) }
             } catch (e: Exception) {
-                _errorMessage.value = "Failed to resolve BPMs: ${e.message}"
+                _errorMessage.value = context.getString(R.string.error_failed_resolve_bpms, e.message ?: "")
                 Log.e(TAG, "Batch BPM resolution error", e)
                 mainHandler.post { onCompleted?.invoke(resolvedCount, pending.size) }
             } finally {
@@ -1140,10 +1144,10 @@ class LibraryViewModel @Inject constructor(
                 if (success) {
                     _metadataSaveResults.value = 1
                 } else {
-                    _metadataError.value = "Failed to save BPM to file metadata"
+                    _metadataError.value = context.getString(R.string.error_failed_save_bpm_metadata)
                 }
             } catch (e: Exception) {
-                _metadataError.value = "Error saving BPM: ${e.message}"
+                _metadataError.value = context.getString(R.string.error_saving_bpm, e.message ?: "")
                 Log.e(TAG, "Error saving BPM to file metadata", e)
             } finally {
                 _isSavingMetadata.value = false
@@ -1173,7 +1177,7 @@ class LibraryViewModel @Inject constructor(
                 // We'll get the final result from the progress updates
 
             } catch (e: Exception) {
-                _metadataError.value = "Error syncing BPM to files: ${e.message}"
+                _metadataError.value = context.getString(R.string.error_syncing_bpm, e.message ?: "")
                 Log.e(TAG, "Error syncing all BPM to file metadata", e)
             } finally {
                 _isSavingMetadata.value = false

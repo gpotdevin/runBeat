@@ -1,7 +1,8 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
-
 package com.bpmapp.audio.ui.navigation
 
+import com.bpmapp.audio.R
+
+import androidx.annotation.StringRes
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.MusicNote
@@ -15,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
 
@@ -24,27 +26,27 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 enum class NavDestination(
     val route: String,
     val icon: ImageVector,
-    val label: String
+    @StringRes val labelRes: Int
 ) {
     PLAYER(
         route = "player",
         icon = Icons.Filled.MusicNote,
-        label = "Player"
+        labelRes = R.string.nav_player
     ),
     LIBRARY(
         route = "library",
         icon = Icons.Filled.Book, // Fallback: Book (CD icon not available in standard Material Icons)
-        label = "Library"
+        labelRes = R.string.nav_library
     ),
     BPM_TOOLS(
         route = "bpm_tools",
         icon = Icons.Filled.Tune,
-        label = "BPM Tools"
+        labelRes = R.string.nav_bpm_tools
     ),
     SETTINGS(
         route = "settings",
         icon = Icons.Filled.Settings,
-        label = "Settings"
+        labelRes = R.string.nav_settings
     )
 }
 
@@ -99,10 +101,10 @@ fun BottomNavigationBar(
                 icon = {
                     Icon(
                         imageVector = destination.icon,
-                        contentDescription = destination.label
+                        contentDescription = stringResource(destination.labelRes)
                     )
                 },
-                label = { Text(destination.label) },
+                label = { Text(stringResource(destination.labelRes)) },
                 alwaysShowLabel = true
             )
         }

@@ -4,6 +4,36 @@ All notable changes to RunBeat are documented in this file. Format based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5] - 2026-09-14
+
+### Added
+
+- **Drag-and-drop playlist reordering**: reorder upcoming tracks in the
+  player queue via drag handles. Toggle reorder mode to drag items without
+  triggering playback. Shuffle order is rebuilt automatically after
+  reordering.
+- **Individual track selection from filtered library**: long-press a track
+  to enter multi-select mode, then individually choose which filtered
+  tracks to add to the upcoming queue or a playlist. "Select All" is
+  available as a convenience.
+- **Compound library ordering**: when sorting by artist, tracks are now
+  ordered by artist, then album, then track number, with alphabetic
+  fallback when metadata is missing. Track number is now read from
+  MediaStore and ID3 tags.
+- **Multilingual support**: all user-facing strings extracted to Android
+  string resources. French, German, and Spanish translations added.
+  Per-app language switching via Android 13+ locale configuration.
+
+### Changed
+
+- `Track` entity gains `metadataTrackNumber` field (database version
+  bumped to 6 with non-destructive migration).
+- `BottomNav` labels migrated from hardcoded strings to string resources.
+- ViewModel error messages migrated to resource IDs resolved in the UI
+  layer.
+- `CadenceMatcher` rhythm pattern names and match messages migrated to
+  string resources with format arguments.
+
 ## [1.2] - 2026-09-07
 
 ### Added

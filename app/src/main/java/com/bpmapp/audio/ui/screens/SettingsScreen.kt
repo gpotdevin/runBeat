@@ -1,10 +1,10 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
-
 package com.bpmapp.audio.ui.screens
 
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AppCompatDelegate
+import androidx.core.os.LocaleListCompat
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -83,7 +83,7 @@ fun SettingsScreen(
 
     LaunchedEffect(importCount) {
         if (importCount > 0) {
-            snackbarHostState.showSnackbar("Imported $importCount tracks")
+            snackbarHostState.showSnackbar(context.getString(R.string.settings_imported_tracks, importCount))
             libVm.clearImportCount()
         }
     }
@@ -111,7 +111,7 @@ fun SettingsScreen(
         TopAppBar(
             title = { 
                 Text(
-                    text = "Settings",
+                    text = stringResource(R.string.settings_title),
                     style = MaterialTheme.typography.headlineSmall,
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -120,7 +120,7 @@ fun SettingsScreen(
                 IconButton(onClick = onNavigateBack) {
                     Icon(
                         imageVector = Icons.Filled.ArrowBack,
-                        contentDescription = "Back",
+                        contentDescription = stringResource(R.string.settings_back),
                         tint = MaterialTheme.colorScheme.onSurface
                     )
                 }
@@ -135,11 +135,11 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(AppSpacing.xxxs)
         ) {
             // PLAYBACK Section
-            SettingsSection(title = "🎵 PLAYBACK") {
+            SettingsSection(title = "🎵 ${stringResource(R.string.settings_section_playback)}") {
                 // Auto-Apply Cadence Match
                 SettingItem(
-                    title = "Auto-Apply Cadence Match",
-                    description = "Automatically apply cadence matching when track changes"
+                    title = stringResource(R.string.settings_auto_apply_title),
+                    description = stringResource(R.string.settings_auto_apply_desc)
                 ) {
                     Switch(
                         checked = autoApplyCadenceMatch,
@@ -163,11 +163,11 @@ fun SettingsScreen(
             
             
             // LIBRARY Section
-            SettingsSection(title = "📚 LIBRARY") {
+            SettingsSection(title = "📚 ${stringResource(R.string.settings_section_library)}") {
                 // Auto-Scan on Startup
                 SettingItem(
-                    title = "Auto-Scan on Startup",
-                    description = "Automatically scan for new tracks when app starts"
+                    title = stringResource(R.string.settings_auto_scan_title),
+                    description = stringResource(R.string.settings_auto_scan_desc)
                 ) {
                     Switch(
                         checked = autoScanOnStartup,
@@ -180,11 +180,11 @@ fun SettingsScreen(
             
             
             // APPEARANCE Section
-            SettingsSection(title = "🎨 APPEARANCE") {
+            SettingsSection(title = "🎨 ${stringResource(R.string.settings_section_appearance)}") {
                 // Dynamic Colors
                 SettingItem(
-                    title = "Dynamic Colors",
-                    description = "Use system dynamic colors (Android 12+)"
+                    title = stringResource(R.string.settings_dynamic_colors_title),
+                    description = stringResource(R.string.settings_dynamic_colors_desc)
                 ) {
                     Switch(
                         checked = dynamicColors,
@@ -197,14 +197,14 @@ fun SettingsScreen(
             
             
             // ADVANCED Section
-            SettingsSection(title = "⚙️ ADVANCED") {
+            SettingsSection(title = "⚙️ ${stringResource(R.string.settings_section_advanced)}") {
                 SettingItem(
-                    title = "Import CSV",
-                    description = "Import tracks and BPM values from a CSV file"
+                    title = stringResource(R.string.settings_import_csv_title),
+                    description = stringResource(R.string.settings_import_csv_desc)
                 ) {
                     TextButton(onClick = { csvImportLauncher.launch("*/*") }) {
                         Text(
-                            text = "Import",
+                            text = stringResource(R.string.settings_import_button),
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Medium,
                             color = MaterialTheme.colorScheme.primary
@@ -218,22 +218,22 @@ fun SettingsScreen(
                     verticalArrangement = Arrangement.spacedBy(AppSpacing.xxxs)
                 ) {
                     Text(
-                        text = "CSV format — one track per line (header line is skipped):",
+                        text = stringResource(R.string.settings_csv_format_label),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = "relative_path,filename,bpm,file_size_bytes[,title,artist,album,genre]",
+                        text = stringResource(R.string.settings_csv_format_spec),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = "Example: GoGo_Penguin/A_Humdrum_Star,1-2-Raven-320.mp3,152.0,12166665,Song Title,Artist Name,Album Name",
+                        text = stringResource(R.string.settings_csv_example),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = "Filenames containing commas must be quoted.",
+                        text = stringResource(R.string.settings_csv_quoted),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -264,8 +264,81 @@ fun SettingsScreen(
             
             
             
+            // LANGUAGE Section
+            SettingsSection(title = "🌐 ${stringResource(R.string.settings_section_language)}") {
+                SettingItem(
+                    title = stringResource(R.string.settings_language_title),
+                    description = stringResource(R.string.settings_language_desc)
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(AppSpacing.xxs)
+                    ) {
+                        TextButton(onClick = {
+                            AppCompatDelegate.setApplicationLocales(
+                                LocaleListCompat.getEmptyLocaleList()
+                            )
+                        }) {
+                            Text(
+                                text = stringResource(R.string.settings_language_system),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        TextButton(onClick = {
+                            AppCompatDelegate.setApplicationLocales(
+                                LocaleListCompat.forLanguageTags("en")
+                            )
+                        }) {
+                            Text(
+                                text = stringResource(R.string.settings_language_english),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        TextButton(onClick = {
+                            AppCompatDelegate.setApplicationLocales(
+                                LocaleListCompat.forLanguageTags("fr")
+                            )
+                        }) {
+                            Text(
+                                text = stringResource(R.string.settings_language_french),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        TextButton(onClick = {
+                            AppCompatDelegate.setApplicationLocales(
+                                LocaleListCompat.forLanguageTags("de")
+                            )
+                        }) {
+                            Text(
+                                text = stringResource(R.string.settings_language_german),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        TextButton(onClick = {
+                            AppCompatDelegate.setApplicationLocales(
+                                LocaleListCompat.forLanguageTags("es")
+                            )
+                        }) {
+                            Text(
+                                text = stringResource(R.string.settings_language_spanish),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                }
+            }
+
             // ABOUT Section
-            SettingsSection(title = "ℹ️ ABOUT") {
+            SettingsSection(title = "ℹ️ ${stringResource(R.string.settings_section_about)}") {
                 // Project repository
                 SettingItem(
                     title = stringResource(R.string.about_repo_title),
@@ -285,7 +358,7 @@ fun SettingsScreen(
 
                 // Version
                 SettingItem(
-                    title = "Version",
+                    title = stringResource(R.string.settings_version),
                     description = versionInfo
                 ) {
                     // Display only - no interactive element
@@ -293,7 +366,7 @@ fun SettingsScreen(
                 
                 // App license
                 SettingItem(
-                    title = "App license",
+                    title = stringResource(R.string.settings_license),
                     description = appLicense
                 ) {
                     // Display only - no interactive element
@@ -301,8 +374,8 @@ fun SettingsScreen(
 
                 // Libraries
                 SettingItem(
-                    title = "Libraries",
-                    description = "Third-party libraries used by this app"
+                    title = stringResource(R.string.settings_libraries),
+                    description = stringResource(R.string.settings_libraries_desc)
                 ) {
                     // Display only - no interactive element
                 }
@@ -333,7 +406,7 @@ fun SettingsScreen(
                             onClick = { uriHandler.openUri(library.url) }
                         ) {
                             Text(
-                                text = "View",
+                                text = stringResource(R.string.settings_view),
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Medium,
                                 color = MaterialTheme.colorScheme.primary

@@ -1,6 +1,6 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
-
 package com.bpmapp.audio.audio
+
+import com.bpmapp.audio.R
 
 import android.content.Context
 import android.net.Uri
@@ -110,7 +110,7 @@ class PlayerRepository @Inject constructor(
         exoPlayer.addListener(object : androidx.media3.common.Player.Listener {
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                 Log.e("PlayerRepository", "Player error: ${error.message}", error)
-                _error.value = "Error: ${error.message}"
+                _error.value = context.getString(R.string.error_player_error, error.message ?: "")
                 _playerState.update { it.copy(error = error.message) }
             }
             
@@ -179,7 +179,7 @@ class PlayerRepository @Inject constructor(
             updatePlayerState()
         } catch (e: Exception) {
             Log.e("PlayerRepository", "Error preparing media item: ${mediaItem.mediaId}", e)
-            _error.value = "Error: Could not prepare media for playback"
+            _error.value = context.getString(R.string.error_could_not_prepare_media)
             _playerState.update { it.copy(error = e.message) }
         }
     }
@@ -630,6 +630,37 @@ class PlayerRepository @Inject constructor(
         _playlist.update { currentPlaylist ->
             currentPlaylist + mediaItem
         }
+    }
+
+    /**
+     * Add multiple tracks to the playlist (batch append)
+     */
+    fun addAllToPlaylist(items: List<MediaItem>) {
+        _playlist.update { currentPlaylist ->
+            currentPlaylist + items
+        }
+    }
+
+    /**
+     * Move a track in the playlist from one position to another
+     */
+    fun movePlaylistItem(from: Int, to: Int) {
+        _playlist.update { items ->
+            if (from !in items.indices || to !in items.indices || from == to) return@update items
+            items.toMutableList().apply { add(to, removeAt(from)) }
+        }
+        if (_shuffleEnabled.value) rebuildShuffleOrder()
+    }
+
+    /**
+     * Remove a track from the playlist
+     */
+    fun removePlaylistItem(index: Int) {
+        _playlist.update { items ->
+            if (index !in items.indices) return@update items
+            items.toMutableList().apply { removeAt(index) }
+        }
+        if (_shuffleEnabled.value) rebuildShuffleOrder()
     }
 
     /**

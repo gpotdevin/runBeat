@@ -1,10 +1,10 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
-
 package com.bpmapp.audio.di
 
 import android.content.Context
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.room.Room
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.bpmapp.audio.audio.CadenceMatcher
 import com.bpmapp.audio.audio.MetadataEditor
 import com.bpmapp.audio.audio.ModeBeepPlayer
@@ -64,6 +64,12 @@ object AppModule {
         return CadenceMatcher()
     }
     
+    val MIGRATION_5_6 = object : Migration(5, 6) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE tracks ADD COLUMN metadataTrackNumber TEXT")
+        }
+    }
+
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AppDatabase {
@@ -72,7 +78,8 @@ object AppModule {
             AppDatabase::class.java,
             AppDatabase.DATABASE_NAME
         )
-        .fallbackToDestructiveMigration() // Allow migration from v1 to v2
+        .addMigrations(MIGRATION_5_6)
+        .fallbackToDestructiveMigration()
         .build()
     }
     

@@ -1,5 +1,3 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
-
 package com.bpmapp.audio.audio
 
 import android.util.Log
@@ -47,6 +45,7 @@ object MetadataMerger {
         val artist = mergeStringField("artist", existing, id3Data, systemData, csvData)
         val album = mergeStringField("album", existing, id3Data, systemData, csvData)
         val genre = mergeStringField("genre", existing, id3Data, systemData, csvData)
+        val trackNumber = mergeStringField("trackNumber", existing, id3Data, systemData, csvData)
         val (bpm, bpmSource) = mergeBpm(existing, id3Data, systemData, csvData)
 
         val result = linkedMapOf<String, Any?>(
@@ -54,6 +53,7 @@ object MetadataMerger {
             "artist" to artist,
             "album" to album,
             "genre" to genre,
+            "trackNumber" to trackNumber,
             "bpm" to bpm,
             "bpmSource" to bpmSource
         )
@@ -115,6 +115,7 @@ object MetadataMerger {
             metadataArtist = merged["artist"] as? String,
             metadataAlbum = merged["album"] as? String,
             metadataGenre = merged["genre"] as? String,
+            metadataTrackNumber = merged["trackNumber"] as? String,
             isFavorite = existing?.isFavorite ?: false
         )
     }
@@ -137,6 +138,7 @@ object MetadataMerger {
             "artist" -> existing?.metadataArtist
             "album" -> existing?.metadataAlbum
             "genre" -> existing?.metadataGenre
+            "trackNumber" -> existing?.metadataTrackNumber
             else -> null
         }
 

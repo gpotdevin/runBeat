@@ -1,5 +1,3 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
-
 package com.bpmapp.audio.ui
 
 import android.Manifest
@@ -127,6 +125,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.focus.onFocusChanged
@@ -139,6 +138,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.bpmapp.audio.R
 import com.bpmapp.audio.audio.CadenceMatcher
 import com.bpmapp.audio.ui.components.TrackCard
 import com.bpmapp.audio.data.Playlist
@@ -174,6 +174,7 @@ fun LibraryScreen(
     onPlayAllTracks: (List<Track>) -> Unit = {},
     onPlayTrack: (Track) -> Unit = {},
     onAddToUpcoming: (Track) -> Unit = {},
+    onAddToUpcomingBatch: (List<Track>) -> Unit = {},
     targetCadence: Int = 172,
     viewModel: LibraryViewModel? = null
 ) {
@@ -183,7 +184,7 @@ fun LibraryScreen(
     val cadenceMatcher = remember { CadenceMatcher() }
     
     // Tab state
-    val tabTitles = listOf("All", "Playlists", "Favorites")
+    val tabTitles = listOf(stringResource(R.string.library_tab_all), stringResource(R.string.library_tab_playlists), stringResource(R.string.library_tab_favorites))
     val selectedTabIndex by viewModel.selectedTabIndex.collectAsState()
     
     val isLoading by viewModel.isLoading.collectAsState(false)
@@ -279,7 +280,7 @@ fun LibraryScreen(
         if (isGranted) {
             viewModel.scanSystemLibrary()
         } else {
-            viewModel.setError("Permission denied. Cannot scan music library without storage permission.")
+            viewModel.setError(context.getString(R.string.error_permission_denied_scan))
         }
     }
     
@@ -322,10 +323,16 @@ fun LibraryScreen(
                     sortByArtist -> {
                         if (sortDescending) {
                             compareByDescending<Track> { it.metadataArtist?.lowercase() ?: it.fileName.lowercase() }
-                                .thenBy { it.fileName.lowercase() }
+                                .thenBy { it.metadataAlbum?.lowercase() ?: it.fileName.lowercase() }
+                                .thenBy { it.metadataTrackNumber?.substringBefore("/")?.toIntOrNull() ?: Int.MAX_VALUE }
+                                .thenBy { it.metadataTitle?.lowercase() ?: it.fileName.lowercase() }
                         } else {
-                            compareBy<Track> { it.metadataArtist?.lowercase() ?: it.fileName.lowercase() }
-                                .thenBy { it.fileName.lowercase() }
+                            compareBy<Track>(
+                                { it.metadataArtist?.lowercase() ?: it.fileName.lowercase() },
+                                { it.metadataAlbum?.lowercase() ?: it.fileName.lowercase() },
+                                { it.metadataTrackNumber?.substringBefore("/")?.toIntOrNull() ?: Int.MAX_VALUE },
+                                { it.metadataTitle?.lowercase() ?: it.fileName.lowercase() }
+                            )
                         }
                     }
                     else -> {
@@ -389,7 +396,7 @@ fun LibraryScreen(
                                     Box {
                                         if (searchQuery.isEmpty()) {
                                             Text(
-                                                "Search tracks...",
+                                                stringResource(R.string.library_search_tracks),
                                                 style = MaterialTheme.typography.bodyMedium,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
@@ -413,7 +420,7 @@ fun LibraryScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Close,
-                            contentDescription = "Close library and return to player",
+                            contentDescription = stringResource(R.string.library_close),
                             modifier = Modifier.size(24.dp),
                             tint = MaterialTheme.colorScheme.onSurface
                         )
@@ -432,7 +439,7 @@ fun LibraryScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Search,
-                            contentDescription = "Search tracks",
+                            contentDescription = stringResource(R.string.library_search_content_desc),
                             modifier = Modifier.size(24.dp),
                             tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                         )
@@ -446,7 +453,7 @@ fun LibraryScreen(
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.MoreVert,
-                                contentDescription = "Library menu",
+                                contentDescription = stringResource(R.string.library_menu),
                                 modifier = Modifier.size(24.dp),
                                 tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                             )
@@ -458,7 +465,7 @@ fun LibraryScreen(
                             modifier = Modifier.widthIn(min = 200.dp, max = 280.dp)
                         ) {
                             DropdownMenuItem(
-                                text = { Text("Scan Library", style = MaterialTheme.typography.bodyMedium) },
+                                text = { Text(stringResource(R.string.library_menu_scan), style = MaterialTheme.typography.bodyMedium) },
                                 onClick = { 
                                     if (hasPermission) {
                                         viewModel.scanSystemLibrary()
@@ -470,7 +477,7 @@ fun LibraryScreen(
                                 leadingIcon = {
                                     Icon(
                                         imageVector = Icons.Filled.Refresh,
-                                        contentDescription = "Scan Library",
+                                        contentDescription = stringResource(R.string.library_menu_scan),
                                         modifier = Modifier.size(18.dp),
                                         tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                                     )
@@ -478,7 +485,7 @@ fun LibraryScreen(
                             )
                             
                             DropdownMenuItem(
-                                text = { Text("Analyze BPM", style = MaterialTheme.typography.bodyMedium) },
+                                text = { Text(stringResource(R.string.library_menu_analyze), style = MaterialTheme.typography.bodyMedium) },
                                 onClick = { 
                                     if (!isAnalyzingLibrary) {
                                         viewModel.analyzeLibraryBpm()
@@ -489,7 +496,7 @@ fun LibraryScreen(
                                 leadingIcon = {
                                     Icon(
                                         imageVector = Icons.Filled.Timer,
-                                        contentDescription = "Analyze BPM",
+                                        contentDescription = stringResource(R.string.library_menu_analyze),
                                         modifier = Modifier.size(18.dp),
                                         tint = if (isAnalyzingLibrary) {
                                             MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
@@ -501,7 +508,7 @@ fun LibraryScreen(
                             )
                             
                             DropdownMenuItem(
-                                text = { Text("Clear Library", style = MaterialTheme.typography.bodyMedium) },
+                                text = { Text(stringResource(R.string.library_menu_clear), style = MaterialTheme.typography.bodyMedium) },
                                 onClick = { 
                                     showClearDialog = true
                                     showOverflowMenu = false
@@ -509,7 +516,7 @@ fun LibraryScreen(
                                 leadingIcon = {
                                     Icon(
                                         imageVector = Icons.Filled.Delete,
-                                        contentDescription = "Clear Library",
+                                        contentDescription = stringResource(R.string.library_menu_clear),
                                         modifier = Modifier.size(18.dp),
                                         tint = MaterialTheme.colorScheme.error
                                     )
@@ -519,7 +526,7 @@ fun LibraryScreen(
                             // Sync Metadata (if available)
                             if (isMetadataEditingAvailable) {
                                 DropdownMenuItem(
-                                    text = { Text("Sync Metadata", style = MaterialTheme.typography.bodyMedium) },
+                                    text = { Text(stringResource(R.string.library_menu_sync), style = MaterialTheme.typography.bodyMedium) },
                                     onClick = { 
                                         if (hasMetadataPermission) {
                                             showSyncMetadataDialog = true
@@ -531,7 +538,7 @@ fun LibraryScreen(
                                     leadingIcon = {
                                         Icon(
                                             imageVector = Icons.Filled.Sync,
-                                            contentDescription = "Sync Metadata",
+                                            contentDescription = stringResource(R.string.library_menu_sync),
                                             modifier = Modifier.size(18.dp),
                                             tint = if (hasMetadataPermission) {
                                                 MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
@@ -600,14 +607,14 @@ fun LibraryScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         FilterChip(
-                            label = "BPM Known",
+                            label = stringResource(R.string.library_filter_bpm_known),
                             selected = showOnlyKnownBpm,
                             onSelected = { viewModel.setShowOnlyKnownBpm(it) },
                             color = MaterialTheme.colorScheme.tertiary
                         )
                         Spacer(modifier = Modifier.width(AppSpacing.xs))
                         FilterChip(
-                            label = "Speed 0.9-1.1",
+                            label = stringResource(R.string.library_filter_speed),
                             selected = filterBySpeedFactor,
                             onSelected = { viewModel.setFilterBySpeedFactor(it) },
                             color = MaterialTheme.colorScheme.primary
@@ -621,7 +628,7 @@ fun LibraryScreen(
                                 )
                             ) {
                                 Text(
-                                    text = "Clear filters",
+                                    text = stringResource(R.string.library_clear_filters),
                                     style = MaterialTheme.typography.labelMedium
                                 )
                             }
@@ -634,10 +641,10 @@ fun LibraryScreen(
                 // clear selections made in other dimensions.
                 if (selectedTabIndex == 0) {
                     val dimensionOptions = listOf(
-                        BrowseDimension.ARTIST to "Artist",
-                        BrowseDimension.ALBUM to "Album",
-                        BrowseDimension.GENRE to "Genre",
-                        BrowseDimension.PATH to "Path"
+                        BrowseDimension.ARTIST to stringResource(R.string.library_browse_artist),
+                        BrowseDimension.ALBUM to stringResource(R.string.library_browse_album),
+                        BrowseDimension.GENRE to stringResource(R.string.library_browse_genre),
+                        BrowseDimension.PATH to stringResource(R.string.library_browse_path)
                     )
                     val activeOptions: List<String> = when (browseDimension) {
                         BrowseDimension.ARTIST -> artistOptions
@@ -658,7 +665,7 @@ fun LibraryScreen(
                         ) {
                             item {
                                 Text(
-                                    "Browse by",
+                                    stringResource(R.string.library_browse_by),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.padding(end = AppSpacing.xxs)
@@ -699,7 +706,7 @@ fun LibraryScreen(
                                 if (pathBreadcrumb != null && pathBreadcrumb.isNotBlank()) {
                                     item {
                                         Text(
-                                            "$pathBreadcrumb:",
+                                            stringResource(R.string.library_path_breadcrumb, pathBreadcrumb),
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             modifier = Modifier.padding(end = AppSpacing.xxs),
@@ -765,7 +772,7 @@ fun LibraryScreen(
                                 ) {
                                     item {
                                         Text(
-                                            "in $parentLabel",
+                                            stringResource(R.string.library_in_folder, parentLabel),
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             modifier = Modifier.padding(end = AppSpacing.xxs),
@@ -809,12 +816,12 @@ fun LibraryScreen(
                             ) {
                                 CircularProgressIndicator()
                                 Text(
-                                    "Analyzing library...",
+                                    stringResource(R.string.library_analyzing),
                                     style = MaterialTheme.typography.bodyLarge
                                 )
                                 analysisProgress.let { (completed, total) ->
                                     Text(
-                                        "Processing $completed/$total tracks",
+                                        stringResource(R.string.library_processing_tracks, completed, total),
                                         style = MaterialTheme.typography.bodyMedium
                                     )
                                 }
@@ -842,7 +849,7 @@ fun LibraryScreen(
                                 }
                             }
                             Text(
-                                text = "Analyzing BPM for added tracks...",
+                                text = stringResource(R.string.library_analyzing_bpm),
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -873,7 +880,22 @@ fun LibraryScreen(
                                     contentColor = MaterialTheme.colorScheme.error
                                 )
                             ) {
-                                Text("Cancel")
+                                Text(stringResource(R.string.library_cancel))
+                            }
+                            Button(
+                                onClick = {
+                                    selectedTrackIds = filteredTracks.map { it.id }.toSet()
+                                },
+                                enabled = filteredTracks.isNotEmpty(),
+                                modifier = Modifier.height(AppSpacing.xxl),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                    disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            ) {
+                                Text(stringResource(R.string.library_select_all))
                             }
                             Button(
                                 onClick = { 
@@ -897,7 +919,7 @@ fun LibraryScreen(
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Spacer(modifier = Modifier.width(AppSpacing.xxs))
-                                Text("Play (${selectedTrackIds.size})")
+                                Text(stringResource(R.string.library_play_count, selectedTrackIds.size))
                             }
                             Button(
                                 onClick = {
@@ -919,7 +941,31 @@ fun LibraryScreen(
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Spacer(modifier = Modifier.width(AppSpacing.xxs))
-                                Text("Playlist")
+                                Text(stringResource(R.string.library_playlist))
+                            }
+                            Button(
+                                onClick = {
+                                    val selectedTracks = filteredTracks.filter { it.id in selectedTrackIds }
+                                    onAddToUpcomingBatch(selectedTracks)
+                                    multiSelectMode = false
+                                    selectedTrackIds = emptySet()
+                                },
+                                enabled = selectedTrackIds.isNotEmpty(),
+                                modifier = Modifier.height(AppSpacing.xxl),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.primary,
+                                    disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                    disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Add,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(AppSpacing.xxs))
+                                Text(stringResource(R.string.library_upcoming))
                             }
                             Button(
                                 onClick = {
@@ -942,7 +988,7 @@ fun LibraryScreen(
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Spacer(modifier = Modifier.width(AppSpacing.xxs))
-                                Text("Favorites")
+                                Text(stringResource(R.string.library_favorites))
                             }
                         }
                     }
@@ -974,7 +1020,7 @@ fun LibraryScreen(
                                          ) {
                                              Icon(
                                                  imageVector = Icons.Filled.Close,
-                                                 contentDescription = "Reset selection",
+                                                 contentDescription = stringResource(R.string.library_reset_selection),
                                                  modifier = Modifier.size(18.dp)
                                              )
                                          }
@@ -991,11 +1037,11 @@ fun LibraryScreen(
                                      ) {
                                          Icon(
                                              imageVector = Icons.Filled.PlayArrow,
-                                             contentDescription = "Play all filtered tracks",
+                                             contentDescription = stringResource(R.string.library_play_all),
                                              modifier = Modifier.size(18.dp)
                                          )
                                          Spacer(modifier = Modifier.width(AppSpacing.xxs))
-                                         Text("Play All (${filteredTracks.size})", style = MaterialTheme.typography.bodyMedium)
+                                         Text(stringResource(R.string.library_play_all_count, filteredTracks.size), style = MaterialTheme.typography.bodyMedium)
                                      }
                                  }
                              }
@@ -1028,17 +1074,17 @@ fun LibraryScreen(
                             ) {
                                 Icon(
                                     imageVector = Icons.Filled.FilterList,
-                                    contentDescription = "No filters active - use filters to display songs",
+                                    contentDescription = stringResource(R.string.library_no_filters_desc),
                                     modifier = Modifier.size(AppSpacing.xxxl),
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 Text(
-                                    text = "Use filters to display songs",
+                                    text = stringResource(R.string.library_use_filters),
                                     style = MaterialTheme.typography.titleLarge,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                                  Text(
-                                     text = "Use filter chips to display songs",
+                                     text = stringResource(R.string.library_use_filter_chips),
                                      style = MaterialTheme.typography.bodyMedium,
                                      color = MaterialTheme.colorScheme.onSurfaceVariant,
                                      textAlign = TextAlign.Center
@@ -1058,17 +1104,17 @@ fun LibraryScreen(
                             ) {
                                 Icon(
                                     imageVector = Icons.Filled.MusicNote,
-                                    contentDescription = "No tracks match the current filters",
+                                    contentDescription = stringResource(R.string.library_no_tracks_desc),
                                     modifier = Modifier.size(AppSpacing.xxxl),
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 Text(
-                                    text = "No tracks found",
+                                    text = stringResource(R.string.library_no_tracks),
                                     style = MaterialTheme.typography.titleLarge,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
-                                    text = "Try adjusting your filters",
+                                    text = stringResource(R.string.library_try_adjusting),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     textAlign = TextAlign.Center
@@ -1129,6 +1175,10 @@ onAddToPlaylist = {
                              isFavorite = track.isFavorite,
                              speedFactor = speedFactor,
                             isSelected = selectedTrackIds.contains(track.id),
+                            onLongClick = {
+                                multiSelectMode = true
+                                selectedTrackIds = selectedTrackIds + track.id
+                            },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = AppSpacing.xs, vertical = AppSpacing.xxxs)
@@ -1178,7 +1228,7 @@ onAddToPlaylist = {
         val results = analysisResults
         if (results > 0) {
             snackbarHostState.showSnackbar(
-                "BPM analysis complete! Updated $results tracks"
+                context.getString(R.string.library_bpm_analysis_complete, results)
             )
             viewModel.clearAnalysisResults()
         }
@@ -1188,10 +1238,10 @@ onAddToPlaylist = {
     if (showClearDialog) {
         AlertDialog(
             onDismissRequest = { showClearDialog = false },
-            title = { Text("Clear Library", style = MaterialTheme.typography.titleLarge) },
+            title = { Text(stringResource(R.string.dialog_clear_library_title), style = MaterialTheme.typography.titleLarge) },
             text = { 
                 Text(
-                    "Are you sure you want to delete all tracks from the library? This cannot be undone.",
+                    stringResource(R.string.dialog_clear_library_body),
                     style = MaterialTheme.typography.bodyMedium
                 )
             },
@@ -1206,7 +1256,7 @@ onAddToPlaylist = {
                         contentColor = MaterialTheme.colorScheme.onError
                     )
                 ) {
-                    Text("Delete All")
+                    Text(stringResource(R.string.dialog_delete_all))
                 }
             },
             dismissButton = {
@@ -1223,10 +1273,10 @@ onAddToPlaylist = {
     if (showPermissionDialog) {
         AlertDialog(
             onDismissRequest = { showPermissionDialog = false },
-            title = { Text("Permission Required", style = MaterialTheme.typography.titleLarge) },
+            title = { Text(stringResource(R.string.dialog_permission_title), style = MaterialTheme.typography.titleLarge) },
             text = { 
                 Text(
-                    "To scan your music library, the app needs permission to access media files on your device.",
+                    stringResource(R.string.dialog_permission_body),
                     style = MaterialTheme.typography.bodyMedium
                 )
             },
@@ -1242,7 +1292,7 @@ onAddToPlaylist = {
                         permissionLauncher.launch(permission)
                     }
                 ) {
-                    Text("Grant Permission")
+                    Text(stringResource(R.string.dialog_grant_permission))
                 }
             },
             dismissButton = {
@@ -1259,13 +1309,13 @@ onAddToPlaylist = {
     errorMessage?.let { error ->
         AlertDialog(
             onDismissRequest = { viewModel.clearError() },
-            title = { Text("Error", style = MaterialTheme.typography.titleLarge) },
+            title = { Text(stringResource(R.string.dialog_error_title), style = MaterialTheme.typography.titleLarge) },
             text = { Text(error, style = MaterialTheme.typography.bodyMedium) },
             confirmButton = {
                 Button(
                     onClick = { viewModel.clearError() }
                 ) {
-                    Text("OK")
+                    Text(stringResource(R.string.dialog_ok))
                 }
             }
         )
@@ -1275,7 +1325,7 @@ onAddToPlaylist = {
     if (showMetadataPermissionDialog) {
         AlertDialog(
             onDismissRequest = { showMetadataPermissionDialog = false },
-            title = { Text("File Access Required", style = MaterialTheme.typography.titleLarge) },
+            title = { Text(stringResource(R.string.dialog_file_access_title), style = MaterialTheme.typography.titleLarge) },
             text = { 
                 Column {
                     Text(
@@ -1284,7 +1334,7 @@ onAddToPlaylist = {
                     )
                     Spacer(modifier = Modifier.height(AppSpacing.md))
                     Text(
-                        "This will open your device settings where you can enable file access for RunBeat.",
+                        stringResource(R.string.dialog_file_access_body),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                     )
@@ -1299,7 +1349,7 @@ onAddToPlaylist = {
                         )
                     }
                 ) {
-                    Text("Open Settings")
+                    Text(stringResource(R.string.dialog_open_settings))
                 }
             },
             dismissButton = {
@@ -1316,16 +1366,16 @@ onAddToPlaylist = {
     if (showSyncMetadataDialog) {
         AlertDialog(
             onDismissRequest = { showSyncMetadataDialog = false },
-            title = { Text("Sync BPM to Files", style = MaterialTheme.typography.titleLarge) },
+            title = { Text(stringResource(R.string.dialog_sync_bpm_title), style = MaterialTheme.typography.titleLarge) },
             text = { 
                 Column {
                     Text(
-                        "This will save BPM values from the app database to the ID3 tags of your music files.",
+                        stringResource(R.string.dialog_sync_bpm_body),
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Spacer(modifier = Modifier.height(AppSpacing.md))
                     Text(
-                        "Only tracks with known BPM values will be updated. This may take some time for large libraries.",
+                        stringResource(R.string.dialog_sync_bpm_body2),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                     )
@@ -1338,7 +1388,7 @@ onAddToPlaylist = {
                         viewModel.syncAllBpmToFileMetadata()
                     }
                 ) {
-                    Text("Sync All")
+                    Text(stringResource(R.string.dialog_sync_all))
                 }
             },
             dismissButton = {
@@ -1357,13 +1407,13 @@ onAddToPlaylist = {
             onDismissRequest = { 
                 // Don't allow dismiss during sync
             },
-            title = { Text("Syncing BPM to Files", style = MaterialTheme.typography.titleLarge) },
+            title = { Text(stringResource(R.string.dialog_syncing_bpm_title), style = MaterialTheme.typography.titleLarge) },
             text = { 
                 Column {
                     if (metadataSaveProgress.second > 0) {
                         val progress = metadataSaveProgress.first.toFloat() / metadataSaveProgress.second.toFloat()
                         Text(
-                            "Processing track ${metadataSaveProgress.first} of ${metadataSaveProgress.second}",
+                            stringResource(R.string.dialog_syncing_progress, metadataSaveProgress.first, metadataSaveProgress.second),
                             style = MaterialTheme.typography.bodyMedium
                         )
                         Spacer(modifier = Modifier.height(AppSpacing.sm))
@@ -1381,7 +1431,7 @@ onAddToPlaylist = {
                     onClick = { viewModel.clearMetadataSaveState() },
                     enabled = !isSavingMetadata
                 ) {
-                    Text("Close")
+                    Text(stringResource(R.string.dialog_close))
                 }
             }
         )
@@ -1392,7 +1442,7 @@ onAddToPlaylist = {
         LaunchedEffect(metadataSaveResults) {
             // Show a snackbar with the results
             snackbarHostState.showSnackbar(
-                "Successfully synced BPM to ${metadataSaveResults} files"
+                context.getString(R.string.library_sync_complete, metadataSaveResults)
             )
             viewModel.clearMetadataSaveState()
         }
@@ -1412,19 +1462,19 @@ onAddToPlaylist = {
             onDismissRequest = { showMetadataSaveConfirmDialog = false },
             title = { 
                 Text(
-                    "Save BPM to File",
+                    stringResource(R.string.dialog_save_bpm_title),
                     style = MaterialTheme.typography.titleLarge
                 )
             },
             text = { 
                 Column {
                     Text(
-                        "Save BPM ${selectedTrackForMetadata?.bpm} to file metadata for:",
+                        stringResource(R.string.dialog_save_bpm_body, selectedTrackForMetadata?.bpm?.toString() ?: ""),
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Spacer(modifier = Modifier.height(AppSpacing.sm))
                     Text(
-                        selectedTrackForMetadata?.metadataTitle ?: selectedTrackForMetadata?.fileName ?: "Unknown",
+                        selectedTrackForMetadata?.metadataTitle ?: selectedTrackForMetadata?.fileName ?: stringResource(R.string.trackcard_unknown),
                         style = MaterialTheme.typography.bodyLarge,
                         fontWeight = FontWeight.Bold
                     )
@@ -1451,7 +1501,7 @@ onAddToPlaylist = {
                     },
                     enabled = selectedTrackForMetadata?.bpm != null
                 ) {
-                    Text("Save")
+                    Text(stringResource(R.string.dialog_save))
                 }
             },
             dismissButton = {
@@ -1478,7 +1528,7 @@ onAddToPlaylist = {
             },
             title = {
                 Text(
-                    if (isRenaming) "Rename Playlist" else "New Playlist",
+                    if (isRenaming) stringResource(R.string.dialog_rename_playlist) else stringResource(R.string.dialog_new_playlist),
                     style = MaterialTheme.typography.titleLarge
                 )
             },
@@ -1488,7 +1538,7 @@ onAddToPlaylist = {
                     onValueChange = { playlistNameInput = it },
                     modifier = Modifier.fillMaxWidth(),
                     placeholder = {
-                        Text(playlistBeingRenamed?.name ?: "Playlist name", style = MaterialTheme.typography.bodyMedium)
+                        Text(playlistBeingRenamed?.name ?: stringResource(R.string.dialog_playlist_name_hint), style = MaterialTheme.typography.bodyMedium)
                     },
                     singleLine = true
                 )
@@ -1531,10 +1581,10 @@ onAddToPlaylist = {
     if (playlistBeingDeleted != null) {
         AlertDialog(
             onDismissRequest = { playlistBeingDeleted = null },
-            title = { Text("Delete Playlist", style = MaterialTheme.typography.titleLarge) },
+            title = { Text(stringResource(R.string.dialog_delete_playlist_title), style = MaterialTheme.typography.titleLarge) },
             text = {
                 Text(
-                    "Delete \"${playlistBeingDeleted?.name}\"? The tracks themselves will not be removed.",
+                    stringResource(R.string.dialog_delete_playlist_body, playlistBeingDeleted?.name ?: ""),
                     style = MaterialTheme.typography.bodyMedium
                 )
             },
@@ -1549,7 +1599,7 @@ onAddToPlaylist = {
                         contentColor = MaterialTheme.colorScheme.onError
                     )
                 ) {
-                    Text("Delete")
+                    Text(stringResource(R.string.dialog_delete))
                 }
             },
             dismissButton = {
@@ -1570,7 +1620,7 @@ onAddToPlaylist = {
             },
             title = {
                 Text(
-                    "Add to Playlist",
+                    stringResource(R.string.dialog_add_to_playlist_title),
                     style = MaterialTheme.typography.titleLarge
                 )
             },
@@ -1581,7 +1631,7 @@ onAddToPlaylist = {
                         onValueChange = { newPlaylistName = it },
                         modifier = Modifier.fillMaxWidth(),
                         placeholder = {
-                            Text("New playlist name", style = MaterialTheme.typography.bodyMedium)
+                            Text(stringResource(R.string.dialog_add_to_playlist_name_hint), style = MaterialTheme.typography.bodyMedium)
                         },
                         singleLine = true
                     )
@@ -1607,11 +1657,11 @@ onAddToPlaylist = {
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(AppSpacing.xxs))
-                        Text("Create & Add")
+                        Text(stringResource(R.string.dialog_create_and_add))
                     }
                     if (playlists.isEmpty()) {
                         Text(
-                            "No playlists yet - create one above.",
+                            stringResource(R.string.dialog_no_playlists),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(top = AppSpacing.xs)
@@ -1619,7 +1669,7 @@ onAddToPlaylist = {
                     } else {
                         Spacer(modifier = Modifier.height(AppSpacing.sm))
                         Text(
-                            "Or add to an existing playlist",
+                            stringResource(R.string.dialog_add_to_existing),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -1641,7 +1691,7 @@ onAddToPlaylist = {
                             ) {
                                 Icon(
                                     imageVector = Icons.Filled.PlaylistAdd,
-                                    contentDescription = "Add to ${playlist.name}",
+                                    contentDescription = stringResource(R.string.dialog_add_to_playlist_item_desc, playlist.name),
                                     modifier = Modifier.size(18.dp),
                                     tint = MaterialTheme.colorScheme.primary
                                 )
@@ -1695,17 +1745,17 @@ fun PlaylistsContent(
         ) {
             Icon(
                 imageVector = Icons.Filled.MusicNote,
-                contentDescription = "No playlists",
+                contentDescription = stringResource(R.string.playlists_no_playlists_desc),
                 modifier = Modifier.size(AppSpacing.xxxl),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
-                text = "No playlists yet",
+                text = stringResource(R.string.playlists_empty),
                 style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.onSurface
             )
             Text(
-                text = "Create a playlist to organize your tracks",
+                text = stringResource(R.string.playlists_create_hint),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
@@ -1726,11 +1776,11 @@ fun PlaylistsContent(
             ) {
                 Icon(
                     imageVector = Icons.Filled.Add,
-                    contentDescription = "Create playlist",
+                    contentDescription = stringResource(R.string.playlists_create_desc),
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(AppSpacing.xxs))
-                Text("Create Playlist", style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.playlists_create_button), style = MaterialTheme.typography.bodyMedium)
             }
             
             LazyColumn(
@@ -1805,7 +1855,7 @@ fun PlaylistItem(
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = "${tracks.size} tracks",
+                        text = stringResource(R.string.playlists_track_count, tracks.size),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1813,7 +1863,7 @@ fun PlaylistItem(
                 IconButton(onClick = onPlay, modifier = Modifier.touchTarget()) {
                     Icon(
                         imageVector = Icons.Filled.PlayArrow,
-                        contentDescription = "Play playlist",
+                        contentDescription = stringResource(R.string.playlists_play_desc),
                         modifier = Modifier.size(22.dp),
                         tint = MaterialTheme.colorScheme.primary
                     )
@@ -1821,7 +1871,7 @@ fun PlaylistItem(
                 IconButton(onClick = onRename, modifier = Modifier.touchTarget()) {
                     Icon(
                         imageVector = Icons.Filled.Edit,
-                        contentDescription = "Rename playlist",
+                        contentDescription = stringResource(R.string.playlists_rename_desc),
                         modifier = Modifier.size(22.dp),
                         tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                     )
@@ -1829,7 +1879,7 @@ fun PlaylistItem(
                 IconButton(onClick = onDelete, modifier = Modifier.touchTarget()) {
                     Icon(
                         imageVector = Icons.Filled.Delete,
-                        contentDescription = "Delete playlist",
+                        contentDescription = stringResource(R.string.playlists_delete_desc),
                         modifier = Modifier.size(22.dp),
                         tint = MaterialTheme.colorScheme.error
                     )
@@ -1839,7 +1889,7 @@ fun PlaylistItem(
             AnimatedVisibility(visible = expanded) {
                 if (tracks.isEmpty()) {
                     Text(
-                        text = "No tracks in this playlist",
+                        text = stringResource(R.string.playlists_no_tracks),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(AppSpacing.sm)
@@ -1855,7 +1905,7 @@ fun PlaylistItem(
                         ) {
                             Icon(
                                 imageVector = if (track.isFavorite) Icons.Filled.Star else Icons.Filled.StarBorder,
-                                contentDescription = "Toggle favorite",
+                                contentDescription = stringResource(R.string.playlists_toggle_favorite),
                                 modifier = Modifier
                                     .size(16.dp)
                                     .clickable { onToggleFavorite(track) },
@@ -1886,7 +1936,7 @@ fun PlaylistItem(
                             IconButton(onClick = { onRemoveTrack(track) }, modifier = Modifier.touchTarget()) {
                                 Icon(
                                     imageVector = Icons.Filled.Close,
-                                    contentDescription = "Remove from playlist",
+                                    contentDescription = stringResource(R.string.playlists_remove_from),
                                     modifier = Modifier.size(20.dp),
                                     tint = MaterialTheme.colorScheme.error
                                 )
@@ -1919,17 +1969,17 @@ fun FavoritesContent(
         ) {
             Icon(
                 imageVector = Icons.Filled.StarBorder,
-                contentDescription = "No favorites",
+                contentDescription = stringResource(R.string.favorites_empty_desc),
                 modifier = Modifier.size(AppSpacing.xxxl),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
-                text = "No favorites yet",
+                text = stringResource(R.string.favorites_empty),
                 style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.onSurface
             )
             Text(
-                text = "Tap the star on any track to add it to favorites",
+                text = stringResource(R.string.favorites_hint),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
@@ -1950,11 +2000,11 @@ fun FavoritesContent(
             ) {
                 Icon(
                     imageVector = Icons.Filled.PlayArrow,
-                    contentDescription = "Play all favorites",
+                    contentDescription = stringResource(R.string.favorites_play_all_desc),
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(AppSpacing.xxs))
-                Text("Play All Favorites (${tracks.size})", style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.favorites_play_all_count, tracks.size), style = MaterialTheme.typography.bodyMedium)
             }
             
             LazyColumn(
@@ -2005,6 +2055,9 @@ fun FilterChip(
     
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
+
+    val selectedStateText = stringResource(if (selected) R.string.filter_chip_selected else R.string.filter_chip_not_selected)
+    val chipContentDesc = stringResource(R.string.filter_chip_desc, label, selectedStateText)
     
     Box(
         modifier = modifier
@@ -2018,7 +2071,7 @@ fun FilterChip(
             .padding(horizontal = AppSpacing.xs, vertical = AppSpacing.xxs)
             .heightIn(min = AppSpacing.xxs)
             .semantics {
-                contentDescription = "Filter chip: $label, ${if (selected) "selected" else "not selected"}"
+                contentDescription = chipContentDesc
             },
         contentAlignment = Alignment.Center
     ) {
@@ -2036,7 +2089,7 @@ fun FilterChip(
 fun LibraryScreenPreview() {
     BpmAppTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
-            Text("Preview requires Hilt setup")
+            Text(stringResource(R.string.library_preview_error))
         }
     }
 }

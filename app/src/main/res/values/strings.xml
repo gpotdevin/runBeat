@@ -41,4 +41,338 @@
     <!-- Settings: Playback -->
     <string name="setting_mode_beep_title">Rhythm mode beep</string>
     <string name="setting_mode_beep_description">Play 2 beeps for binary or 3 for ternary when a track starts with speed correction on</string>
+
+    <!-- ==================== Bottom Navigation ==================== -->
+    <string name="nav_player">Player</string>
+    <string name="nav_library">Library</string>
+    <string name="nav_bpm_tools">BPM Tools</string>
+    <string name="nav_settings">Settings</string>
+
+    <!-- ==================== Player Screen ==================== -->
+    <string name="player_app_name">RunBeat</string>
+    <string name="player_version_prefix">v%1$s</string>
+    <string name="player_version_fallback">v1.0.x</string>
+    <string name="player_no_track_selected">No track selected</string>
+    <string name="player_upcoming_count">Upcoming (%1$d)</string>
+    <string name="player_toggle_shuffle">Toggle shuffle</string>
+    <string name="player_save_playlist">Save playlist</string>
+    <string name="player_clear_playlist">Clear upcoming songs playlist</string>
+    <string name="player_toggle_reorder">Toggle reorder mode</string>
+    <string name="player_previous">Previous</string>
+    <string name="player_pause">Pause</string>
+    <string name="player_play">Play</string>
+    <string name="player_next">Next</string>
+    <string name="player_disable_speed">Disable speed correction</string>
+    <string name="player_enable_speed">Enable speed correction</string>
+    <string name="player_target_cadence">Target Cadence</string>
+    <string name="player_decrease_bpm">Decrease BPM</string>
+    <string name="player_increase_bpm">Increase BPM</string>
+    <string name="player_bpm_value">%1$d BPM</string>
+    <string name="player_unknown">Unknown</string>
+    <string name="player_factor_display">Factor: %1$.2fx</string>
+    <string name="player_original_bpm">Original: %1$s</string>
+    <string name="player_analyzing_bpm">Analyzing BPM…</string>
+    <string name="player_no_upcoming">No upcoming songs</string>
+    <string name="player_bpm_with_x">%1$s  %2$.2fx</string>
+    <string name="player_bpm_suffix">%1$s BPM</string>
+    <string name="player_bpm_unknown">-- BPM</string>
+    <string name="player_drag_handle">Drag handle</string>
+
+    <!-- Save Playlist Dialog -->
+    <string name="dialog_save_playlist_title">Save current playlist</string>
+    <string name="dialog_save_playlist_empty">Current playlist has no tracks from the library</string>
+    <string name="dialog_save_playlist_name_label">New playlist name</string>
+    <string name="dialog_save_playlist_update_label">Update existing playlist:</string>
+    <string name="dialog_save_playlist_update_button">Update %1$s</string>
+    <string name="dialog_save_playlist_create">Create</string>
+    <string name="dialog_cancel">Cancel</string>
+
+    <!-- ==================== Library Screen ==================== -->
+    <string name="library_tab_all">All</string>
+    <string name="library_tab_playlists">Playlists</string>
+    <string name="library_tab_favorites">Favorites</string>
+    <string name="library_title">Library</string>
+    <string name="library_close">Close library and return to player</string>
+    <string name="library_search_tracks">Search tracks…</string>
+    <string name="library_search_content_desc">Search tracks</string>
+    <string name="library_menu">Library menu</string>
+    <string name="library_path_breadcrumb">%1$s:</string>
+    <string name="library_in_folder">in %1$s</string>
+
+    <!-- Library overflow menu -->
+    <string name="library_menu_scan">Scan Library</string>
+    <string name="library_menu_analyze">Analyze BPM</string>
+    <string name="library_menu_clear">Clear Library</string>
+    <string name="library_menu_sync">Sync Metadata</string>
+
+    <!-- Library filter chips -->
+    <string name="library_filter_bpm_known">BPM Known</string>
+    <string name="library_filter_speed">Speed 0.9-1.1</string>
+    <string name="library_clear_filters">Clear filters</string>
+
+    <!-- Library browse dimensions -->
+    <string name="library_browse_artist">Artist</string>
+    <string name="library_browse_album">Album</string>
+    <string name="library_browse_genre">Genre</string>
+    <string name="library_browse_path">Path</string>
+    <string name="library_browse_by">Browse by</string>
+
+    <!-- Library progress overlays -->
+    <string name="library_analyzing">Analyzing library…</string>
+    <string name="library_processing_tracks">Processing %1$d/%2$d tracks</string>
+    <string name="library_analyzing_bpm">Analyzing BPM for added tracks…</string>
+
+    <!-- Library multi-select toolbar -->
+    <string name="library_cancel">Cancel</string>
+    <string name="library_select_all">Select All</string>
+    <string name="library_play_count">Play (%1$d)</string>
+    <string name="library_playlist">Playlist</string>
+    <string name="library_upcoming">Upcoming</string>
+    <string name="library_favorites">Favorites</string>
+
+    <!-- Library track list -->
+    <string name="library_reset_selection">Reset selection</string>
+    <string name="library_play_all">Play all filtered tracks</string>
+    <string name="library_play_all_count">Play All (%1$d)</string>
+    <string name="library_no_filters_desc">No filters active - use filters to display songs</string>
+    <string name="library_use_filters">Use filters to display songs</string>
+    <string name="library_use_filter_chips">Use filter chips to display songs</string>
+    <string name="library_no_tracks_desc">No tracks match the current filters</string>
+    <string name="library_no_tracks">No tracks found</string>
+    <string name="library_try_adjusting">Try adjusting your filters</string>
+
+    <!-- Library snackbar messages -->
+    <string name="library_bpm_analysis_complete">BPM analysis complete! Updated %1$d tracks</string>
+    <string name="library_sync_complete">Successfully synced BPM to %1$d files</string>
+
+    <!-- Library dialogs — Clear Library -->
+    <string name="dialog_clear_library_title">Clear Library</string>
+    <string name="dialog_clear_library_body">Are you sure you want to delete all tracks from the library? This cannot be undone.</string>
+    <string name="dialog_delete_all">Delete All</string>
+
+    <!-- Library dialogs — Permission -->
+    <string name="dialog_permission_title">Permission Required</string>
+    <string name="dialog_permission_body">To scan your music library, the app needs permission to access media files on your device.</string>
+    <string name="dialog_grant_permission">Grant Permission</string>
+
+    <!-- Library dialogs — Error -->
+    <string name="dialog_error_title">Error</string>
+    <string name="dialog_ok">OK</string>
+
+    <!-- Library dialogs — File Access -->
+    <string name="dialog_file_access_title">File Access Required</string>
+    <string name="dialog_file_access_body">This will open your device settings where you can enable file access for RunBeat.</string>
+    <string name="dialog_open_settings">Open Settings</string>
+
+    <!-- Library dialogs — Sync BPM -->
+    <string name="dialog_sync_bpm_title">Sync BPM to Files</string>
+    <string name="dialog_sync_bpm_body">This will save BPM values from the app database to the ID3 tags of your music files.</string>
+    <string name="dialog_sync_bpm_body2">Only tracks with known BPM values will be updated. This may take some time for large libraries.</string>
+    <string name="dialog_sync_all">Sync All</string>
+
+    <!-- Library dialogs — Syncing BPM progress -->
+    <string name="dialog_syncing_bpm_title">Syncing BPM to Files</string>
+    <string name="dialog_syncing_progress">Processing track %1$d of %2$d</string>
+    <string name="dialog_close">Close</string>
+
+    <!-- Library dialogs — Save BPM to File -->
+    <string name="dialog_save_bpm_title">Save BPM to File</string>
+    <string name="dialog_save_bpm_body">Save BPM %1$s to file metadata for:</string>
+    <string name="dialog_save">Save</string>
+
+    <!-- Library dialogs — Create / Rename Playlist -->
+    <string name="dialog_rename_playlist">Rename Playlist</string>
+    <string name="dialog_new_playlist">New Playlist</string>
+    <string name="dialog_playlist_name_hint">Playlist name</string>
+
+    <!-- Library dialogs — Delete Playlist -->
+    <string name="dialog_delete_playlist_title">Delete Playlist</string>
+    <string name="dialog_delete_playlist_body">Delete \"%1$s\"? The tracks themselves will not be removed.</string>
+    <string name="dialog_delete">Delete</string>
+
+    <!-- Library dialogs — Add to Playlist -->
+    <string name="dialog_add_to_playlist_title">Add to Playlist</string>
+    <string name="dialog_add_to_playlist_name_hint">New playlist name</string>
+    <string name="dialog_create_and_add">Create &amp; Add</string>
+    <string name="dialog_no_playlists">No playlists yet - create one above.</string>
+    <string name="dialog_add_to_existing">Or add to an existing playlist</string>
+    <string name="dialog_add_to_playlist_item_desc">Add to %1$s</string>
+
+    <!-- Library playlists content -->
+    <string name="playlists_no_playlists_desc">No playlists</string>
+    <string name="playlists_empty">No playlists yet</string>
+    <string name="playlists_create_hint">Create a playlist to organize your tracks</string>
+    <string name="playlists_create_desc">Create playlist</string>
+    <string name="playlists_create_button">Create Playlist</string>
+    <string name="playlists_play_desc">Play playlist</string>
+    <string name="playlists_rename_desc">Rename playlist</string>
+    <string name="playlists_delete_desc">Delete playlist</string>
+    <string name="playlists_no_tracks">No tracks in this playlist</string>
+    <string name="playlists_toggle_favorite">Toggle favorite</string>
+    <string name="playlists_remove_from">Remove from playlist</string>
+    <string name="playlists_track_count">%1$d tracks</string>
+
+    <!-- Library favorites content -->
+    <string name="favorites_empty_desc">No favorites</string>
+    <string name="favorites_empty">No favorites yet</string>
+    <string name="favorites_hint">Tap the star on any track to add it to favorites</string>
+    <string name="favorites_play_all_desc">Play all favorites</string>
+    <string name="favorites_play_all_count">Play All Favorites (%1$d)</string>
+
+    <!-- Library filter chip -->
+    <string name="filter_chip_desc">Filter chip: %1$s, %2$s</string>
+    <string name="filter_chip_selected">selected</string>
+    <string name="filter_chip_not_selected">not selected</string>
+
+    <!-- Library preview -->
+    <string name="library_preview_error">Preview requires Hilt setup</string>
+
+    <!-- Library plurals -->
+    <plurals name="track_count">
+        <item quantity="one">%1$d track</item>
+        <item quantity="other">%1$d tracks</item>
+    </plurals>
+
+    <!-- ==================== TrackCard ==================== -->
+    <string name="trackcard_desc_template">Track: %1$s, %2$s, %3$s</string>
+    <string name="trackcard_unknown_artist">Unknown artist</string>
+    <string name="trackcard_unknown_bpm">unknown BPM</string>
+    <string name="trackcard_bpm_value">%1$s BPM</string>
+    <string name="trackcard_unknown">Unknown</string>
+    <string name="trackcard_unknown_bpm_label">Unknown BPM</string>
+    <string name="trackcard_speed_unknown">Speed factor unknown</string>
+    <string name="trackcard_speed_perfect">Perfect match</string>
+    <string name="trackcard_speed_needs_adjustment">Needs adjustment</string>
+    <string name="trackcard_speed_good">Good match</string>
+    <string name="trackcard_remove_favorite">Remove from favorites</string>
+    <string name="trackcard_add_favorite">Add to favorites</string>
+    <string name="trackcard_add_to_playlist">Add to Playlist</string>
+    <string name="trackcard_add">Add</string>
+    <string name="trackcard_actions">Track actions</string>
+    <string name="trackcard_play_replace">Play (Replace Current)</string>
+    <string name="trackcard_play">Play</string>
+    <string name="trackcard_add_to_upcoming">Add to Upcoming</string>
+    <string name="trackcard_edit_bpm">Edit BPM</string>
+    <string name="trackcard_delete">Delete</string>
+
+    <!-- ==================== BPM Tools Screen ==================== -->
+    <string name="bpmtools_tab_matcher">Cadence Matcher</string>
+    <string name="bpmtools_tab_detect">Tap Beat to Detect BPM</string>
+    <string name="bpmtools_tab_manual">Manual Entry</string>
+    <string name="bpmtools_cadence_matcher">Cadence Matcher</string>
+    <string name="bpmtools_decrease">Decrease</string>
+    <string name="bpmtools_target_cadence">Target Cadence</string>
+    <string name="bpmtools_cadence_value">%1$d BPM</string>
+    <string name="bpmtools_increase">Increase</string>
+    <string name="bpmtools_rhythm_pattern">Rhythm Pattern</string>
+    <string name="bpmtools_cadence_matches">Cadence Matches</string>
+    <string name="bpmtools_detect_bpm">Detect BPM</string>
+    <string name="bpmtools_detect_with_aubio">Detect BPM with Aubio</string>
+    <string name="bpmtools_detecting">Detecting…</string>
+    <string name="bpmtools_or_tap">Or tap to beat manually</string>
+    <string name="bpmtools_speed_adjusted">Playback speed is adjusted (%1$.2fx). Taps won\'t reflect normal tempo.</string>
+    <string name="bpmtools_tap_here">Tap here</string>
+    <string name="bpmtools_detected_bpm">Detected: %1$d BPM</string>
+    <string name="bpmtools_tap_beat">Tap beat to detect BPM</string>
+    <string name="bpmtools_use">Use</string>
+    <string name="bpmtools_clear">Clear</string>
+    <string name="bpmtools_use_title">Use detected BPM?</string>
+    <string name="bpmtools_use_body">Playback speed is adjusted (%1$.2fx). The tapped BPM reflects the current tempo, not normal speed. Save it anyway?</string>
+    <string name="bpmtools_manual_entry">Manual Entry</string>
+    <string name="bpmtools_enter_bpm">Enter BPM</string>
+    <string name="bpmtools_enter_bpm_hint">Enter BPM value</string>
+    <string name="bpmtools_save_bpm_file">Save BPM to file ID3 tag</string>
+
+    <!-- ==================== Settings Screen ==================== -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_back">Back</string>
+    <string name="settings_section_playback">PLAYBACK</string>
+    <string name="settings_section_library">LIBRARY</string>
+    <string name="settings_section_appearance">APPEARANCE</string>
+    <string name="settings_section_advanced">ADVANCED</string>
+    <string name="settings_section_help">HELP</string>
+    <string name="settings_section_about">ABOUT</string>
+    <string name="settings_section_language">LANGUAGE</string>
+    <string name="settings_auto_apply_title">Auto-Apply Cadence Match</string>
+    <string name="settings_auto_apply_desc">Automatically apply cadence matching when track changes</string>
+    <string name="settings_auto_scan_title">Auto-Scan on Startup</string>
+    <string name="settings_auto_scan_desc">Automatically scan for new tracks when app starts</string>
+    <string name="settings_dynamic_colors_title">Dynamic Colors</string>
+    <string name="settings_dynamic_colors_desc">Use system dynamic colors (Android 12+)</string>
+    <string name="settings_import_csv_title">Import CSV</string>
+    <string name="settings_import_csv_desc">Import tracks and BPM values from a CSV file</string>
+    <string name="settings_import_button">Import</string>
+    <string name="settings_csv_format_label">CSV format — one track per line (header line is skipped):</string>
+    <string name="settings_csv_format_spec">relative_path,filename,bpm,file_size_bytes[,title,artist,album,genre]</string>
+    <string name="settings_csv_example">Example: GoGo_Penguin/A_Humdrum_Star,1-2-Raven-320.mp3,152.0,12166665,Song Title,Artist Name,Album Name</string>
+    <string name="settings_csv_quoted">Filenames containing commas must be quoted.</string>
+    <string name="settings_version">Version</string>
+    <string name="settings_license">App license</string>
+    <string name="settings_libraries">Libraries</string>
+    <string name="settings_libraries_desc">Third-party libraries used by this app</string>
+    <string name="settings_view">View</string>
+    <string name="settings_imported_tracks">Imported %1$d tracks</string>
+    <string name="settings_language_title">App Language</string>
+    <string name="settings_language_desc">Choose the app display language</string>
+    <string name="settings_language_system">System default</string>
+    <string name="settings_language_english">English</string>
+    <string name="settings_language_french">Français</string>
+    <string name="settings_language_german">Deutsch</string>
+    <string name="settings_language_spanish">Español</string>
+
+    <!-- ==================== Cadence Matcher (domain) ==================== -->
+    <string name="rhythm_quarter">Quarter</string>
+    <string name="rhythm_eighth">Eighth</string>
+    <string name="rhythm_triplet">Triplet</string>
+    <string name="rhythm_sixth">Sixth</string>
+    <string name="rhythm_quarter_desc">Run on every beat</string>
+    <string name="rhythm_eighth_desc">Run on every half beat</string>
+    <string name="rhythm_triplet_desc">Run on every dotted quarter</string>
+    <string name="rhythm_sixth_desc">Run on every sixth beat</string>
+    <string name="rhythm_group_binary">Binary</string>
+    <string name="rhythm_group_ternary">Ternary</string>
+    <string name="rhythm_group_binary_desc">Run on every beat (1.0x) or every half-beat (2.0x)</string>
+    <string name="rhythm_group_ternary_desc">Run on every dotted-quarter (1.5x) or every sixth note (3.0x)</string>
+    <string name="cadence_match_success">Run on %1$s notes at %2$.2fx speed</string>
+    <string name="cadence_match_invalid">No valid rhythm match (speed would be %1$.2fx)</string>
+    <string name="cadence_match_error_invalid_bpm">Invalid BPM: must be > 0</string>
+    <string name="cadence_match_error_no_match">No valid match found</string>
+    <string name="cadence_match_valid">Valid</string>
+    <string name="cadence_match_out_of_range">Out of range</string>
+
+    <!-- ==================== Error Messages (ViewModel) ==================== -->
+    <string name="error_permission_denied_scan">Permission denied. Cannot scan music library without storage permission.</string>
+    <string name="error_no_tracks_imported">No tracks were imported. Please check the CSV file format.</string>
+    <string name="error_failed_import_csv">Failed to import CSV: %1$s</string>
+    <string name="error_permission_required_library">Permission required to access system music library</string>
+    <string name="error_no_tracks_found">No tracks found in system music library</string>
+    <string name="error_failed_scan_library">Failed to scan system library: %1$s</string>
+    <string name="error_failed_update_bpm">Failed to update BPM: %1$s</string>
+    <string name="error_failed_delete_track">Failed to delete track: %1$s</string>
+    <string name="error_failed_delete_tracks">Failed to delete tracks: %1$s</string>
+    <string name="error_failed_update_favorite">Failed to update favorite: %1$s</string>
+    <string name="error_failed_create_playlist">Failed to create playlist: %1$s</string>
+    <string name="error_failed_rename_playlist">Failed to rename playlist: %1$s</string>
+    <string name="error_failed_delete_playlist">Failed to delete playlist: %1$s</string>
+    <string name="error_failed_add_to_playlist">Failed to add selected tracks to playlist: %1$s</string>
+    <string name="error_playlist_name_tracks_required">Playlist name and at least one track are required</string>
+    <string name="error_failed_update_playlist">Failed to update playlist: %1$s</string>
+    <string name="error_failed_update_favorites">Failed to update favorites: %1$s</string>
+    <string name="error_failed_remove_from_playlist">Failed to remove track from playlist: %1$s</string>
+    <string name="error_library_analysis_failed">Library analysis failed: %1$s</string>
+    <string name="error_failed_resolve_bpm">Failed to resolve BPM: %1$s</string>
+    <string name="error_failed_resolve_bpms">Failed to resolve BPMs: %1$s</string>
+    <string name="error_failed_save_bpm_metadata">Failed to save BPM to file metadata</string>
+    <string name="error_saving_bpm">Error saving BPM: %1$s</string>
+    <string name="error_syncing_bpm">Error syncing BPM to files: %1$s</string>
+    <string name="error_no_track_selected">No track selected. Play a track first.</string>
+    <string name="error_cannot_access_audio">Cannot access audio for the current track.</string>
+    <string name="error_could_not_detect_bpm">Could not detect BPM for this track</string>
+    <string name="error_bpm_detection">BPM detection error: %1$s</string>
+    <string name="info_bpm_saved_to_file">BPM saved to track and file ID3 tag</string>
+    <string name="info_bpm_saved_library_only">BPM saved to track library (could not write to file metadata)</string>
+    <string name="error_failed_save_bpm">Failed to save BPM: %1$s</string>
+    <string name="error_player_error">Error: %1$s</string>
+    <string name="error_could_not_prepare_media">Error: Could not prepare media for playback</string>
+    <string name="error_unknown">Unknown</string>
 </resources>

@@ -1,5 +1,3 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
-
 package com.bpmapp.audio
 
 import android.Manifest
@@ -11,6 +9,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -30,6 +29,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.border
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -50,6 +52,7 @@ import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.ToggleOff
 import androidx.compose.material.icons.filled.ToggleOn
+import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -79,6 +82,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -90,10 +94,14 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.bpmapp.audio.R
 import com.bpmapp.audio.audio.AudioService
 import com.bpmapp.audio.audio.CadenceMatcher
 import com.bpmapp.audio.audio.PlayerRepository
 import com.bpmapp.audio.data.Track
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.ReorderableItemScope
+import sh.calvin.reorderable.rememberReorderableLazyColumnState
 import com.bpmapp.audio.ui.LibraryScreen
 import com.bpmapp.audio.ui.navigation.BottomNavigationBar
 import com.bpmapp.audio.ui.screens.BpmToolsScreen
@@ -277,6 +285,11 @@ fun PlayerScreenWrapper(
                         }
                     }
                 },
+                onAddToUpcomingBatch = { tracks ->
+                    val mediaItems = tracks.map { libraryViewModel.getMediaItemForTrack(it) }
+                    playerRepository.addAllToPlaylist(mediaItems)
+                    libraryViewModel.resolveBmpsForTracksIfNeeded(tracks)
+                },
                 onPlayAllTracks = { tracks ->
                     // Load all tracks into playlist and play first
                     val mediaItems = tracks.map { track ->
@@ -349,6 +362,11 @@ fun LibraryScreenWrapper(
                     }
                 }
             },
+            onAddToUpcomingBatch = { tracks ->
+                val mediaItems = tracks.map { libraryViewModel.getMediaItemForTrack(it) }
+                playerRepository.addAllToPlaylist(mediaItems)
+                libraryViewModel.resolveBmpsForTracksIfNeeded(tracks)
+            },
             onPlayAllTracks = { tracks ->
                 // Load all tracks into playlist and play first
                 val mediaItems = tracks.map { track ->
@@ -394,6 +412,9 @@ fun PlayerScreen(
     var showSavePlaylistDialog by remember { mutableStateOf(false) }
     var playlistNameInput by remember { mutableStateOf("") }
 
+    // Reorder mode state
+    var reorderMode by remember { mutableStateOf(false) }
+
     // Use playerState.currentPosition directly - it's already updated by the repository
     val currentPosition = playerState.currentPosition
 
@@ -431,15 +452,17 @@ fun PlayerScreen(
     ) {
         // ========== APP VERSION HEADER ==========
         val context = LocalContext.current
+        val versionPrefix = stringResource(R.string.player_version_prefix)
+        val versionFallback = stringResource(R.string.player_version_fallback)
         val versionName = remember {
             try {
                 val packageInfo = context.packageManager.getPackageInfo(
-                    context.packageName, 
+                    context.packageName,
                     PackageManager.GET_META_DATA
                 )
-                "v${packageInfo.versionName}"
+                versionPrefix.format(packageInfo.versionName)
             } catch (e: Exception) {
-                "v1.1"
+                versionFallback
             }
         }
         Row(
@@ -452,7 +475,7 @@ fun PlayerScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "RunBeat",
+                    text = stringResource(R.string.player_app_name),
                     style = MaterialTheme.typography.titleLarge,
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -485,7 +508,7 @@ fun PlayerScreen(
         }
         // ========== PLAYBACK CONTROLS WITH PROGRESS ==========
         PlaybackControlsSection(
-            trackName = currentTrack?.mediaMetadata?.title?.toString() ?: "No track selected",
+            trackName = currentTrack?.mediaMetadata?.title?.toString() ?: stringResource(R.string.player_no_track_selected),
             isPlaying = playerState.isPlaying,
             duration = playerState.duration,
             position = currentPosition,
@@ -512,53 +535,77 @@ fun PlayerScreen(
 
         
         // ========== PLAYLIST SECTION ==========
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { onOpenLibrary() },
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+                .clickable { onOpenLibrary() }
         ) {
-            Text(
-                text = "Music Library (selected: ${playlist.size})",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.primary
-            )
-            if (playlist.isNotEmpty()) {
-                IconButton(
-                    onClick = { playerRepository.toggleShuffle() },
-                    modifier = Modifier.size(AppSpacing.xxl)
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Shuffle,
-                        contentDescription = "Toggle shuffle",
-                        tint = if (shuffleEnabled) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                        },
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-                IconButton(
-                    onClick = { showSavePlaylistDialog = true },
-                    modifier = Modifier.size(AppSpacing.xxl)
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.PlaylistAdd,
-                        contentDescription = "Save playlist",
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-                IconButton(
-                    onClick = { playerRepository.clearPlaylist() },
-                    modifier = Modifier.size(AppSpacing.xxl)
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Close,
-                        contentDescription = "Clear upcoming songs playlist",
-                        modifier = Modifier.size(24.dp)
-                    )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(R.string.player_upcoming_count, playlist.size),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                if (playlist.isNotEmpty()) {
+                    Row(
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = { playerRepository.toggleShuffle() },
+                            modifier = Modifier.size(AppSpacing.xxl)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Shuffle,
+                                contentDescription = stringResource(R.string.player_toggle_shuffle),
+                                tint = if (shuffleEnabled) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                },
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                        IconButton(
+                            onClick = { showSavePlaylistDialog = true },
+                            modifier = Modifier.size(AppSpacing.xxl)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.PlaylistAdd,
+                                contentDescription = stringResource(R.string.player_save_playlist),
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                        IconButton(
+                            onClick = { playerRepository.clearPlaylist() },
+                            modifier = Modifier.size(AppSpacing.xxl)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = stringResource(R.string.player_clear_playlist),
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                        IconButton(
+                            onClick = { reorderMode = !reorderMode },
+                            modifier = Modifier.size(AppSpacing.xxl)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.DragHandle,
+                                contentDescription = stringResource(R.string.player_toggle_reorder),
+                                tint = if (reorderMode) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                },
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -568,6 +615,8 @@ fun PlayerScreen(
             onItemSelected = { mediaItem ->
                 playerRepository.playMediaItem(mediaItem)
             },
+            onMove = { from, to -> playerRepository.movePlaylistItem(from, to) },
+            reorderMode = reorderMode,
             targetCadence = viewModel.targetCadence,
             analyzingTracks = libraryViewModel?.isResolvingBpm?.collectAsState()?.value ?: false,
             trackBpms = trackBpms,
@@ -582,7 +631,7 @@ fun PlayerScreen(
     if (showSavePlaylistDialog) {
         AlertDialog(
             onDismissRequest = { showSavePlaylistDialog = false },
-            title = { Text("Save current playlist") },
+            title = { Text(stringResource(R.string.dialog_save_playlist_title)) },
             text = {
                 Column(
                     modifier = Modifier
@@ -591,7 +640,7 @@ fun PlayerScreen(
                 ) {
                     if (trackIds.isEmpty()) {
                         Text(
-                            text = "Current playlist has no tracks from the library",
+                            text = stringResource(R.string.dialog_save_playlist_empty),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -599,14 +648,14 @@ fun PlayerScreen(
                     OutlinedTextField(
                         value = playlistNameInput,
                         onValueChange = { playlistNameInput = it },
-                        label = { Text("New playlist name") },
+                        label = { Text(stringResource(R.string.dialog_save_playlist_name_label)) },
                         singleLine = true,
                         enabled = trackIds.isNotEmpty(),
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(modifier = Modifier.height(AppSpacing.xxs))
                     Text(
-                        text = "Update existing playlist:",
+                        text = stringResource(R.string.dialog_save_playlist_update_label),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -620,7 +669,7 @@ fun PlayerScreen(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(
-                                text = "Update ${playlistItem.name}",
+                                text = stringResource(R.string.dialog_save_playlist_update_button, playlistItem.name),
                                 textAlign = TextAlign.Start,
                                 modifier = Modifier.fillMaxWidth()
                             )
@@ -640,12 +689,12 @@ fun PlayerScreen(
                     },
                     enabled = trackIds.isNotEmpty() && playlistNameInput.trim().isNotBlank()
                 ) {
-                    Text("Create")
+                    Text(stringResource(R.string.dialog_save_playlist_create))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showSavePlaylistDialog = false }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.dialog_cancel))
                 }
             }
         )
@@ -734,7 +783,7 @@ fun PlaybackControlsSection(
                 ) {
                     Icon(
                         imageVector = Icons.Filled.ArrowBack,
-                        contentDescription = "Previous",
+                        contentDescription = stringResource(R.string.player_previous),
                         modifier = Modifier.size(24.dp),
                         tint = MaterialTheme.colorScheme.onSurface
                     )
@@ -754,7 +803,7 @@ fun PlaybackControlsSection(
                 ) {
                     Icon(
                         imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                        contentDescription = if (isPlaying) "Pause" else "Play",
+                        contentDescription = if (isPlaying) stringResource(R.string.player_pause) else stringResource(R.string.player_play),
                         tint = MaterialTheme.colorScheme.onPrimaryContainer,
                         modifier = Modifier.size(36.dp)
                     )
@@ -773,7 +822,7 @@ fun PlaybackControlsSection(
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Stop,
-                        contentDescription = "Stop",
+                        contentDescription = stringResource(R.string.stop),
                         modifier = Modifier.size(24.dp)
                     )
                 }
@@ -787,7 +836,7 @@ fun PlaybackControlsSection(
                 ) {
                     Icon(
                         imageVector = Icons.Filled.ArrowForward,
-                        contentDescription = "Next",
+                        contentDescription = stringResource(R.string.player_next),
                         modifier = Modifier.size(24.dp),
                         tint = MaterialTheme.colorScheme.onSurface
                     )
@@ -802,14 +851,14 @@ fun PlaybackControlsSection(
                     if (speedCorrectionEnabled) {
                         Icon(
                             imageVector = Icons.Filled.ToggleOn,
-                            contentDescription = "Disable speed correction",
+                            contentDescription = stringResource(R.string.player_disable_speed),
                             modifier = Modifier.size(48.dp),
                             tint = Color.Red  // MaterialTheme.colorScheme.primary
                         )
                     } else {
                         Icon(
                             imageVector = Icons.Filled.ToggleOff,
-                            contentDescription = "Disable speed correction",
+                            contentDescription = stringResource(R.string.player_enable_speed),
                             modifier = Modifier.size(48.dp),
                             tint = MaterialTheme.colorScheme.primary
                         )
@@ -842,7 +891,7 @@ fun TempoAndBpmSection(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Target Cadence",
+                    text = stringResource(R.string.player_target_cadence),
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.weight(1f)
@@ -860,7 +909,7 @@ fun TempoAndBpmSection(
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Remove,
-                            contentDescription = "Decrease BPM",
+                            contentDescription = stringResource(R.string.player_decrease_bpm),
                             modifier = Modifier.size(18.dp),
                             tint = MaterialTheme.colorScheme.onSurface
                         )
@@ -897,7 +946,7 @@ fun TempoAndBpmSection(
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Add,
-                            contentDescription = "Increase BPM",
+                            contentDescription = stringResource(R.string.player_increase_bpm),
                             modifier = Modifier.size(18.dp),
                             tint = MaterialTheme.colorScheme.onSurface
                         )
@@ -907,9 +956,9 @@ fun TempoAndBpmSection(
 
             // Original BPM - secondary detail underneath
             val originalBpmText = if (adjustedCadence > 0) {
-                "${adjustedCadence.roundToInt()} BPM"
+                stringResource(R.string.player_bpm_value, adjustedCadence.roundToInt())
             } else {
-                "Unknown"
+                stringResource(R.string.player_unknown)
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -917,13 +966,13 @@ fun TempoAndBpmSection(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Factor: ${String.format("%.2f", speedFactor)}x",
+                    text = stringResource(R.string.player_factor_display, speedFactor),
                     style = MaterialTheme.typography.bodySmall,
                     color = speedFactorColor(speedFactor),
                     fontWeight = FontWeight.Medium
                 )
                 Text(
-                    text = "Original: $originalBpmText",
+                    text = stringResource(R.string.player_original_bpm, originalBpmText),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.Medium
@@ -934,11 +983,14 @@ fun TempoAndBpmSection(
 }
 
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun PlaylistSection(
     mediaItems: List<MediaItem>,
     selectedMediaItem: MediaItem?,
     onItemSelected: (MediaItem) -> Unit,
+    onMove: (from: Int, to: Int) -> Unit,
+    reorderMode: Boolean = false,
     modifier: Modifier = Modifier,
     targetCadence: Int = 172,
     analyzingTracks: Boolean = false,
@@ -967,7 +1019,7 @@ fun PlaylistSection(
                     )
                     Spacer(modifier = Modifier.width(AppSpacing.xs))
                     Text(
-                        text = "Analyzing BPM...",
+                        text = stringResource(R.string.player_analyzing_bpm),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -975,19 +1027,26 @@ fun PlaylistSection(
             }
             if (mediaItems.isEmpty()) {
                 Text(
-                    text = "No upcoming songs",
+                    text = stringResource(R.string.player_no_upcoming),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             } else {
+                val lazyListState = rememberLazyListState()
+                val reorderableLazyColumnState = rememberReorderableLazyColumnState(lazyListState) { from, to ->
+                    onMove(from.index, to.index)
+                }
+                
                 LazyColumn(
                     modifier = Modifier.fillMaxWidth().weight(1f),
+                    state = lazyListState,
                     verticalArrangement = Arrangement.spacedBy(AppSpacing.xxxs),
                     contentPadding = PaddingValues(bottom = AppSpacing.xxs)
                 ) {
-                    items(mediaItems.size) { index ->
-                        val mediaItem = mediaItems[index]
-
+                    itemsIndexed(
+                        items = mediaItems,
+                        key = { _, it -> it.mediaMetadata.extras?.getString("trackId") ?: it.toString() }
+                    ) { index, mediaItem ->
                         // Resolve BPM for this track: in-session map first (reactively
                         // refreshed after analysis), then MediaItem extras as a fallback.
                         val trackId = mediaItem.mediaMetadata.extras?.getString("trackId")
@@ -1007,13 +1066,21 @@ fun PlaylistSection(
                             }
                         }
 
-                        PlaylistItem(
-                            mediaItem = mediaItem,
-                            isSelected = mediaItem == selectedMediaItem,
-                            onClick = { onItemSelected(mediaItem) },
-                            playbackSpeed = playbackSpeed,
-                            bpm = bpm
-                        )
+                        ReorderableItem(
+                            reorderableLazyColumnState,
+                            key = mediaItem.mediaMetadata.extras?.getString("trackId") ?: mediaItem.toString()
+                        ) { isDragging ->
+                            PlaylistItem(
+                                mediaItem = mediaItem,
+                                isSelected = mediaItem == selectedMediaItem,
+                                onClick = { onItemSelected(mediaItem) },
+                                playbackSpeed = playbackSpeed,
+                                bpm = bpm,
+                                reorderMode = reorderMode,
+                                isDragging = isDragging,
+                                scope = this
+                            )
+                        }
                     }
                 }
             }
@@ -1027,79 +1094,173 @@ fun PlaylistItem(
     isSelected: Boolean,
     onClick: () -> Unit,
     playbackSpeed: Float? = null,
-    bpm: Float? = null
+    bpm: Float? = null,
+    reorderMode: Boolean = false,
+    isDragging: Boolean = false,
+    scope: ReorderableItemScope? = null
 ) {
-    val title = mediaItem.mediaMetadata.title?.toString() ?: "Unknown"
+    val title = mediaItem.mediaMetadata.title?.toString() ?: stringResource(R.string.error_unknown)
     val artist = mediaItem.mediaMetadata.artist?.toString()
     val album = mediaItem.mediaMetadata.albumTitle?.toString()
     
-    val bpmText = bpm?.roundToInt()?.let { "$it BPM" } ?: "-- BPM"
+    val bpmText = if (bpm != null) stringResource(R.string.player_bpm_suffix, bpm.roundToInt()) else stringResource(R.string.player_bpm_unknown)
     
-    Button(
-        onClick = onClick,
-        modifier = Modifier
-            .fillMaxWidth(),
-        colors = if (isSelected) {
-            ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.primary
-            )
-        } else {
-            ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.primary.copy(alpha=0.3f),
-                contentColor = MaterialTheme.colorScheme.onPrimary
-            )
-        }
-    ) {
-        Column(
+    if (reorderMode) {
+        // In reorder mode: use Box with draggableHandle on the right-side icon
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = AppSpacing.xxxs),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.xxxs)
+                .background(
+                    if (isSelected) {
+                        MaterialTheme.colorScheme.primaryContainer
+                    } else if (isDragging) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
+                    }
+                )
         ) {
-            // Line 1: Title with BPM/speed factor trailing
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = AppSpacing.xxxs),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(AppSpacing.xs)
             ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false)
-                )
-                Text(
-                    text = if (playbackSpeed != null) {
-                        "$bpmText  ${"%.2f".format(playbackSpeed)}x"
-                    } else {
-                        bpmText
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = bpmColor(playbackSpeed),
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1
-                )
-            }
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(AppSpacing.xxxs)
+                ) {
+                    // Line 1: Title with BPM/speed factor trailing
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(AppSpacing.xs)
+                    ) {
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (isDragging) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        Text(
+                            text = if (playbackSpeed != null) {
+                                stringResource(R.string.player_bpm_with_x, bpmText, playbackSpeed)
+                            } else {
+                                bpmText
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = bpmColor(playbackSpeed),
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1
+                        )
+                    }
 
-            // Line 2: Artist - Album - full width, small and muted
-            val artistAlbumText = when {
-                !artist.isNullOrBlank() && !album.isNullOrBlank() -> "$artist - $album"
-                !artist.isNullOrBlank() -> artist
-                !album.isNullOrBlank() -> album
-                else -> ""
+                    // Line 2: Artist - Album - full width, small and muted
+                    val artistAlbumText = when {
+                        !artist.isNullOrBlank() && !album.isNullOrBlank() -> "$artist - $album"
+                        !artist.isNullOrBlank() -> artist
+                        !album.isNullOrBlank() -> album
+                        else -> ""
+                    }
+                    if (artistAlbumText.isNotBlank()) {
+                        Text(
+                            text = artistAlbumText,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (isDragging) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+                
+                // Drag handle on the RIGHT side, using library's draggableHandle
+                IconButton(
+                    onClick = {},
+                    modifier = with(scope!!) { Modifier.draggableHandle() }
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.DragHandle,
+                        contentDescription = stringResource(R.string.player_drag_handle),
+                        tint = if (isDragging) {
+                            MaterialTheme.colorScheme.onPrimary
+                        } else {
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                        }
+                    )
+                }
             }
-            if (artistAlbumText.isNotBlank()) {
-                Text(
-                    text = artistAlbumText,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.fillMaxWidth()
+        }
+    } else {
+        // Normal mode: use Button with tap-to-play
+        Button(
+            onClick = onClick,
+            modifier = Modifier.fillMaxWidth(),
+            colors = if (isSelected) {
+                ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.primary
                 )
+            } else {
+                ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary.copy(alpha=0.3f),
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                )
+            }
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = AppSpacing.xxxs),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.xxxs)
+            ) {
+                // Line 1: Title with BPM/speed factor trailing
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.xs)
+                ) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    Text(
+                        text = if (playbackSpeed != null) {
+                            "$bpmText  ${"%.2f".format(playbackSpeed)}x"
+                        } else {
+                            bpmText
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = bpmColor(playbackSpeed),
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1
+                    )
+                }
+
+                // Line 2: Artist - Album - full width, small and muted
+                val artistAlbumText = when {
+                    !artist.isNullOrBlank() && !album.isNullOrBlank() -> "$artist - $album"
+                    !artist.isNullOrBlank() -> artist
+                    !album.isNullOrBlank() -> album
+                    else -> ""
+                }
+                if (artistAlbumText.isNotBlank()) {
+                    Text(
+                        text = artistAlbumText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             }
         }
     }

@@ -1,0 +1,378 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">RunBeat</string>
+
+    <!-- Main Activity -->
+    <string name="now_playing">Lecture en cours</string>
+
+    <!-- Player Controls -->
+    <string name="stop">Arrêter</string>
+
+    <!-- Notification Channel -->
+    <string name="notification_channel_name">Lecture audio</string>
+    <string name="notification_channel_description">Canal de notification pour les contrôles de lecture audio</string>
+
+    <!-- Notification Actions -->
+    <string name="notification_action_play">Lire</string>
+    <string name="notification_action_pause">Pause</string>
+    <string name="notification_action_previous">Précédent</string>
+    <string name="notification_action_next">Suivant</string>
+    <string name="notification_action_speed_on">Vitesse activée</string>
+    <string name="notification_action_speed_off">Vitesse désactivée</string>
+
+    <!-- Intro / Help -->
+    <string name="intro_title">Bienvenue sur RunBeat</string>
+    <string name="intro_paragraph_1">RunBeat est un lecteur audio basé sur les BPM conçu pour les coureurs. Il ajuste le tempo de votre musique (étirement temporel sans changement de hauteur) pour que votre liste de lecture corresponde toujours à votre cadence de course cible.</string>
+    <string name="intro_paragraph_2">Choisissez une cadence cible pour votre course (par défaut 172 BPM, plage 160-195) et RunBeat aligne continuellement la musique sur celle-ci pendant que vous courez.</string>
+    <string name="intro_paragraph_3">Les BPM des pistes sont détectés automatiquement à l\'aide d\'Aubio, peuvent être saisis en tapant sur le rythme, ou importés depuis des fichiers CSV pré-analysés.</string>
+    <string name="intro_paragraph_4">Pour garder vos pas synchronisés avec la musique, choisissez comment le temps se divise : Binaire (1x ou 2x, une subdivision à deux temps) ou Ternaire (1.5x ou 3x, une subdivision à trois temps). Activez l\'un ou les deux et RunBeat choisit la meilleure correspondance.</string>
+    <string name="intro_get_started">Commencer</string>
+    <string name="intro_got_it">Compris</string>
+    <string name="help_intro_title">Introduction</string>
+    <string name="help_intro_description">À propos de RunBeat et son fonctionnement</string>
+    <string name="help_intro_view">Voir</string>
+    <string name="help_section_title">AIDE</string>
+
+    <!-- About -->
+    <string name="about_repo_title">Dépôt du projet</string>
+    <string name="about_repo_description">Voir le code source de RunBeat sur GitHub</string>
+    <string name="about_repo_url">https://github.com/gpotdevin/runBeat</string>
+
+    <!-- Settings: Playback -->
+    <string name="setting_mode_beep_title">Bip de mode rythme</string>
+    <string name="setting_mode_beep_description">Jouer 2 bips pour le binaire ou 3 pour le ternaire lorsqu\'une piste démarre avec la correction de vitesse activée</string>
+
+    <!-- ==================== Bottom Navigation ==================== -->
+    <string name="nav_player">Lecteur</string>
+    <string name="nav_library">Bibliothèque</string>
+    <string name="nav_bpm_tools">Outils BPM</string>
+    <string name="nav_settings">Paramètres</string>
+
+    <!-- ==================== Player Screen ==================== -->
+    <string name="player_app_name">RunBeat</string>
+    <string name="player_version_prefix">v%1$s</string>
+    <string name="player_version_fallback">v1.0.x</string>
+    <string name="player_no_track_selected">Aucune piste sélectionnée</string>
+    <string name="player_upcoming_count">À venir (%1$d)</string>
+    <string name="player_toggle_shuffle">Activer/désactiver la lecture aléatoire</string>
+    <string name="player_save_playlist">Enregistrer la liste de lecture</string>
+    <string name="player_clear_playlist">Effacer la liste de lecture à venir</string>
+    <string name="player_toggle_reorder">Activer/désactiver le réordonnancement</string>
+    <string name="player_previous">Précédent</string>
+    <string name="player_pause">Pause</string>
+    <string name="player_play">Lire</string>
+    <string name="player_next">Suivant</string>
+    <string name="player_disable_speed">Désactiver la correction de vitesse</string>
+    <string name="player_enable_speed">Activer la correction de vitesse</string>
+    <string name="player_target_cadence">Cadence cible</string>
+    <string name="player_decrease_bpm">Diminuer les BPM</string>
+    <string name="player_increase_bpm">Augmenter les BPM</string>
+    <string name="player_bpm_value">%1$d BPM</string>
+    <string name="player_unknown">Inconnu</string>
+    <string name="player_factor_display">Facteur : %1$.2fx</string>
+    <string name="player_original_bpm">Original : %1$s</string>
+    <string name="player_analyzing_bpm">Analyse des BPM…</string>
+    <string name="player_no_upcoming">Aucune chanson à venir</string>
+    <string name="player_bpm_with_x">%1$s  %2$.2fx</string>
+    <string name="player_bpm_suffix">%1$s BPM</string>
+    <string name="player_bpm_unknown">-- BPM</string>
+    <string name="player_drag_handle">Poignée de glissement</string>
+
+    <!-- Save Playlist Dialog -->
+    <string name="dialog_save_playlist_title">Enregistrer la liste de lecture actuelle</string>
+    <string name="dialog_save_playlist_empty">La liste de lecture actuelle ne contient aucune piste de la bibliothèque</string>
+    <string name="dialog_save_playlist_name_label">Nom de la nouvelle liste de lecture</string>
+    <string name="dialog_save_playlist_update_label">Mettre à jour une liste de lecture existante :</string>
+    <string name="dialog_save_playlist_update_button">Mettre à jour %1$s</string>
+    <string name="dialog_save_playlist_create">Créer</string>
+    <string name="dialog_cancel">Annuler</string>
+
+    <!-- ==================== Library Screen ==================== -->
+    <string name="library_tab_all">Tout</string>
+    <string name="library_tab_playlists">Listes de lecture</string>
+    <string name="library_tab_favorites">Favoris</string>
+    <string name="library_title">Bibliothèque</string>
+    <string name="library_close">Fermer la bibliothèque et revenir au lecteur</string>
+    <string name="library_search_tracks">Rechercher des pistes…</string>
+    <string name="library_search_content_desc">Rechercher des pistes</string>
+    <string name="library_menu">Menu de la bibliothèque</string>
+    <string name="library_path_breadcrumb">%1$s :</string>
+    <string name="library_in_folder">dans %1$s</string>
+
+    <!-- Library overflow menu -->
+    <string name="library_menu_scan">Scanner la bibliothèque</string>
+    <string name="library_menu_analyze">Analyser les BPM</string>
+    <string name="library_menu_clear">Effacer la bibliothèque</string>
+    <string name="library_menu_sync">Synchroniser les métadonnées</string>
+
+    <!-- Library filter chips -->
+    <string name="library_filter_bpm_known">BPM connus</string>
+    <string name="library_filter_speed">Vitesse 0.9-1.1</string>
+    <string name="library_clear_filters">Effacer les filtres</string>
+
+    <!-- Library browse dimensions -->
+    <string name="library_browse_artist">Artiste</string>
+    <string name="library_browse_album">Album</string>
+    <string name="library_browse_genre">Genre</string>
+    <string name="library_browse_path">Chemin</string>
+    <string name="library_browse_by">Parcourir par</string>
+
+    <!-- Library progress overlays -->
+    <string name="library_analyzing">Analyse de la bibliothèque…</string>
+    <string name="library_processing_tracks">Traitement de %1$d/%2$d pistes</string>
+    <string name="library_analyzing_bpm">Analyse des BPM pour les pistes ajoutées…</string>
+
+    <!-- Library multi-select toolbar -->
+    <string name="library_cancel">Annuler</string>
+    <string name="library_select_all">Tout sélectionner</string>
+    <string name="library_play_count">Lire (%1$d)</string>
+    <string name="library_playlist">Liste de lecture</string>
+    <string name="library_upcoming">À venir</string>
+    <string name="library_favorites">Favoris</string>
+
+    <!-- Library track list -->
+    <string name="library_reset_selection">Réinitialiser la sélection</string>
+    <string name="library_play_all">Lire toutes les pistes filtrées</string>
+    <string name="library_play_all_count">Tout lire (%1$d)</string>
+    <string name="library_no_filters_desc">Aucun filtre actif - utilisez les filtres pour afficher les chansons</string>
+    <string name="library_use_filters">Utilisez les filtres pour afficher les chansons</string>
+    <string name="library_use_filter_chips">Utilisez les puces de filtre pour afficher les chansons</string>
+    <string name="library_no_tracks_desc">Aucune piste ne correspond aux filtres actuels</string>
+    <string name="library_no_tracks">Aucune piste trouvée</string>
+    <string name="library_try_adjusting">Essayez d\'ajuster vos filtres</string>
+
+    <!-- Library snackbar messages -->
+    <string name="library_bpm_analysis_complete">Analyse BPM terminée ! %1$d pistes mises à jour</string>
+    <string name="library_sync_complete">Synchronisation BPM réussie vers %1$d fichiers</string>
+
+    <!-- Library dialogs — Clear Library -->
+    <string name="dialog_clear_library_title">Effacer la bibliothèque</string>
+    <string name="dialog_clear_library_body">Êtes-vous sûr de vouloir supprimer toutes les pistes de la bibliothèque ? Cette action est irréversible.</string>
+    <string name="dialog_delete_all">Tout supprimer</string>
+
+    <!-- Library dialogs — Permission -->
+    <string name="dialog_permission_title">Autorisation requise</string>
+    <string name="dialog_permission_body">Pour scanner votre bibliothèque musicale, l\'application a besoin d\'une autorisation pour accéder aux fichiers multimédias sur votre appareil.</string>
+    <string name="dialog_grant_permission">Accorder l\'autorisation</string>
+
+    <!-- Library dialogs — Error -->
+    <string name="dialog_error_title">Erreur</string>
+    <string name="dialog_ok">OK</string>
+
+    <!-- Library dialogs — File Access -->
+    <string name="dialog_file_access_title">Accès aux fichiers requis</string>
+    <string name="dialog_file_access_body">Cela ouvrira les paramètres de votre appareil où vous pourrez activer l\'accès aux fichiers pour RunBeat.</string>
+    <string name="dialog_open_settings">Ouvrir les paramètres</string>
+
+    <!-- Library dialogs — Sync BPM -->
+    <string name="dialog_sync_bpm_title">Synchroniser les BPM vers les fichiers</string>
+    <string name="dialog_sync_bpm_body">Cela enregistrera les valeurs BPM de la base de données de l\'application dans les balises ID3 de vos fichiers musicaux.</string>
+    <string name="dialog_sync_bpm_body2">Seules les pistes avec des valeurs BPM connues seront mises à jour. Cela peut prendre du temps pour les grandes bibliothèques.</string>
+    <string name="dialog_sync_all">Tout synchroniser</string>
+
+    <!-- Library dialogs — Syncing BPM progress -->
+    <string name="dialog_syncing_bpm_title">Synchronisation des BPM vers les fichiers</string>
+    <string name="dialog_syncing_progress">Traitement de la piste %1$d sur %2$d</string>
+    <string name="dialog_close">Fermer</string>
+
+    <!-- Library dialogs — Save BPM to File -->
+    <string name="dialog_save_bpm_title">Enregistrer les BPM dans le fichier</string>
+    <string name="dialog_save_bpm_body">Enregistrer les BPM %1$s dans les métadonnées du fichier pour :</string>
+    <string name="dialog_save">Enregistrer</string>
+
+    <!-- Library dialogs — Create / Rename Playlist -->
+    <string name="dialog_rename_playlist">Renommer la liste de lecture</string>
+    <string name="dialog_new_playlist">Nouvelle liste de lecture</string>
+    <string name="dialog_playlist_name_hint">Nom de la liste de lecture</string>
+
+    <!-- Library dialogs — Delete Playlist -->
+    <string name="dialog_delete_playlist_title">Supprimer la liste de lecture</string>
+    <string name="dialog_delete_playlist_body">Supprimer \"%1$s\" ? Les pistes elles-mêmes ne seront pas supprimées.</string>
+    <string name="dialog_delete">Supprimer</string>
+
+    <!-- Library dialogs — Add to Playlist -->
+    <string name="dialog_add_to_playlist_title">Ajouter à la liste de lecture</string>
+    <string name="dialog_add_to_playlist_name_hint">Nom de la nouvelle liste de lecture</string>
+    <string name="dialog_create_and_add">Créer &amp; Ajouter</string>
+    <string name="dialog_no_playlists">Aucune liste de lecture pour le moment - créez-en une ci-dessus.</string>
+    <string name="dialog_add_to_existing">Ou ajouter à une liste de lecture existante</string>
+    <string name="dialog_add_to_playlist_item_desc">Ajouter à %1$s</string>
+
+    <!-- Library playlists content -->
+    <string name="playlists_no_playlists_desc">Aucune liste de lecture</string>
+    <string name="playlists_empty">Aucune liste de lecture pour le moment</string>
+    <string name="playlists_create_hint">Créez une liste de lecture pour organiser vos pistes</string>
+    <string name="playlists_create_desc">Créer une liste de lecture</string>
+    <string name="playlists_create_button">Créer une liste de lecture</string>
+    <string name="playlists_play_desc">Lire la liste de lecture</string>
+    <string name="playlists_rename_desc">Renommer la liste de lecture</string>
+    <string name="playlists_delete_desc">Supprimer la liste de lecture</string>
+    <string name="playlists_no_tracks">Aucune piste dans cette liste de lecture</string>
+    <string name="playlists_toggle_favorite">Activer/désactiver le favori</string>
+    <string name="playlists_remove_from">Retirer de la liste de lecture</string>
+    <string name="playlists_track_count">%1$d pistes</string>
+
+    <!-- Library favorites content -->
+    <string name="favorites_empty_desc">Aucun favori</string>
+    <string name="favorites_empty">Aucun favori pour le moment</string>
+    <string name="favorites_hint">Touchez l\'étoile sur une piste pour l\'ajouter aux favoris</string>
+    <string name="favorites_play_all_desc">Lire tous les favoris</string>
+    <string name="favorites_play_all_count">Lire tous les favoris (%1$d)</string>
+
+    <!-- Library filter chip -->
+    <string name="filter_chip_desc">Puce de filtre : %1$s, %2$s</string>
+    <string name="filter_chip_selected">sélectionné</string>
+    <string name="filter_chip_not_selected">non sélectionné</string>
+
+    <!-- Library preview -->
+    <string name="library_preview_error">L\'aperçu nécessite la configuration Hilt</string>
+
+    <!-- Library plurals -->
+    <plurals name="track_count">
+        <item quantity="one">%1$d piste</item>
+        <item quantity="other">%1$d pistes</item>
+    </plurals>
+
+    <!-- ==================== TrackCard ==================== -->
+    <string name="trackcard_desc_template">Piste : %1$s, %2$s, %3$s</string>
+    <string name="trackcard_unknown_artist">Artiste inconnu</string>
+    <string name="trackcard_unknown_bpm">BPM inconnu</string>
+    <string name="trackcard_bpm_value">%1$s BPM</string>
+    <string name="trackcard_unknown">Inconnu</string>
+    <string name="trackcard_unknown_bpm_label">BPM inconnu</string>
+    <string name="trackcard_speed_unknown">Facteur de vitesse inconnu</string>
+    <string name="trackcard_speed_perfect">Correspondance parfaite</string>
+    <string name="trackcard_speed_needs_adjustment">Ajustement nécessaire</string>
+    <string name="trackcard_speed_good">Bon match</string>
+    <string name="trackcard_remove_favorite">Retirer des favoris</string>
+    <string name="trackcard_add_favorite">Ajouter aux favoris</string>
+    <string name="trackcard_add_to_playlist">Ajouter à la liste de lecture</string>
+    <string name="trackcard_add">Ajouter</string>
+    <string name="trackcard_actions">Actions de la piste</string>
+    <string name="trackcard_play_replace">Lire (Remplacer l\'actuelle)</string>
+    <string name="trackcard_play">Lire</string>
+    <string name="trackcard_add_to_upcoming">Ajouter à venir</string>
+    <string name="trackcard_edit_bpm">Modifier les BPM</string>
+    <string name="trackcard_delete">Supprimer</string>
+
+    <!-- ==================== BPM Tools Screen ==================== -->
+    <string name="bpmtools_tab_matcher">Correspondance de cadence</string>
+    <string name="bpmtools_tab_detect">Taper le rythme pour détecter les BPM</string>
+    <string name="bpmtools_tab_manual">Saisie manuelle</string>
+    <string name="bpmtools_cadence_matcher">Correspondance de cadence</string>
+    <string name="bpmtools_decrease">Diminuer</string>
+    <string name="bpmtools_target_cadence">Cadence cible</string>
+    <string name="bpmtools_cadence_value">%1$d BPM</string>
+    <string name="bpmtools_increase">Augmenter</string>
+    <string name="bpmtools_rhythm_pattern">Motif rythmique</string>
+    <string name="bpmtools_cadence_matches">Correspondances de cadence</string>
+    <string name="bpmtools_detect_bpm">Détecter les BPM</string>
+    <string name="bpmtools_detect_with_aubio">Détecter les BPM avec Aubio</string>
+    <string name="bpmtools_detecting">Détection…</string>
+    <string name="bpmtools_or_tap">Ou tapez le rythme manuellement</string>
+    <string name="bpmtools_speed_adjusted">La vitesse de lecture est ajustée (%1$.2fx). Les taps ne refléteront pas le tempo normal.</string>
+    <string name="bpmtools_tap_here">Tapez ici</string>
+    <string name="bpmtools_detected_bpm">Détecté : %1$d BPM</string>
+    <string name="bpmtools_tap_beat">Tapez le rythme pour détecter les BPM</string>
+    <string name="bpmtools_use">Utiliser</string>
+    <string name="bpmtools_clear">Effacer</string>
+    <string name="bpmtools_use_title">Utiliser les BPM détectés ?</string>
+    <string name="bpmtools_use_body">La vitesse de lecture est ajustée (%1$.2fx). Les BPM tapés reflètent le tempo actuel, pas la vitesse normale. Les enregistrer quand même ?</string>
+    <string name="bpmtools_manual_entry">Saisie manuelle</string>
+    <string name="bpmtools_enter_bpm">Entrer les BPM</string>
+    <string name="bpmtools_enter_bpm_hint">Entrez la valeur BPM</string>
+    <string name="bpmtools_save_bpm_file">Enregistrer les BPM dans la balise ID3 du fichier</string>
+
+    <!-- ==================== Settings Screen ==================== -->
+    <string name="settings_title">Paramètres</string>
+    <string name="settings_back">Retour</string>
+    <string name="settings_section_playback">LECTURE</string>
+    <string name="settings_section_library">BIBLIOTHÈQUE</string>
+    <string name="settings_section_appearance">APPARENCE</string>
+    <string name="settings_section_advanced">AVANCÉ</string>
+    <string name="settings_section_help">AIDE</string>
+    <string name="settings_section_about">À PROPOS</string>
+    <string name="settings_section_language">LANGUE</string>
+    <string name="settings_auto_apply_title">Auto-appliquer la correspondance de cadence</string>
+    <string name="settings_auto_apply_desc">Appliquer automatiquement la correspondance de cadence au changement de piste</string>
+    <string name="settings_auto_scan_title">Scan automatique au démarrage</string>
+    <string name="settings_auto_scan_desc">Scanner automatiquement les nouvelles pistes au démarrage de l\'application</string>
+    <string name="settings_dynamic_colors_title">Couleurs dynamiques</string>
+    <string name="settings_dynamic_colors_desc">Utiliser les couleurs dynamiques du système (Android 12+)</string>
+    <string name="settings_import_csv_title">Importer un CSV</string>
+    <string name="settings_import_csv_desc">Importer des pistes et des valeurs BPM depuis un fichier CSV</string>
+    <string name="settings_import_button">Importer</string>
+    <string name="settings_csv_format_label">Format CSV — une piste par ligne (la ligne d\'en-tête est ignorée) :</string>
+    <string name="settings_csv_format_spec">relative_path,filename,bpm,file_size_bytes[,title,artist,album,genre]</string>
+    <string name="settings_csv_example">Exemple : GoGo_Penguin/A_Humdrum_Star,1-2-Raven-320.mp3,152.0,12166665,Song Title,Artist Name,Album Name</string>
+    <string name="settings_csv_quoted">Les noms de fichiers contenant des virgules doivent être entre guillemets.</string>
+    <string name="settings_version">Version</string>
+    <string name="settings_license">Licence de l\'application</string>
+    <string name="settings_libraries">Bibliothèques</string>
+    <string name="settings_libraries_desc">Bibliothèques tierces utilisées par cette application</string>
+    <string name="settings_view">Voir</string>
+    <string name="settings_imported_tracks">%1$d pistes importées</string>
+    <string name="settings_language_title">Langue de l\'application</string>
+    <string name="settings_language_desc">Choisir la langue d\'affichage de l\'application</string>
+    <string name="settings_language_system">Valeur par défaut du système</string>
+    <string name="settings_language_english">English</string>
+    <string name="settings_language_french">Français</string>
+    <string name="settings_language_german">Deutsch</string>
+    <string name="settings_language_spanish">Español</string>
+
+    <!-- ==================== Cadence Matcher (domain) ==================== -->
+    <string name="rhythm_quarter">Noire</string>
+    <string name="rhythm_eighth">Croche</string>
+    <string name="rhythm_triplet">Triolet</string>
+    <string name="rhythm_sixth">Double croche</string>
+    <string name="rhythm_quarter_desc">Courir sur chaque temps</string>
+    <string name="rhythm_eighth_desc">Courir sur chaque demi-temps</string>
+    <string name="rhythm_triplet_desc">Courir sur chaque noire pointée</string>
+    <string name="rhythm_sixth_desc">Courir sur chaque sixième temps</string>
+    <string name="rhythm_group_binary">Binaire</string>
+    <string name="rhythm_group_ternary">Ternaire</string>
+    <string name="rhythm_group_binary_desc">Courir sur chaque temps (1.0x) ou chaque demi-temps (2.0x)</string>
+    <string name="rhythm_group_ternary_desc">Courir sur chaque noire pointée (1.5x) ou chaque sixième note (3.0x)</string>
+    <string name="cadence_match_success">Courir sur des %1$s à %2$.2fx vitesse</string>
+    <string name="cadence_match_invalid">Aucune correspondance rythmique valide (la vitesse serait de %1$.2fx)</string>
+    <string name="cadence_match_error_invalid_bpm">BPM invalide : doit être > 0</string>
+    <string name="cadence_match_error_no_match">Aucune correspondance valide trouvée</string>
+    <string name="cadence_match_valid">Valide</string>
+    <string name="cadence_match_out_of_range">Hors plage</string>
+
+    <!-- ==================== Error Messages (ViewModel) ==================== -->
+    <string name="error_permission_denied_scan">Autorisation refusée. Impossible de scanner la bibliothèque musicale sans autorisation de stockage.</string>
+    <string name="error_no_tracks_imported">Aucune piste n\'a été importée. Veuillez vérifier le format du fichier CSV.</string>
+    <string name="error_failed_import_csv">Échec de l\'importation du CSV : %1$s</string>
+    <string name="error_permission_required_library">Autorisation requise pour accéder à la bibliothèque musicale du système</string>
+    <string name="error_no_tracks_found">Aucune piste trouvée dans la bibliothèque musicale du système</string>
+    <string name="error_failed_scan_library">Échec du scan de la bibliothèque du système : %1$s</string>
+    <string name="error_failed_update_bpm">Échec de la mise à jour des BPM : %1$s</string>
+    <string name="error_failed_delete_track">Échec de la suppression de la piste : %1$s</string>
+    <string name="error_failed_delete_tracks">Échec de la suppression des pistes : %1$s</string>
+    <string name="error_failed_update_favorite">Échec de la mise à jour du favori : %1$s</string>
+    <string name="error_failed_create_playlist">Échec de la création de la liste de lecture : %1$s</string>
+    <string name="error_failed_rename_playlist">Échec du renommage de la liste de lecture : %1$s</string>
+    <string name="error_failed_delete_playlist">Échec de la suppression de la liste de lecture : %1$s</string>
+    <string name="error_failed_add_to_playlist">Échec de l\'ajout des pistes sélectionnées à la liste de lecture : %1$s</string>
+    <string name="error_playlist_name_tracks_required">Le nom de la liste de lecture et au moins une piste sont requis</string>
+    <string name="error_failed_update_playlist">Échec de la mise à jour de la liste de lecture : %1$s</string>
+    <string name="error_failed_update_favorites">Échec de la mise à jour des favoris : %1$s</string>
+    <string name="error_failed_remove_from_playlist">Échec du retrait de la piste de la liste de lecture : %1$s</string>
+    <string name="error_library_analysis_failed">Échec de l\'analyse de la bibliothèque : %1$s</string>
+    <string name="error_failed_resolve_bpm">Échec de la résolution des BPM : %1$s</string>
+    <string name="error_failed_resolve_bpms">Échec de la résolution des BPM : %1$s</string>
+    <string name="error_failed_save_bpm_metadata">Échec de l\'enregistrement des BPM dans les métadonnées du fichier</string>
+    <string name="error_saving_bpm">Erreur lors de l\'enregistrement des BPM : %1$s</string>
+    <string name="error_syncing_bpm">Erreur de synchronisation des BPM vers les fichiers : %1$s</string>
+    <string name="error_no_track_selected">Aucune piste sélectionnée. Lancez d\'abord une piste.</string>
+    <string name="error_cannot_access_audio">Impossible d\'accéder à l\'audio pour la piste actuelle.</string>
+    <string name="error_could_not_detect_bpm">Impossible de détecter les BPM pour cette piste</string>
+    <string name="error_bpm_detection">Erreur de détection des BPM : %1$s</string>
+    <string name="info_bpm_saved_to_file">BPM enregistrés dans la piste et la balise ID3 du fichier</string>
+    <string name="info_bpm_saved_library_only">BPM enregistrés dans la bibliothèque de pistes (impossible d\'écrire dans les métadonnées du fichier)</string>
+    <string name="error_failed_save_bpm">Échec de l\'enregistrement des BPM : %1$s</string>
+    <string name="error_player_error">Erreur : %1$s</string>
+    <string name="error_could_not_prepare_media">Erreur : Impossible de préparer le média pour la lecture</string>
+    <string name="error_unknown">Inconnu</string>
+</resources>

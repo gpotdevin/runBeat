@@ -66,7 +66,7 @@ All features implemented:
 #### Playlist Management
 - [ ] Import existing playlists (M3U, PLS formats)
 - [ ] Repeat modes (none, one, all)
-- [ ] Drag-and-drop reordering (handles added, implementation deferred)
+- [x] Drag-and-drop reordering (handles added, implementation deferred)
 
 #### Testing
 - [ ] Unit tests for BPM calculations

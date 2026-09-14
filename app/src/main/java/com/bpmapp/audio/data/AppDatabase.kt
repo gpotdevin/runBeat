@@ -1,5 +1,3 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
-
 package com.bpmapp.audio.data
 
 import androidx.room.Database
@@ -17,7 +15,7 @@ import androidx.room.TypeConverters
         PlaylistTrack::class
         // UserPreferences::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 @TypeConverters(TrackTypeConverters::class)

@@ -1,6 +1,6 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
-
 package com.bpmapp.audio.viewmodel
+
+import com.bpmapp.audio.R
 
 import android.annotation.SuppressLint
 import android.content.Context
@@ -229,7 +229,7 @@ class BpmToolsViewModel @Inject constructor(
         val bpm = _detectedBpm.value ?: return
         val trackId = currentTrackId()
         if (trackId == null) {
-            _errorMessage.value = "No track selected. Play a track first."
+            _errorMessage.value = context.getString(R.string.error_no_track_selected)
             return
         }
         setCurrentTrackBpm(bpm.toFloat())
@@ -245,13 +245,13 @@ class BpmToolsViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             val mediaItem = playerRepository.currentTrack.value
             if (mediaItem == null) {
-                _errorMessage.value = "No track selected. Play a track first."
+                _errorMessage.value = context.getString(R.string.error_no_track_selected)
                 return@launch
             }
             
             val mediaUri = mediaItem.localConfiguration?.uri
             if (mediaUri == null) {
-                _errorMessage.value = "Cannot access audio for the current track."
+                _errorMessage.value = context.getString(R.string.error_cannot_access_audio)
                 return@launch
             }
             
@@ -278,10 +278,10 @@ class BpmToolsViewModel @Inject constructor(
                     setCurrentTrackBpm(bpm)
                     playerRepository.updateBpmForTrack(trackId, bpm)
                 } else {
-                    _errorMessage.value = "Could not detect BPM for this track"
+                    _errorMessage.value = context.getString(R.string.error_could_not_detect_bpm)
                 }
             } catch (e: Exception) {
-                _errorMessage.value = "BPM detection error: ${e.message}"
+                _errorMessage.value = context.getString(R.string.error_bpm_detection, e.message ?: "")
             } finally {
                 _isDetectingBpm.value = false
             }
@@ -303,7 +303,7 @@ class BpmToolsViewModel @Inject constructor(
                 _detectedBpm.value = bpm
                 val trackId = currentTrackId()
                 if (trackId == null) {
-                    _errorMessage.value = "No track selected. Play a track first."
+                    _errorMessage.value = context.getString(R.string.error_no_track_selected)
                     return@let
                 }
                 playerRepository.updateBpmForTrack(trackId, bpm.toFloat())
@@ -312,12 +312,12 @@ class BpmToolsViewModel @Inject constructor(
                         trackRepository.updateBpm(trackId, bpm.toFloat())
                         val written = trackRepository.saveBpmToFileMetadata(trackId, bpm.toFloat())
                         _errorMessage.value = if (written) {
-                            "BPM saved to track and file ID3 tag"
+                            context.getString(R.string.info_bpm_saved_to_file)
                         } else {
-                            "BPM saved to track library (could not write to file metadata)"
+                            context.getString(R.string.info_bpm_saved_library_only)
                         }
                     } catch (e: Exception) {
-                        _errorMessage.value = "Failed to save BPM: ${e.message}"
+                        _errorMessage.value = context.getString(R.string.error_failed_save_bpm, e.message ?: "")
                     }
                 }
             }

@@ -1,9 +1,7 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
-
 package com.bpmapp.audio.ui.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -55,10 +53,12 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.bpmapp.audio.R
 import com.bpmapp.audio.data.Track
 import com.bpmapp.audio.ui.theme.AppSpacing
 import com.bpmapp.audio.ui.theme.bpmColor
 import com.bpmapp.audio.ui.theme.speedFactorColor
+import androidx.compose.ui.res.stringResource
 import java.text.DecimalFormat
 
 /**
@@ -67,6 +67,7 @@ import java.text.DecimalFormat
  * Features: Overflow menu with Play/Replace, Edit BPM, Delete actions
  *           Explicit "Add to Playlist" button
  */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun TrackCard(
     track: Track,
@@ -80,7 +81,8 @@ fun TrackCard(
     speedFactor: Float? = null,
     isSelected: Boolean = false,
     isFavorite: Boolean = false,
-    onToggleFavorite: (() -> Unit)? = null
+    onToggleFavorite: (() -> Unit)? = null,
+    onLongClick: () -> Unit = {}
 ) {
     // Get speed factor color for BPM display
     val bpmColorValue = bpmColor(speedFactor)
@@ -99,6 +101,19 @@ fun TrackCard(
     // Context menu state
     var showContextMenu by remember { mutableStateOf(false) }
 
+    // Accessibility strings resolved in composable scope
+    val unknownArtist = stringResource(R.string.trackcard_unknown_artist)
+    val unknownBpmText = stringResource(R.string.trackcard_unknown_bpm)
+    val bpmText = if (track.bpm != null && track.bpm > 0)
+        stringResource(R.string.trackcard_bpm_value, DecimalFormat("#.##").format(track.bpm))
+    else unknownBpmText
+    val trackContentDesc = stringResource(
+        R.string.trackcard_desc_template,
+        track.metadataTitle ?: track.fileName,
+        track.metadataArtist ?: unknownArtist,
+        bpmText
+    )
+
     Card(
         modifier = modifier
             .clip(MaterialTheme.shapes.small)
@@ -109,14 +124,14 @@ fun TrackCard(
                     MaterialTheme.colorScheme.surface
                 }
             )
-            .clickable(
+            .combinedClickable(
                 interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) { onClick() }
+                indication = null,
+                onClick = { onClick() },
+                onLongClick = { onLongClick() }
+            )
             .semantics {
-                contentDescription = "Track: ${track.metadataTitle ?: track.fileName}, " +
-                    "${track.metadataArtist ?: "Unknown artist"}, " +
-                    "${if (track.bpm != null && track.bpm > 0) "${track.bpm} BPM" else "unknown BPM"}"
+                contentDescription = trackContentDesc
             },
         shape = MaterialTheme.shapes.small,
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
@@ -139,7 +154,7 @@ fun TrackCard(
                 verticalArrangement = Arrangement.Center
             ) {
                 // Title
-                val displayTitle = track.metadataTitle ?: track.fileName.takeIf { it.isNotEmpty() } ?: "Unknown"
+                val displayTitle = track.metadataTitle ?: track.fileName.takeIf { it.isNotEmpty() } ?: stringResource(R.string.trackcard_unknown)
                 Text(
                     text = displayTitle,
                     style = MaterialTheme.typography.bodySmall,
@@ -168,17 +183,17 @@ fun TrackCard(
                         Icon(
                             imageVector = speedFactorIcon,
                             contentDescription = when {
-                                speedFactor == null -> "Speed factor unknown"
-                                speedFactor == 1.0f -> "Perfect match"
-                                speedFactor < 0.9f || speedFactor > 1.1f -> "Needs adjustment"
-                                else -> "Good match"
+                                speedFactor == null -> stringResource(R.string.trackcard_speed_unknown)
+                                speedFactor == 1.0f -> stringResource(R.string.trackcard_speed_perfect)
+                                speedFactor < 0.9f || speedFactor > 1.1f -> stringResource(R.string.trackcard_speed_needs_adjustment)
+                                else -> stringResource(R.string.trackcard_speed_good)
                             },
                             modifier = Modifier.size(12.dp),
                             tint = speedFactorIconColor
                         )
                         Spacer(modifier = Modifier.width(2.dp))
                         Text(
-                            text = "${DecimalFormat("#.##").format(track.bpm)} BPM",
+                            text = stringResource(R.string.trackcard_bpm_value, DecimalFormat("#.##").format(track.bpm)),
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
                             color = bpmColorValue,
@@ -187,7 +202,7 @@ fun TrackCard(
                     }
                 } else {
                     Text(
-                        text = "Unknown BPM",
+                        text = stringResource(R.string.trackcard_unknown_bpm_label),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1
@@ -208,7 +223,7 @@ fun TrackCard(
                     ) {
                         Icon(
                             imageVector = if (isFavorite) Icons.Filled.Star else Icons.Filled.StarBorder,
-                            contentDescription = if (isFavorite) "Remove from favorites" else "Add to favorites",
+                            contentDescription = if (isFavorite) stringResource(R.string.trackcard_remove_favorite) else stringResource(R.string.trackcard_add_favorite),
                             modifier = Modifier.size(20.dp),
                             tint = if (isFavorite) {
                                 MaterialTheme.colorScheme.primary
@@ -231,12 +246,12 @@ fun TrackCard(
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Add,
-                        contentDescription = "Add to Playlist",
+                        contentDescription = stringResource(R.string.trackcard_add_to_playlist),
                         modifier = Modifier.size(14.dp)
                     )
                     Spacer(modifier = Modifier.width(1.dp))
                     Text(
-                        text = "Add",
+                        text = stringResource(R.string.trackcard_add),
                         style = MaterialTheme.typography.labelSmall
                     )
                 }
@@ -249,7 +264,7 @@ fun TrackCard(
                     ) {
                         Icon(
                             imageVector = Icons.Filled.MoreVert,
-                            contentDescription = "Track actions",
+                            contentDescription = stringResource(R.string.trackcard_actions),
                             modifier = Modifier.size(20.dp),
                             tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                         )
@@ -264,18 +279,18 @@ fun TrackCard(
                         DropdownMenuItem(
                             text = { 
                                 Text(
-                                    "Play (Replace Current)",
+                                    stringResource(R.string.trackcard_play_replace),
                                     style = MaterialTheme.typography.bodySmall
                                 )
                             },
-                            onClick = { 
+                            onClick = {
                                 onPlay()
                                 showContextMenu = false
                             },
                             leadingIcon = {
                                 Icon(
                                     imageVector = Icons.Filled.PlayArrow,
-                                    contentDescription = "Play",
+                                    contentDescription = stringResource(R.string.trackcard_play),
                                     modifier = Modifier.size(16.dp),
                                     tint = MaterialTheme.colorScheme.primary
                                 )
@@ -285,18 +300,18 @@ fun TrackCard(
                         DropdownMenuItem(
                             text = { 
                                 Text(
-                                    "Add to Upcoming",
+                                    stringResource(R.string.trackcard_add_to_upcoming),
                                     style = MaterialTheme.typography.bodySmall
                                 )
                             },
-                            onClick = { 
+                            onClick = {
                                 onAddToUpcoming()
                                 showContextMenu = false
                             },
                             leadingIcon = {
                                 Icon(
                                     imageVector = Icons.Filled.Add,
-                                    contentDescription = "Add to Upcoming",
+                                    contentDescription = stringResource(R.string.trackcard_add_to_upcoming),
                                     modifier = Modifier.size(16.dp),
                                     tint = MaterialTheme.colorScheme.primary
                                 )
@@ -306,18 +321,18 @@ fun TrackCard(
                         DropdownMenuItem(
                             text = { 
                                 Text(
-                                    "Add to Playlist",
+                                    stringResource(R.string.trackcard_add_to_playlist),
                                     style = MaterialTheme.typography.bodySmall
                                 )
                             },
-                            onClick = { 
+                            onClick = {
                                 onAddToPlaylist()
                                 showContextMenu = false
                             },
                             leadingIcon = {
                                 Icon(
                                     imageVector = Icons.Filled.PlaylistAdd,
-                                    contentDescription = "Add to Playlist",
+                                    contentDescription = stringResource(R.string.trackcard_add_to_playlist),
                                     modifier = Modifier.size(16.dp),
                                     tint = MaterialTheme.colorScheme.primary
                                 )
@@ -327,18 +342,18 @@ fun TrackCard(
                         DropdownMenuItem(
                             text = { 
                                 Text(
-                                    "Edit BPM",
+                                    stringResource(R.string.trackcard_edit_bpm),
                                     style = MaterialTheme.typography.bodySmall
                                 )
                             },
-                            onClick = { 
+                            onClick = {
                                 onEditBpm()
                                 showContextMenu = false
                             },
                             leadingIcon = {
                                 Icon(
                                     imageVector = Icons.Filled.Edit,
-                                    contentDescription = "Edit BPM",
+                                    contentDescription = stringResource(R.string.trackcard_edit_bpm),
                                     modifier = Modifier.size(16.dp),
                                     tint = MaterialTheme.colorScheme.primary
                                 )
@@ -348,19 +363,19 @@ fun TrackCard(
                         DropdownMenuItem(
                             text = { 
                                 Text(
-                                    "Delete",
+                                    stringResource(R.string.trackcard_delete),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.error
                                 )
                             },
-                            onClick = { 
+                            onClick = {
                                 onDelete()
                                 showContextMenu = false
                             },
                             leadingIcon = {
                                 Icon(
                                     imageVector = Icons.Filled.Delete,
-                                    contentDescription = "Delete",
+                                    contentDescription = stringResource(R.string.trackcard_delete),
                                     modifier = Modifier.size(16.dp),
                                     tint = MaterialTheme.colorScheme.error
                                 )

@@ -1,5 +1,3 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
-
 package com.bpmapp.audio.data
 
 import androidx.room.ColumnInfo
@@ -51,6 +49,7 @@ data class Track(
     val metadataArtist: String? = null, // Artist from metadata
     val metadataAlbum: String? = null,  // Album from metadata
     val metadataGenre: String? = null,  // Genre from metadata (ID3 tag)
+    val metadataTrackNumber: String? = null,  // CD track number from metadata (e.g. "3" or "3/12")
     @ColumnInfo(defaultValue = "0")
     val isFavorite: Boolean = false     // Whether the track is marked as a favorite
 )
