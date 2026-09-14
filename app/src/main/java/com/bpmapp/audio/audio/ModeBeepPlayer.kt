@@ -1,5 +1,3 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
-
 package com.bpmapp.audio.audio
 
 import android.media.AudioManager
@@ -37,7 +35,7 @@ class ModeBeepPlayer @Inject constructor() {
         private val TERNARY_FACTORS = setOf(1.5f, 3.0f)
     }
 
-    private val handler = Handler(Looper.getMainLooper())
+    private val handler by lazy { Handler(Looper.getMainLooper()) }
 
     @Volatile
     private var toneGenerator: ToneGenerator? = null
