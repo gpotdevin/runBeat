@@ -31,13 +31,12 @@ Repo Type: git
 Repo: https://github.com/gpotdevin/runBeat.git
 
 Builds:
-  - versionName: 1.2
-    versionCode: 14
-    commit: v1.2
+  - versionName: 1.5
+    versionCode: 22
+    commit: v1.5
     subdir: app
     gradle:
       - yes
-    prebuild: sed -i -e 's/mistral//' app/build.gradle
 
 Auto Update Mode: Version %v
 Update Checker: None
