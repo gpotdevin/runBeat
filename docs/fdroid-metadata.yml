@@ -20,8 +20,8 @@ Repo: https://github.com/gpotdevin/runBeat.git
 
 Builds:
   - versionName: 1.5.2
-    versionCode: 25
-    commit: <full-commit-hash-of-v1.5.2>
+    versionCode: 26
+    commit: 6f09faed9f27476a476385e38164c05e21e8eb20
     subdir: app
     gradle:
       - yes
