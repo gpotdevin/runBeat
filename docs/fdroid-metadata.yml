@@ -5,46 +5,36 @@ as `metadata/com.RunBeat.run.audio.yml` and submit a merge request.
 
 ```yaml
 Categories:
-  - Audio
+  - Multimedia
   - Sports & Health
 License: GPL-3.0-or-later
-Author Name: Guillaume Potdevin
-Author Email: your.email@example.com
-Web Site: https://github.com/gpotdevin/runBeat
-Source Code: https://github.com/gpotdevin/runBeat
-Issue Tracker: https://github.com/gpotdevin/runBeat/issues
-Donate: none
+AuthorName: Guillaume Potdevin
+WebSite: https://github.com/gpotdevin/runBeat
+SourceCode: https://github.com/gpotdevin/runBeat
+IssueTracker: https://github.com/gpotdevin/runBeat/issues
 
-Auto Name: RunBeat
-Summary: BPM-based audio player for runners
-Description: |
-  RunBeat is a BPM-based audio player made for runners. It synchronizes music
-  with running cadence by adjusting tempo without changing pitch, using the
-  SoundTouch time-stretching engine. It includes automatic BPM detection
-  (aubio), tap-to-beat, cadence matching (default 172 BPM), playlists and CSV
-  BPM metadata, offline-first storage (Room), and background playback with
-  Bluetooth controls. The app is fully open source under the GPL v3.0 or later
-  and collects no data.
-
-Requires Root: no
-Repo Type: git
+RepoType: git
 Repo: https://github.com/gpotdevin/runBeat.git
 
 Builds:
-  - versionName: 1.2
-    versionCode: 14
-    commit: v1.2
+  - versionName: 1.5.1
+    versionCode: 24
+    commit: <full-commit-hash-of-v1.5.1>
     subdir: app
     gradle:
       - yes
-    prebuild: sed -i -e 's/mistral//' app/build.gradle
+    rm:
+      - app/libs/TarsosDSP-Android-latest-bin.jar
 
-Auto Update Mode: Version %v
-Update Checker: None
+AutoUpdateMode: Version
+UpdateCheckMode: Tags
+UpdateCheckData: build-counter.txt|(\d+)|app/build.gradle|versionName\s+"([^"]+)"
+CurrentVersion: 1.5.1
+CurrentVersionCode: 24
 ```
 
-> Note: This is a ready-to-adapt template. The build/json fields above are
-> illustrative of the fdroidserver format; adjust `versionCode`/`commit` to
-> match the tag you publish and run `fdroid build -v com.RunBeat.run.audio`
-> locally to validate before submitting. See
-> https://f-droid.org/en/docs/Submitting_to_F-Droid/ for current requirements.
+> Note: The versionCode is derived from `git rev-list --count HEAD` at build
+> time. `build-counter.txt` stores the versionCode at release time so that
+> `fdroid checkupdates` can statically extract it via `UpdateCheckData`.
+> Update `build-counter.txt` with the commit count before tagging each
+> release.

@@ -4,6 +4,17 @@ All notable changes to RunBeat are documented in this file. Format based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1] - 2026-09-16
+
+### Fixed
+
+- **ModeBeepPlayer test fix**: `Handler` is now lazily initialized to avoid
+  `RuntimeException` in JVM unit tests where Android's `Looper` is unavailable.
+- **F-Droid auto-update support**: `build-counter.txt` now contains the
+  versionCode at release time, enabling `fdroid checkupdates` to statically
+  extract the version code (the app derives it from `git rev-list --count`
+  at build time, which is not statically parseable).
+
 ## [1.5] - 2026-09-14
 
 ### Added
