@@ -31,11 +31,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install NDK and CMake (for aubio native module)
         run: |
-          sdkmanager "platforms;android-36" "build-tools;36.0.0" \
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" \
             "ndk;26.1.10909125" "cmake;3.22.1" --sdk_root=$ANDROID_HOME
           echo "sdk.dir=$ANDROID_HOME" > local.properties
           echo "ndk.dir=$ANDROID_HOME/ndk/26.1.10909125" >> local.properties

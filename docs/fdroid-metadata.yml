@@ -13,13 +13,15 @@ WebSite: https://github.com/gpotdevin/runBeat
 SourceCode: https://github.com/gpotdevin/runBeat
 IssueTracker: https://github.com/gpotdevin/runBeat/issues
 
+AutoName: RunBeat
+
 RepoType: git
 Repo: https://github.com/gpotdevin/runBeat.git
 
 Builds:
-  - versionName: 1.5.1
-    versionCode: 24
-    commit: <full-commit-hash-of-v1.5.1>
+  - versionName: 1.5.2
+    versionCode: 25
+    commit: <full-commit-hash-of-v1.5.2>
     subdir: app
     gradle:
       - yes
@@ -29,8 +31,8 @@ Builds:
 AutoUpdateMode: Version
 UpdateCheckMode: Tags
 UpdateCheckData: build-counter.txt|(\d+)|app/build.gradle|versionName\s+"([^"]+)"
-CurrentVersion: 1.5.1
-CurrentVersionCode: 24
+CurrentVersion: 1.5.2
+CurrentVersionCode: 26
 ```
 
 > Note: The versionCode is derived from `git rev-list --count HEAD` at build
