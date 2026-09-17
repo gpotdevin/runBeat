@@ -5,7 +5,7 @@ as `metadata/com.RunBeat.run.audio.yml` and submit a merge request.
 
 ```yaml
 Categories:
-  - Multimedia
+  - Local Media Player
   - Sports & Health
 License: GPL-3.0-or-later
 AuthorName: Guillaume Potdevin
@@ -17,6 +17,10 @@ AutoName: RunBeat
 
 RepoType: git
 Repo: https://github.com/gpotdevin/runBeat.git
+
+Binaries: https://github.com/gpotdevin/runBeat/releases/download/v%v/app-release.apk
+
+AllowedAPKSigningKeys: 17c79696d6cd7f28e9ae9b8931dc8b7c402856318fe450ec777a23fddf12ca02
 
 Builds:
   - versionName: 1.5.2
