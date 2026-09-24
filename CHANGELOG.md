@@ -4,6 +4,18 @@ All notable changes to RunBeat are documented in this file. Format based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.4] - 2026-09-24
+
+### Added
+
+- **Reproducible builds**: native libraries (aubio, soundtouch) now build
+  deterministically across environments by stripping embedded build paths
+  (`-ffile-prefix-map`) and disabling NDK build-id (`--build-id=none`).
+  NDK version pinned to 26.1.10909125 and build-tools pinned to 34.0.0
+  (apksigner from build-tools 34 is required for `apksigcopier` verification).
+  AGP dependency metadata signing block disabled for F-Droid compatibility.
+  F-Droid can now verify and publish upstream-signed APKs.
+
 ## [1.5.2] - 2026-09-16
 
 ### Fixed

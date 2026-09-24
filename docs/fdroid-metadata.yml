@@ -18,21 +18,27 @@ AutoName: RunBeat
 RepoType: git
 Repo: https://github.com/gpotdevin/runBeat.git
 
+Binaries: 
+  https://github.com/gpotdevin/runBeat/releases/download/v%v/app-release.apk
+
 Builds:
-  - versionName: 1.5.2
-    versionCode: 26
-    commit: 6f09faed9f27476a476385e38164c05e21e8eb20
+  - versionName: 1.5.4
+    versionCode: 33
+    commit: c7392859a6837ae84eee99f1b975fa9581eb123d
     subdir: app
     gradle:
       - yes
     rm:
       - app/libs/TarsosDSP-Android-latest-bin.jar
+    ndk: r26b
+
+AllowedAPKSigningKeys: 17c79696d6cd7f28e9ae9b8931dc8b7c402856318fe450ec777a23fddf12ca02
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags
 UpdateCheckData: build-counter.txt|(\d+)|app/build.gradle|versionName\s+"([^"]+)"
-CurrentVersion: 1.5.2
-CurrentVersionCode: 26
+CurrentVersion: 1.5.4
+CurrentVersionCode: 33
 ```
 
 > Note: The versionCode is derived from `git rev-list --count HEAD` at build

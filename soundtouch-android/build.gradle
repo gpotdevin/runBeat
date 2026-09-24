@@ -11,6 +11,7 @@ repositories {
 android {
 	namespace 'com.hipxel.soundtouch'
 	compileSdk 36
+	ndkVersion "26.1.10909125"
 
 	defaultConfig {
 		minSdkVersion 21

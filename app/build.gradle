@@ -16,6 +16,13 @@ repositories {
 android {
     namespace 'com.bpmapp.audio'
     compileSdk 36
+    buildToolsVersion "34.0.0"
+    ndkVersion "26.1.10909125"
+
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
+    }
 
     // versionCode is derived from the git commit count so it is deterministic
     // and always increasing, both locally and in CI. Falls back to the
@@ -37,7 +44,7 @@ android {
         minSdk 26
         targetSdk 36
         versionCode buildNumber
-        versionName "1.5.2"
+        versionName "1.5.4"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
