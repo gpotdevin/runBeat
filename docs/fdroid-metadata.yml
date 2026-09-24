@@ -18,8 +18,7 @@ AutoName: RunBeat
 RepoType: git
 Repo: https://github.com/gpotdevin/runBeat.git
 
-Binaries: 
-  https://github.com/gpotdevin/runBeat/releases/download/v%v/app-release.apk
+Binaries: https://github.com/gpotdevin/runBeat/releases/download/v%v/app-release.apk
 
 Builds:
   - versionName: 1.5.4
