@@ -1,0 +1,16 @@
+ Evgeny Mezin commented:
+
+Static review of RunBeat 1.5.4 (71f8934, pipeline 2879885314). cc @linsui
+
+The metadata looks good. It builds reproducibly against the GitHub binary, the licence is GPL-3.0-or-later and matches upstream, and aubio and SoundTouch are built from vendored source. There are no proprietary or tracking dependencies, no music-service SDKs, no Health Connect and no location access. The built APK has no INTERNET permission, and its ACCESS_NETWORK_STATE comes from Media3. VirusTotal: 0/67 — https://www.virustotal.com/gui/file/a9093c5806fe5825b51e420ab33c9e9bf592afffb5b4047cca8ebe34ef207f8a
+
+@gpotdevin, a few things for upstream:
+
+    versionCode has two sources. app/build.gradle:27-46 sets versionCode from git rev-list --count HEAD, but UpdateCheckData reads build-counter.txt. Both are 33 at v1.5.4, but they can drift apart: at your reprotest-1/reprotest-36 tags (495f6ed) the file says 26 and the git count is 32. If a future release tag does not bump build-counter.txt exactly, the bot will write a versionCode the build does not produce, and that F-Droid build fails until there is a new tag. Please use one source of truth, for example read build-counter.txt (or a literal versionCode) in Gradle and drop the git count. Deleting the reprotest-* tags would also be tidy.
+    Unused permissions in app/src/main/AndroidManifest.xml:
+        RECORD_AUDIO (line 24): nothing in the app or the native modules records audio. A music player asking for the microphone will put users off, so please remove it.
+        READ_MEDIA_IMAGES / READ_MEDIA_VIDEO (lines 11-12) and MODIFY_AUDIO_SETTINGS (line 23): none of them is referenced in the code. Only READ_MEDIA_AUDIO is requested.
+    MANAGE_EXTERNAL_STORAGE (line 15) is only used to write BPM tags into audio files, and it is requested on demand, which is good. On Android 11+, MediaStore.createWriteRequest() would get per-file user consent for this without all-files access.
+    Minor: app/libs/TarsosDSP-Android-latest-bin.jar is no longer used (nothing references it), so deleting it upstream would make the rm: line unnecessary. The jitpack.io repository (settings.gradle:8, app/build.gradle:13) is also unused.
+
+On-device testing is still to be done.

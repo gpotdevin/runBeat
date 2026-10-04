@@ -10,7 +10,6 @@ plugins {
 repositories {
     google()
     mavenCentral()
-    maven { url 'https://jitpack.io' }
 }
 
 android {
@@ -24,20 +23,9 @@ android {
         includeInBundle = false
     }
 
-    // versionCode is derived from the git commit count so it is deterministic
-    // and always increasing, both locally and in CI. Falls back to the
-    // build-counter.txt file when git is unavailable.
-    def gitVersionCode = -1
-    try {
-        def gitCmd = ['git', 'rev-list', '--count', 'HEAD'].execute(null, projectDir)
-        gitCmd.waitFor()
-        if (gitCmd.exitValue() == 0) {
-            gitVersionCode = gitCmd.text.trim().toInteger()
-        }
-    } catch (Exception ignored) {
-    }
+    // versionCode is read from build-counter.txt to ensure consistency with F-Droid
     def counterFile = file("${project.rootDir}/build-counter.txt")
-    def buildNumber = gitVersionCode > 0 ? gitVersionCode : (counterFile.exists() ? counterFile.text.trim().toInteger() : 1)
+    def buildNumber = counterFile.exists() ? counterFile.text.trim().toInteger() : 1
 
     defaultConfig {
         applicationId "com.RunBeat.run.audio"

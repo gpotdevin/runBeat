@@ -27,21 +27,17 @@ Builds:
     subdir: app
     gradle:
       - yes
-    rm:
-      - app/libs/TarsosDSP-Android-latest-bin.jar
     ndk: r26b
 
 AllowedAPKSigningKeys: 17c79696d6cd7f28e9ae9b8931dc8b7c402856318fe450ec777a23fddf12ca02
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags
-UpdateCheckData: build-counter.txt|(\d+)|app/build.gradle|versionName\s+"([^"]+)"
+UpdateCheckData: build-counter.txt|(\d+)
 CurrentVersion: 1.5.4
 CurrentVersionCode: 33
 ```
 
-> Note: The versionCode is derived from `git rev-list --count HEAD` at build
-> time. `build-counter.txt` stores the versionCode at release time so that
-> `fdroid checkupdates` can statically extract it via `UpdateCheckData`.
-> Update `build-counter.txt` with the commit count before tagging each
-> release.
+> Note: The versionCode is read from `build-counter.txt` to ensure consistency
+> with F-Droid's UpdateCheckData. Update `build-counter.txt` with the commit
+> count before tagging each release.

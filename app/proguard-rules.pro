@@ -42,6 +42,4 @@
 -keep class androidx.compose.runtime.Composer { *; }
 -keep class androidx.compose.runtime.ComposerImpl { *; }
 
-# For TarsosDSP
--keep class be.tarsos.dsp.** { *; }
--dontwarn be.tarsos.dsp.**
+
