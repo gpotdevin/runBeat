@@ -17,7 +17,7 @@
 | FR-008 | Playback controls (play/pause/ff/rew/seek) | Core |
 | FR-009 | Playlist management (create/edit/import) | Core |
 | FR-010 | Shuffle/random play | Expected |
-| FR-011 | Streaming (Qobuz/Spotify) | Low |
+| FR-011 | Streaming (Qobuz/Spotify) | Low | ❌ **NOT FEASIBLE - Legal Restrictions** |
 | FR-012 | Export modified music files | Low |
 
 ## Non-Functional Requirements
@@ -105,5 +105,32 @@ data class Track(
 3. **Feedback**: Visual confirmation for all actions
 4. **Error Handling**: Clear error messages with recovery options
 5. **Performance**: Lazy loading for large lists, virtualization
+
+---
+
+## 🚫 Deprecated/Not Feasible Features
+
+### Streaming Integration (FR-011)
+
+**Status:** ❌ **NOT FEASIBLE - Legal Restrictions**
+
+**Providers Researched:** Spotify, Qobuz, Deezer, Amazon Music
+
+**Legal Analysis:**
+After comprehensive research of each provider's Terms of Service and API policies:
+
+- **Spotify**: Developer Terms §10 explicitly prohibits "modifying, editing, altering, creating derivative works... from Spotify Content"
+- **Qobuz**: API Terms §xi prohibits any "modification, deletion, commercial use... of the various elements of the QOBUZ Applications"
+- **Amazon Music**: Program Requirements §2.15 prohibits "modifying any content delivered through the Amazon Music Service"
+- **Deezer**: Standard API prohibits modification; their "Remix Lab" feature allows tempo changes but requires special artist-approved licensing
+
+**Conclusion:**
+All major streaming providers explicitly prohibit third-party applications from modifying audio playback (tempo/pitch changes), which is RunBeat's core functionality. Integrating any of these APIs would violate their Terms of Service and could result in:
+- Immediate API access termination
+- Copyright infringement lawsuits
+- Legal action from music labels
+
+**Alternative:**
+The app will continue to focus on **local file playback** with tempo adjustment using the SoundTouch library, which is legally permissible as users own the files they process.
 
 

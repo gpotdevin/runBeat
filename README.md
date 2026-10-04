@@ -21,6 +21,17 @@
 - **Offline-First**: All data stored locally (Room database).
 - **Background Playback**: Foreground service with notifications and Bluetooth controls.
 
+## ⚠️ Features Not Available
+
+### Streaming Service Integration
+**Why not available:** After thorough legal research, we determined that integrating streaming services (Spotify, Qobuz, Deezer, Amazon Music) is **not feasible** due to legal restrictions.
+
+All major streaming providers explicitly prohibit third-party applications from modifying audio playback (tempo/pitch changes) in their Terms of Service and API policies. Since tempo adjustment without pitch change is RunBeat's core functionality, we cannot legally integrate with these services.
+
+**Current approach:** RunBeat works with **local music files** that you own, allowing you to adjust playback speed to match your running cadence without legal restrictions.
+
+See [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) for detailed legal analysis.
+
 ## Screenshots
 
 <p align="center">
