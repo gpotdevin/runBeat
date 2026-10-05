@@ -89,6 +89,9 @@ commands.txt
 # Local dev scratch
 requirements/
 
+# Local plan files
+update_plans/
+
 # CMake build directories
 .cxx/
 

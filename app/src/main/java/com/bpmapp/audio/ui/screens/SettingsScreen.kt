@@ -202,7 +202,7 @@ fun SettingsScreen(
                     title = stringResource(R.string.settings_import_csv_title),
                     description = stringResource(R.string.settings_import_csv_desc)
                 ) {
-                    TextButton(onClick = { csvImportLauncher.launch("*/*") }) {
+                    TextButton(onClick = { csvImportLauncher.launch("text/csv") }) {
                         Text(
                             text = stringResource(R.string.settings_import_button),
                             style = MaterialTheme.typography.bodyMedium,
