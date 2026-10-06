@@ -139,6 +139,12 @@
     <string name="library_use_filter_chips">Usa chips de filtro para mostrar canciones</string>
     <string name="library_no_tracks_desc">Ninguna pista coincide con los filtros actuales</string>
     <string name="library_no_tracks">No se encontraron pistas</string>
+    <string name="library_scan_offer_title">¿Escaneo de la biblioteca de música?</string>
+    <string name="library_scan_offer_body">Para usar esta aplicaci&#243;n, necesita archivos de audio en su dispositivo. Escanee su biblioteca de m&#250;sica para importar sus pistas.</string>
+    <string name="library_scan_offer_button">Escanear biblioteca</string>
+    <string name="library_scan_offer_cancel">Ahora no</string>
+    <string name="library_no_tracks_unscanned">Todavía no se ha escaneado ninguna biblioteca musical</string>
+    <string name="library_scan_now">Escanear biblioteca</string>
     <string name="library_try_adjusting">Intenta ajustar tus filtros</string>
 
     <!-- Library snackbar messages -->

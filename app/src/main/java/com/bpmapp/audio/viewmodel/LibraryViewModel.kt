@@ -5,6 +5,7 @@ import com.bpmapp.audio.R
 import android.annotation.SuppressLint
 import android.Manifest
 import android.content.Context
+import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -290,6 +291,18 @@ class LibraryViewModel @Inject constructor(
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
     
+    // Persisted library scan state
+    private val prefs = context.getSharedPreferences("runbeat", Context.MODE_PRIVATE)
+    private val _hasScannedLibrary = MutableStateFlow(
+        prefs.getBoolean("has_scanned_library", false)
+    )
+    val hasScannedLibrary: StateFlow<Boolean> = _hasScannedLibrary.asStateFlow()
+
+    private fun setHasScannedLibrary(value: Boolean) {
+        prefs.edit().putBoolean("has_scanned_library", value).apply()
+        _hasScannedLibrary.value = value
+    }
+    
     // Import count (number of tracks imported in last operation)
     private val _importCount = MutableStateFlow(0)
     val importCount: StateFlow<Int> = _importCount.asStateFlow()
@@ -482,9 +495,11 @@ class LibraryViewModel @Inject constructor(
                 }
                 
             } catch (e: Exception) {
-                _isLoading.value = false
                 _errorMessage.value = context.getString(R.string.error_failed_scan_library, e.message ?: "")
                 Log.e(TAG, "System library scan error", e)
+            } finally {
+                _isLoading.value = false
+                setHasScannedLibrary(true)
             }
         }
     }

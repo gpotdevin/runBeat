@@ -139,6 +139,12 @@
     <string name="library_use_filter_chips">Verwenden Sie Filter-Chips, um Songs anzuzeigen</string>
     <string name="library_no_tracks_desc">Keine Tracks entsprechen den aktuellen Filtern</string>
     <string name="library_no_tracks">Keine Tracks gefunden</string>
+    <string name="library_scan_offer_title">Musikbibliothek scannen?</string>
+    <string name="library_scan_offer_body">Um diese App zu nutzen, ben&#246;tigen Sie Audiodateien auf Ihrem Ger&#228;t. Scannen Sie Ihre Musikbibliothek, um Ihre Titel zu importieren.</string>
+    <string name="library_scan_offer_button">Bibliothek scannen</string>
+    <string name="library_scan_offer_cancel">Nicht jetzt</string>
+    <string name="library_no_tracks_unscanned">Es wurde noch keine Musikbibliothek gescannt</string>
+    <string name="library_scan_now">Bibliothek scannen</string>
     <string name="library_try_adjusting">Versuchen Sie, Ihre Filter anzupassen</string>
 
     <!-- Library snackbar messages -->

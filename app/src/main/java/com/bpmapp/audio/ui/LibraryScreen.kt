@@ -210,6 +210,7 @@ fun LibraryScreen(
     val selectedPathLevels by viewModel.selectedPathLevels.collectAsState()
     val filteredBaseTracks by viewModel.filteredTracks.collectAsState(emptyList())
     val favoriteTracks by viewModel.favoriteTracks.collectAsState(emptyList())
+    val hasScannedLibrary by viewModel.hasScannedLibrary.collectAsState()
     val playlists by viewModel.playlists.collectAsState(emptyList())
     val playlistTrackMap by viewModel.playlistTrackMap.collectAsState(emptyMap())
     
@@ -236,6 +237,7 @@ fun LibraryScreen(
     var showPermissionDialog by remember { mutableStateOf(false) }
     var showSyncMetadataDialog by remember { mutableStateOf(false) }
     var showMetadataSaveConfirmDialog by remember { mutableStateOf(false) }
+    var showScanLibraryOfferDialog by remember { mutableStateOf(false) }
     var selectedTrackForMetadata by remember { mutableStateOf<Track?>(null) }
     
     // Playlist dialog state
@@ -245,6 +247,13 @@ fun LibraryScreen(
     var playlistBeingDeleted by remember { mutableStateOf<Playlist?>(null) }
     var showAddToPlaylistDialog by remember { mutableStateOf(false) }
     var targetTrackIds by remember { mutableStateOf<List<String>>(emptyList()) }
+    
+    // Check if we need to show scan library dialog on first launch
+    LaunchedEffect(Unit) {
+        if (filteredBaseTracks.isEmpty() && !hasScannedLibrary) {
+            showScanLibraryOfferDialog = true
+        }
+    }
     
     // Permission state
     val context = LocalContext.current
@@ -1095,7 +1104,7 @@ fun LibraryScreen(
                         }
                     }
                 } else if (!hasActiveFilter) {
-                    // No filter active - show message to use filters
+                    // No filter active - show message to use filters or scan library
                     item {
                         Box(
                             modifier = Modifier.fillMaxSize(),
@@ -1105,23 +1114,58 @@ fun LibraryScreen(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.spacedBy(AppSpacing.md)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Filled.FilterList,
-                                    contentDescription = stringResource(R.string.library_no_filters_desc),
-                                    modifier = Modifier.size(AppSpacing.xxxl),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = stringResource(R.string.library_use_filters),
-                                    style = MaterialTheme.typography.titleLarge,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                 Text(
-                                     text = stringResource(R.string.library_use_filter_chips),
-                                     style = MaterialTheme.typography.bodyMedium,
-                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                     textAlign = TextAlign.Center
-                                 )
+                                if (!hasScannedLibrary) {
+                                    Icon(
+                                        imageVector = Icons.Filled.MusicNote,
+                                        contentDescription = stringResource(R.string.library_no_tracks_desc),
+                                        modifier = Modifier.size(AppSpacing.xxxl),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.library_no_tracks),
+                                        style = MaterialTheme.typography.titleLarge,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.library_no_tracks_unscanned),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        textAlign = TextAlign.Center
+                                    )
+                                    Button(
+                                        onClick = {
+                                            if (hasPermission) {
+                                                viewModel.scanSystemLibrary()
+                                            } else {
+                                                showPermissionDialog = true
+                                            }
+                                        },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = MaterialTheme.colorScheme.primary,
+                                            contentColor = MaterialTheme.colorScheme.onPrimary
+                                        )
+                                    ) {
+                                        Text(stringResource(R.string.library_scan_now))
+                                    }
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Filled.FilterList,
+                                        contentDescription = stringResource(R.string.library_no_filters_desc),
+                                        modifier = Modifier.size(AppSpacing.xxxl),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.library_use_filters),
+                                        style = MaterialTheme.typography.titleLarge,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                     Text(
+                                         text = stringResource(R.string.library_use_filter_chips),
+                                         style = MaterialTheme.typography.bodyMedium,
+                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                         textAlign = TextAlign.Center
+                                     )
+                                }
                             }
                         }
                     }
@@ -1146,12 +1190,36 @@ fun LibraryScreen(
                                     style = MaterialTheme.typography.titleLarge,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
-                                Text(
-                                    text = stringResource(R.string.library_try_adjusting),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    textAlign = TextAlign.Center
-                                )
+                                if (!hasScannedLibrary) {
+                                    Text(
+                                        text = stringResource(R.string.library_no_tracks_unscanned),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        textAlign = TextAlign.Center
+                                    )
+                                    Button(
+                                        onClick = {
+                                            if (hasPermission) {
+                                                viewModel.scanSystemLibrary()
+                                            } else {
+                                                showPermissionDialog = true
+                                            }
+                                        },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = MaterialTheme.colorScheme.primary,
+                                            contentColor = MaterialTheme.colorScheme.onPrimary
+                                        )
+                                    ) {
+                                        Text(stringResource(R.string.library_scan_now))
+                                    }
+                                } else {
+                                    Text(
+                                        text = stringResource(R.string.library_try_adjusting),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
                             }
                         }
                     }
@@ -1297,6 +1365,45 @@ onAddToPlaylist = {
                     onClick = { showClearDialog = false }
                 ) {
                     Text("Cancel")
+                }
+            }
+        )
+    }
+    
+    // Scan library offer dialog (first launch)
+    if (showScanLibraryOfferDialog) {
+        AlertDialog(
+            onDismissRequest = { showScanLibraryOfferDialog = false },
+            title = { Text(stringResource(R.string.library_scan_offer_title), style = MaterialTheme.typography.titleLarge) },
+            text = { 
+                Text(
+                    stringResource(R.string.library_scan_offer_body),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = { 
+                        if (hasPermission) {
+                            viewModel.scanSystemLibrary()
+                        } else {
+                            showPermissionDialog = true
+                        }
+                        showScanLibraryOfferDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    )
+                ) {
+                    Text(stringResource(R.string.library_scan_offer_button))
+                }
+            },
+            dismissButton = {
+                Button(
+                    onClick = { showScanLibraryOfferDialog = false }
+                ) {
+                    Text(stringResource(R.string.library_scan_offer_cancel))
                 }
             }
         )
