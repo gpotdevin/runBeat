@@ -29,7 +29,7 @@ import com.bpmapp.audio.data.PlaylistDao
 import com.bpmapp.audio.data.PlaylistTrack
 import com.bpmapp.audio.data.Track
 import com.bpmapp.audio.data.TrackSource
-import com.bpmapp.audio.util.PermissionUtils
+import com.bpmapp.audio.util.WriteAccess
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -1186,10 +1186,53 @@ class LibraryViewModel @Inject constructor(
     }
     
     /**
-     * Get explanation for file access permission
+     * Check write access for the given tracks and report what is needed to
+     * proceed with a BPM-to-file save. Runs on IO; reports back on the main
+     * thread.
      */
-    fun getFileAccessExplanation(): String {
-        return PermissionUtils.getFileAccessExplanation()
+    fun prepareFileWriteAccess(trackIds: List<String>, onResult: (WriteAccess) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val access = checkWriteAccess(trackIds)
+            withContext(Dispatchers.Main) {
+                onResult(access)
+            }
+        }
+    }
+    
+    /**
+     * Check write access for all tracks with a known BPM (used before
+     * syncing BPM tags to files in bulk).
+     */
+    fun prepareSyncAllWriteAccess(onResult: (WriteAccess) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val trackIds = trackRepository.getTracksWithKnownBpmIds()
+            val access = checkWriteAccess(trackIds)
+            withContext(Dispatchers.Main) {
+                onResult(access)
+            }
+        }
+    }
+    
+    /**
+     * Determine the write-access state for the given tracks
+     */
+    private suspend fun checkWriteAccess(trackIds: List<String>): WriteAccess {
+        if (trackIds.isEmpty()) return WriteAccess.Granted
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val uris = trackRepository.getUrisNeedingWriteAccess(trackIds)
+            if (uris.isEmpty()) {
+                WriteAccess.Granted
+            } else {
+                trackRepository.createWriteRequestIntentSender(uris)?.let { WriteAccess.WriteRequest(it) }
+                    ?: WriteAccess.Denied
+            }
+        } else {
+            if (trackRepository.hasLegacyStoragePermission()) {
+                WriteAccess.Granted
+            } else {
+                WriteAccess.LegacyPermissionNeeded
+            }
+        }
     }
 
     /**

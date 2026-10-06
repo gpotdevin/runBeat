@@ -160,9 +160,6 @@
     <string name="dialog_ok">OK</string>
 
     <!-- Library dialogs — File Access -->
-    <string name="dialog_file_access_title">Accès aux fichiers requis</string>
-    <string name="dialog_file_access_body">Cela ouvrira les paramètres de votre appareil où vous pourrez activer l\'accès aux fichiers pour RunBeat.</string>
-    <string name="dialog_open_settings">Ouvrir les paramètres</string>
 
     <!-- Library dialogs — Sync BPM -->
     <string name="dialog_sync_bpm_title">Synchroniser les BPM vers les fichiers</string>
@@ -342,6 +339,7 @@
 
     <!-- ==================== Error Messages (ViewModel) ==================== -->
     <string name="error_permission_denied_scan">Autorisation refusée. Impossible de scanner la bibliothèque musicale sans autorisation de stockage.</string>
+    <string name="error_write_access_denied">Impossible d\'obtenir l\'accès en écriture aux fichiers sélectionnés. Le BPM a été enregistré uniquement dans la bibliothèque.</string>
     <string name="error_no_tracks_imported">Aucune piste n\'a été importée. Veuillez vérifier le format du fichier CSV.</string>
     <string name="error_failed_import_csv">Échec de l\'importation du CSV : %1$s</string>
     <string name="error_permission_required_library">Autorisation requise pour accéder à la bibliothèque musicale du système</string>

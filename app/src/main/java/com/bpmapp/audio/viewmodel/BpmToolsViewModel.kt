@@ -22,6 +22,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import android.os.Build
+import com.bpmapp.audio.util.WriteAccess
 import javax.inject.Inject
 
 /**
@@ -326,5 +329,42 @@ class BpmToolsViewModel @Inject constructor(
     
     fun clearError() {
         _errorMessage.value = null
+    }
+
+    fun setError(message: String) {
+        _errorMessage.value = message
+    }
+
+    /**
+     * Check write access for the current track before saving BPM to its file.
+     * When no track is selected, reports Granted (the save itself will
+     * report the missing track).
+     */
+    fun prepareManualSaveWriteAccess(onResult: (WriteAccess) -> Unit) {
+        val trackId = currentTrackId()
+        if (trackId == null) {
+            onResult(WriteAccess.Granted)
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            val access = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val uris = trackRepository.getUrisNeedingWriteAccess(listOf(trackId))
+                if (uris.isEmpty()) {
+                    WriteAccess.Granted
+                } else {
+                    trackRepository.createWriteRequestIntentSender(uris)?.let { WriteAccess.WriteRequest(it) }
+                        ?: WriteAccess.Denied
+                }
+            } else {
+                if (trackRepository.hasLegacyStoragePermission()) {
+                    WriteAccess.Granted
+                } else {
+                    WriteAccess.LegacyPermissionNeeded
+                }
+            }
+            withContext(Dispatchers.Main) {
+                onResult(access)
+            }
+        }
     }
 }

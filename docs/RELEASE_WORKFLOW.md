@@ -53,7 +53,11 @@ This automatically triggers the Release workflow (`release.yml`) which:
 1. **Never reuse version codes** - Google Play requires each upload to have a higher versionCode than any previously published version
 2. **Build counter must always increment** - Even for non-release pushes, to avoid conflicts
 3. **Release workflow auto-triggers** - Pushing a tag matching `v*` pattern triggers the GitHub Actions workflow
-4. **MANAGE_EXTERNAL_STORAGE** - Required for writing BPM metadata to audio files; keep declared in manifest
+4. **MANAGE_EXTERNAL_STORAGE** - Must NOT be declared. Writing BPM metadata to
+   audio files uses per-file write grants (`MediaStore.createWriteRequest`) and
+   the `WRITE_EXTERNAL_STORAGE` legacy permission, so no broad storage
+   permission is needed. Declaring it triggers a Google Play sensitive
+   permission declaration requirement that would likely be rejected.
 
 ## Troubleshooting
 

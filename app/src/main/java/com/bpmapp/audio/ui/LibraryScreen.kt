@@ -150,7 +150,7 @@ import com.bpmapp.audio.ui.theme.TouchTargets
 import com.bpmapp.audio.ui.theme.bpmColor
 import com.bpmapp.audio.ui.theme.speedFactorColor
 import com.bpmapp.audio.ui.theme.touchTarget
-import com.bpmapp.audio.util.PermissionUtils
+import com.bpmapp.audio.util.WriteAccess
 import com.bpmapp.audio.viewmodel.LibraryViewModel
 import com.bpmapp.audio.viewmodel.LibraryViewModel.BrowseDimension
 import kotlinx.coroutines.CoroutineScope
@@ -234,7 +234,6 @@ fun LibraryScreen(
     // Dialog state
     var showClearDialog by remember { mutableStateOf(false) }
     var showPermissionDialog by remember { mutableStateOf(false) }
-    var showMetadataPermissionDialog by remember { mutableStateOf(false) }
     var showSyncMetadataDialog by remember { mutableStateOf(false) }
     var showMetadataSaveConfirmDialog by remember { mutableStateOf(false) }
     var selectedTrackForMetadata by remember { mutableStateOf<Track?>(null) }
@@ -262,8 +261,50 @@ fun LibraryScreen(
     }
     
     // Metadata editing state
-    val hasMetadataPermission = remember { 
-        PermissionUtils.hasManageExternalStoragePermission(context)
+    // Pending BPM-to-file action to run once file write access is granted
+    var pendingFileWriteAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+    
+    // Launcher for the system dialog granting write access to specific files (Android 11+)
+    val writeAccessLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            pendingFileWriteAction?.invoke()
+        }
+        pendingFileWriteAction = null
+    }
+    
+    // Launcher for the legacy storage permission (Android 10 and below)
+    val legacyWritePermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            pendingFileWriteAction?.invoke()
+        }
+        pendingFileWriteAction = null
+    }
+    
+    /**
+     * Act on the result of a write-access check: run the pending action,
+     * launch the system grant dialog, or report the denial.
+     */
+    fun proceedWithFileWrite(access: com.bpmapp.audio.util.WriteAccess) {
+        when (access) {
+            com.bpmapp.audio.util.WriteAccess.Granted -> {
+                pendingFileWriteAction?.invoke()
+                pendingFileWriteAction = null
+            }
+            is com.bpmapp.audio.util.WriteAccess.WriteRequest -> writeAccessLauncher.launch(
+                androidx.activity.result.IntentSenderRequest.Builder(access.intentSender).build()
+            )
+            com.bpmapp.audio.util.WriteAccess.LegacyPermissionNeeded -> legacyWritePermissionLauncher.launch(
+                Manifest.permission.WRITE_EXTERNAL_STORAGE
+            )
+            com.bpmapp.audio.util.WriteAccess.Denied -> {
+                pendingFileWriteAction = null
+                viewModel.setError(context.getString(R.string.error_write_access_denied))
+            }
+        }
     }
     val isMetadataEditingAvailable = remember { 
         viewModel.isMetadataEditingAvailable()
@@ -528,11 +569,7 @@ fun LibraryScreen(
                                 DropdownMenuItem(
                                     text = { Text(stringResource(R.string.library_menu_sync), style = MaterialTheme.typography.bodyMedium) },
                                     onClick = { 
-                                        if (hasMetadataPermission) {
-                                            showSyncMetadataDialog = true
-                                        } else {
-                                            showMetadataPermissionDialog = true
-                                        }
+                                        showSyncMetadataDialog = true
                                         showOverflowMenu = false
                                     },
                                     leadingIcon = {
@@ -540,11 +577,7 @@ fun LibraryScreen(
                                             imageVector = Icons.Filled.Sync,
                                             contentDescription = stringResource(R.string.library_menu_sync),
                                             modifier = Modifier.size(18.dp),
-                                            tint = if (hasMetadataPermission) {
-                                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                                            } else {
-                                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
-                                            }
+                                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                                         )
                                     }
                                 )
@@ -1321,47 +1354,6 @@ onAddToPlaylist = {
         )
     }
     
-    // Metadata permission dialog
-    if (showMetadataPermissionDialog) {
-        AlertDialog(
-            onDismissRequest = { showMetadataPermissionDialog = false },
-            title = { Text(stringResource(R.string.dialog_file_access_title), style = MaterialTheme.typography.titleLarge) },
-            text = { 
-                Column {
-                    Text(
-                        viewModel.getFileAccessExplanation(),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Spacer(modifier = Modifier.height(AppSpacing.md))
-                    Text(
-                        stringResource(R.string.dialog_file_access_body),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = { 
-                        showMetadataPermissionDialog = false
-                        PermissionUtils.requestManageExternalStoragePermission(
-                            context as ComponentActivity
-                        )
-                    }
-                ) {
-                    Text(stringResource(R.string.dialog_open_settings))
-                }
-            },
-            dismissButton = {
-                Button(
-                    onClick = { showMetadataPermissionDialog = false }
-                ) {
-                    Text("Cancel")
-                }
-            }
-        )
-    }
-    
     // Sync metadata confirmation dialog
     if (showSyncMetadataDialog) {
         AlertDialog(
@@ -1385,7 +1377,10 @@ onAddToPlaylist = {
                 Button(
                     onClick = { 
                         showSyncMetadataDialog = false
-                        viewModel.syncAllBpmToFileMetadata()
+                        pendingFileWriteAction = { viewModel.syncAllBpmToFileMetadata() }
+                        viewModel.prepareSyncAllWriteAccess { access ->
+                            proceedWithFileWrite(access)
+                        }
                     }
                 ) {
                     Text(stringResource(R.string.dialog_sync_all))
@@ -1494,7 +1489,10 @@ onAddToPlaylist = {
                         showMetadataSaveConfirmDialog = false
                         selectedTrackForMetadata?.let { track ->
                             track.bpm?.let { bpm ->
-                                viewModel.saveBpmToFileMetadata(track.id, bpm)
+                                pendingFileWriteAction = { viewModel.saveBpmToFileMetadata(track.id, bpm) }
+                                viewModel.prepareFileWriteAccess(listOf(track.id)) { access ->
+                                    proceedWithFileWrite(access)
+                                }
                             }
                         }
                         selectedTrackForMetadata = null

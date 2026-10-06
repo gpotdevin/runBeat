@@ -4,6 +4,26 @@ All notable changes to RunBeat are documented in this file. Format based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6] - 2026-10-06
+
+### Changed
+
+- **Storage permissions**: removed `MANAGE_EXTERNAL_STORAGE`. Google Play
+  requires a sensitive-permission declaration for it that this app does not
+  qualify for. Writing BPM tags to audio files now uses per-file write grants
+  (`MediaStore.createWriteRequest`) on Android 11+ and the legacy
+  `WRITE_EXTERNAL_STORAGE` permission on Android 10 and below.
+
+### Fixed
+
+- **Save BPM to file**: the previous implementation targeted a
+  `MediaMetadataEditor` class that does not exist in media3 1.2.1, so saving
+  BPM to file metadata silently failed on every device. Tag writing now uses
+  JAudiotagger (MP3/FLAC/OGG/WAV/M4A/AAC), copying through the
+  ContentResolver. Note: on Android 10 the platform may still deny writes to
+  files owned by other apps; in that case the BPM is saved to the library
+  only.
+
 ## [1.5.4] - 2026-09-24
 
 ### Added

@@ -32,7 +32,7 @@ android {
         minSdk 26
         targetSdk 36
         versionCode buildNumber
-        versionName "1.5.9"
+        versionName "1.6"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -118,6 +118,9 @@ dependencies {
     // Source: https://github.com/hipxel/soundtouch-android
     implementation project(':soundtouch-android')
     
+    // JAudiotagger for reading/writing audio metadata tags (LGPL)
+    implementation 'net.jthink:jaudiotagger:2.2.5'
+
     // Aubio library for BPM detection
     implementation project(':aubio')
     

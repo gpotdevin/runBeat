@@ -582,9 +582,44 @@ class TrackRepository @Inject constructor(
     }
 
     /**
-     * Check if MediaMetadataEditor is available on this device
+     * Check if metadata editing is available on this device
      */
     fun isMetadataEditingAvailable(): Boolean {
-        return metadataEditor.isMediaMetadataEditorAvailable()
+        return metadataEditor.isTagEditingAvailable()
+    }
+    
+    /**
+     * Get the URIs of the given tracks that are not writable right now.
+     * Used to decide whether a MediaStore write request is needed before
+     * saving BPM tags to files.
+     */
+    suspend fun getUrisNeedingWriteAccess(trackIds: List<String>): List<Uri> = withContext(Dispatchers.IO) {
+        trackIds.mapNotNull { trackId ->
+            trackDao.getTrackById(trackId).firstOrNull()?.let { track ->
+                Uri.parse(track.id)
+            }
+        }.filter { !com.bpmapp.audio.util.PermissionUtils.canWriteUriNow(context, it) }
+    }
+    
+    /**
+     * Get the IDs of all tracks that have a BPM value
+     */
+    suspend fun getTracksWithKnownBpmIds(): List<String> = withContext(Dispatchers.IO) {
+        (trackDao.getTracksWithKnownBpm().firstOrNull() ?: emptyList()).map { it.id }
+    }
+    
+    /**
+     * Create an IntentSender for a MediaStore write request covering the
+     * given URIs (Android 11+), or null when not applicable
+     */
+    fun createWriteRequestIntentSender(uris: List<Uri>): android.content.IntentSender? {
+        return com.bpmapp.audio.util.PermissionUtils.createWriteRequestIntentSender(context, uris)
+    }
+    
+    /**
+     * Check whether the legacy storage permission (Android 10 and below) is granted
+     */
+    fun hasLegacyStoragePermission(): Boolean {
+        return com.bpmapp.audio.util.PermissionUtils.hasLegacyStoragePermission(context)
     }
 }

@@ -160,9 +160,6 @@
     <string name="dialog_ok">OK</string>
 
     <!-- Library dialogs — File Access -->
-    <string name="dialog_file_access_title">Acceso a archivos requerido</string>
-    <string name="dialog_file_access_body">Esto abrirá los ajustes de tu dispositivo donde puedes activar el acceso a archivos para RunBeat.</string>
-    <string name="dialog_open_settings">Abrir ajustes</string>
 
     <!-- Library dialogs — Sync BPM -->
     <string name="dialog_sync_bpm_title">Sincronizar BPM a archivos</string>
@@ -342,6 +339,7 @@
 
     <!-- ==================== Error Messages (ViewModel) ==================== -->
     <string name="error_permission_denied_scan">Permiso denegado. No se puede escanear la biblioteca musical sin permiso de almacenamiento.</string>
+    <string name="error_write_access_denied">No se pudo obtener acceso de escritura a los archivos seleccionados. El BPM se guardó solo en la biblioteca.</string>
     <string name="error_no_tracks_imported">No se importaron pistas. Verifica el formato del archivo CSV.</string>
     <string name="error_failed_import_csv">Error al importar CSV: %1$s</string>
     <string name="error_permission_required_library">Se requiere permiso para acceder a la biblioteca musical del sistema</string>

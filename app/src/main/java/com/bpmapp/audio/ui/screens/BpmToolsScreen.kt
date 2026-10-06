@@ -42,6 +42,10 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
+import android.Manifest
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -537,6 +541,49 @@ fun DetectBpmTab(viewModel: BpmToolsViewModel) {
 fun ManualEntryTab(viewModel: BpmToolsViewModel) {
     val manualBpmInput by viewModel.manualBpmInput.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
+    val context = LocalContext.current
+    
+    // Pending save to run once file write access is granted
+    var pendingFileWriteAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+    
+    // Launcher for the system dialog granting write access to specific files (Android 11+)
+    val writeAccessLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            pendingFileWriteAction?.invoke()
+        }
+        pendingFileWriteAction = null
+    }
+    
+    // Launcher for the legacy storage permission (Android 10 and below)
+    val legacyWritePermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            pendingFileWriteAction?.invoke()
+        }
+        pendingFileWriteAction = null
+    }
+    
+    fun proceedWithFileWrite(access: com.bpmapp.audio.util.WriteAccess) {
+        when (access) {
+            com.bpmapp.audio.util.WriteAccess.Granted -> {
+                pendingFileWriteAction?.invoke()
+                pendingFileWriteAction = null
+            }
+            is com.bpmapp.audio.util.WriteAccess.WriteRequest -> writeAccessLauncher.launch(
+                androidx.activity.result.IntentSenderRequest.Builder(access.intentSender).build()
+            )
+            com.bpmapp.audio.util.WriteAccess.LegacyPermissionNeeded -> legacyWritePermissionLauncher.launch(
+                Manifest.permission.WRITE_EXTERNAL_STORAGE
+            )
+            com.bpmapp.audio.util.WriteAccess.Denied -> {
+                pendingFileWriteAction = null
+                viewModel.setError(context.getString(R.string.error_write_access_denied))
+            }
+        }
+    }
 
     Column(
         modifier = Modifier.fillMaxSize(),
@@ -657,7 +704,12 @@ fun ManualEntryTab(viewModel: BpmToolsViewModel) {
 
         // Save Button
         Button(
-            onClick = { viewModel.saveManualBpm() },
+            onClick = {
+                pendingFileWriteAction = { viewModel.saveManualBpm() }
+                viewModel.prepareManualSaveWriteAccess { access ->
+                    proceedWithFileWrite(access)
+                }
+            },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(TouchTargets.standard),
