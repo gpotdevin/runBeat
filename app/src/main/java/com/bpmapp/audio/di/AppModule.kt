@@ -1,6 +1,8 @@
 package com.bpmapp.audio.di
 
 import android.content.Context
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.RenderersFactory
 import androidx.room.Room
@@ -53,6 +55,16 @@ object AppModule {
     ): ExoPlayer {
         return ExoPlayer.Builder(context)
             .setRenderersFactory(renderersFactory)
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(C.USAGE_MEDIA)
+                    .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                    .build(),
+                // Let ExoPlayer handle audio focus so playback ducks/pauses when
+                // another app (navigation, assistant, another player) takes it.
+                /* handleAudioFocus = */ true
+            )
+            .setHandleAudioBecomingNoisy(true)
             .build()
     }
 
