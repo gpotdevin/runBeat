@@ -2,8 +2,6 @@ package com.bpmapp.audio.ui
 
 import android.Manifest
 import android.content.Context
-import android.content.pm.PackageManager
-import android.os.Build
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -107,6 +105,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -125,6 +124,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -136,8 +136,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat
+import androidx.core.app.ActivityCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.bpmapp.audio.R
 import com.bpmapp.audio.audio.CadenceMatcher
 import com.bpmapp.audio.ui.components.TrackCard
@@ -150,6 +152,7 @@ import com.bpmapp.audio.ui.theme.TouchTargets
 import com.bpmapp.audio.ui.theme.bpmColor
 import com.bpmapp.audio.ui.theme.speedFactorColor
 import com.bpmapp.audio.ui.theme.touchTarget
+import com.bpmapp.audio.util.PermissionUtils
 import com.bpmapp.audio.util.WriteAccess
 import com.bpmapp.audio.viewmodel.LibraryViewModel
 import com.bpmapp.audio.viewmodel.LibraryViewModel.BrowseDimension
@@ -255,18 +258,25 @@ fun LibraryScreen(
         }
     }
     
-    // Permission state
+    // Permission state. Re-checked on every ON_RESUME so the screen refreshes
+    // after the runtime dialog or a return from the system settings page.
     val context = LocalContext.current
-    val hasPermission = remember { 
-        val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            Manifest.permission.READ_MEDIA_AUDIO
-        } else {
-            Manifest.permission.READ_EXTERNAL_STORAGE
+    val requiredPermission = PermissionUtils.requiredReadMediaAudioPermission()
+    var hasPermission by remember {
+        mutableStateOf(PermissionUtils.hasReadMediaAudioPermission(context))
+    }
+    // Set when a denial proves the system dialog will no longer be shown
+    var permissionPermanentlyDenied by remember { mutableStateOf(false) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                hasPermission = PermissionUtils.hasReadMediaAudioPermission(context)
+                if (hasPermission) permissionPermanentlyDenied = false
+            }
         }
-        ContextCompat.checkSelfPermission(
-            context,
-            permission
-        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     
     // Metadata editing state
@@ -330,6 +340,14 @@ fun LibraryScreen(
         if (isGranted) {
             viewModel.scanSystemLibrary()
         } else {
+            // A denial without rationale means the system will no longer
+            // show the dialog: route the user to the app settings instead
+            val activity = context as? android.app.Activity
+            if (activity != null &&
+                !ActivityCompat.shouldShowRequestPermissionRationale(activity, requiredPermission)
+            ) {
+                permissionPermanentlyDenied = true
+            }
             viewModel.setError(context.getString(R.string.error_permission_denied_scan))
         }
     }
@@ -1089,8 +1107,55 @@ fun LibraryScreen(
                              }
                          }
                 
-                // Track list
-                if (isLoading) {
+                // Track list. Media permission missing: tracks can neither be
+                // scanned nor played, so show a clear denied state instead
+                if (!hasPermission) {
+                    item {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(AppSpacing.md)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.MusicNote,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(AppSpacing.xxxl),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = stringResource(R.string.library_permission_denied),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = TextAlign.Center
+                                )
+                                Button(
+                                    onClick = {
+                                        if (permissionPermanentlyDenied) {
+                                            (context as? android.app.Activity)
+                                                ?.let { PermissionUtils.openAppSettings(it) }
+                                        } else {
+                                            permissionLauncher.launch(requiredPermission)
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.primary,
+                                        contentColor = MaterialTheme.colorScheme.onPrimary
+                                    )
+                                ) {
+                                    Text(
+                                        text = stringResource(
+                                            if (permissionPermanentlyDenied) R.string.library_permission_open_settings
+                                            else R.string.dialog_grant_permission
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    }
+                } else if (isLoading) {
                     // Loading - show progress indicator
                     item {
                         Box(
@@ -1424,12 +1489,7 @@ onAddToPlaylist = {
                 Button(
                     onClick = { 
                         showPermissionDialog = false
-                        val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                            Manifest.permission.READ_MEDIA_AUDIO
-                        } else {
-                            Manifest.permission.READ_EXTERNAL_STORAGE
-                        }
-                        permissionLauncher.launch(permission)
+                        permissionLauncher.launch(requiredPermission)
                     }
                 ) {
                     Text(stringResource(R.string.dialog_grant_permission))
