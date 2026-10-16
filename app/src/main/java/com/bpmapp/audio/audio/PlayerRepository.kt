@@ -279,8 +279,13 @@ class PlayerRepository @Inject constructor(
      * falls back to ExoPlayer's built-in speed adjustment
      */
     fun setPlaybackSpeed(speed: Float) {
-        // Clamp to reasonable range for music playback
-        val clampedSpeed = speed.coerceIn(TempoStretcher.RUNNER_MIN_TEMPO, TempoStretcher.RUNNER_MAX_TEMPO)
+        // Clamp to the cadence matcher's valid speed window. Using the runner
+        // tempo range here (0.8..1.25) silently raised tracks that need 0.75x,
+        // desynchronizing the cadence by up to 6.7%.
+        val clampedSpeed = speed.coerceIn(
+            CadenceMatcher.MIN_SPEED_FACTOR,
+            CadenceMatcher.MAX_SPEED_FACTOR
+        )
         _playbackSpeed.value = clampedSpeed
         tempoStretcher.setTempoFactor(clampedSpeed)
         updatePlayerState()
@@ -398,8 +403,13 @@ class PlayerRepository @Inject constructor(
         val bpm = currentTrackBpm()
         if (bpm == null || bpm <= 0) return
         val matchResult = bestCadenceMatch(bpm, _targetCadence.value)
-        if (matchResult.rhythmPattern.factor > 0) {
+        if (matchResult.rhythmPattern.factor > 0 && matchResult.isAdjustable) {
             setPlaybackSpeed(matchResult.speedFactor)
+        } else {
+            // No rhythm match keeps the speed within the valid window: play at
+            // normal speed rather than clamping an out-of-range factor, which
+            // would both sound worse and still fail to match the cadence.
+            setPlaybackSpeed(1.0f)
         }
     }
 
