@@ -1,45 +1,22 @@
 # Android ProGuard rules for RunBeat
-# Add project specific ProGuard rules here.
-# By default, the Android Gradle plugin adds ProGuard rules for:
-#   - All classes in android.jar
-#   - All activities, services, receivers, and content providers
-#
-# For ExoPlayer
--keep class com.google.android.exoplayer2.** { *; }
--dontwarn com.google.android.exoplayer2.**
+# R8 runs on release builds (minifyEnabled true); only the rules required for
+# runtime reflection, JNI bindings, and non-R8-aware libraries are kept here.
 
-# For Hilt
--keep class com.bpmapp.audio.**_* { *; }
--keep class com.bpmapp.audio.**_Factory { *; }
--keep class com.bpmapp.audio.**_MembersInjector { *; }
+# Aubio BPM detector: native methods bound by name
+# (Java_com_bpmapp_audio_audio_AubioBpmDetector_*)
+-keep class com.bpmapp.audio.audio.AubioBpmDetector { *; }
 
-# For Room
--keep class androidx.room.** { *; }
--keep class * extends androidx.room.Database { *; }
--keep class * extends androidx.room.Entity { *; }
--keep class * extends androidx.room.Dao { *; }
+# JAudiotagger: not R8-aware, used by MetadataEditor.kt
+-keep class org.jaudiotagger.** { *; }
+-dontwarn org.jaudiotagger.**
 
-# For Kotlin
--keep class kotlin.Metadata { *; }
--keep class kotlin.** { *; }
--keep class com.bpmapp.audio.** { *; }
+# TrackSource enum persisted in Room as a string (Track.kt)
+-keepclassmembers enum com.bpmapp.audio.data.TrackSource {
+    public static **[] values();
+    public static ** valueOf(java.lang.String);
+    <fields>;
+}
 
-# Keep all activities, services, and receivers
--keep class * extends android.app.Activity
--keep class * extends android.app.Service
--keep class * extends android.content.BroadcastReceiver
-
-# Keep R classes
--keep class **.R$* { *; }
-
-# Keep data binding classes
--keep class **.BR { *; }
-
-# Keep view binding classes
--keep class **.databinding.** { *; }
-
-# For Compose
--keep class androidx.compose.runtime.Composer { *; }
--keep class androidx.compose.runtime.ComposerImpl { *; }
-
-
+# Keep stack traces readable
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile
