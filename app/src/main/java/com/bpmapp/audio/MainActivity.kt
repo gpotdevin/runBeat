@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
@@ -140,11 +141,14 @@ class MainActivity : ComponentActivity() {
         
         requestNotificationPermissionIfNeeded()
         
+        enableEdgeToEdge()
+        
         setContent {
             BpmAppTheme {
                 val context = LocalContext.current
                 val prefs = remember { context.getSharedPreferences("AppSettings", Context.MODE_PRIVATE) }
                 var showIntro by remember { mutableStateOf(!prefs.getBoolean("intro_seen", false)) }
+                val snackbarHostState = remember { SnackbarHostState() }
                 
                 Box(modifier = Modifier.fillMaxSize()) {
                     Surface(
@@ -158,7 +162,7 @@ class MainActivity : ComponentActivity() {
                             bottomBar = {
                                 BottomNavigationBar(navController = navController)
                             },
-                            snackbarHost = { SnackbarHost(hostState = remember { SnackbarHostState() }) }
+                            snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
                         ) { paddingValues ->
                             NavHost(
                                 navController = navController,
@@ -265,7 +269,7 @@ fun PlayerScreenWrapper(
         playerViewModel.updateMusicBpm(selectedTrackBpm)
     }
 
-    Box(modifier = modifier) {
+    Box(modifier = Modifier.fillMaxSize()) {
         if (showLibrary) {
             LibraryScreen(
                 onTrackSelected = { track ->
@@ -317,14 +321,16 @@ fun PlayerScreenWrapper(
             }
             
             // Use the existing PlayerScreen from the original MainActivity
-            PlayerScreen(
-                playerRepository = playerRepository,
-                onOpenLibrary = { 
-                    showLibrary = true
-                    selectedTrackBpm = null
-                },
-                libraryViewModel = libraryViewModel
-            )
+            Box(modifier = modifier) {
+                PlayerScreen(
+                    playerRepository = playerRepository,
+                    onOpenLibrary = { 
+                        showLibrary = true
+                        selectedTrackBpm = null
+                    },
+                    libraryViewModel = libraryViewModel
+                )
+            }
         }
     }
 }

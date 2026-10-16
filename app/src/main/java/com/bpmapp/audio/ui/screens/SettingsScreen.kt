@@ -8,6 +8,7 @@ import androidx.core.os.LocaleListCompat
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -99,7 +100,8 @@ fun SettingsScreen(
     
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
+        contentWindowInsets = WindowInsets(0, 0, 0, 0)
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -125,6 +127,7 @@ fun SettingsScreen(
                     )
                 }
             },
+            windowInsets = WindowInsets(0, 0, 0, 0),
             modifier = Modifier.fillMaxWidth()
         )
         
