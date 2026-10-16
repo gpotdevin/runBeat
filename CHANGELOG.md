@@ -4,6 +4,35 @@ All notable changes to RunBeat are documented in this file. Format based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7] - 2026-10-16
+
+### Added
+
+- **BPM analysis**: when the BPM of the currently playing track is resolved by
+  background analysis, the rhythm-mode beep signal now plays (if the option is
+  enabled) just before the cadence-matched speed is applied, matching the
+  behaviour of tracks that start with a known BPM.
+- **BPM analysis**: with the library "speed factor" filter active, tracks whose
+  resolved BPM yields a speed factor outside the [0.9, 1.1] window are removed
+  from the upcoming playlist.
+
+### Changed
+
+- **Library**: the browse-by filters now follow the order Genre, Artist, Album
+  (Path last), with Genre selected by default.
+- **Library**: tracks are now ordered by Genre, Artist and Album; within one
+  album by the ID3 track number, falling back to alphabetical file name only
+  when the track number is unavailable. This order also applies when tracks
+  are selected for playback or added to the upcoming list.
+
+### Fixed
+
+- **Background playback**: the media notification no longer appears when the
+  app is opened without playing. The playback service starts lazily when
+  playback actually begins, no longer restarts after a system kill
+  (`START_NOT_STICKY`), and stops itself after an idle grace period (5 minutes
+  without playback or interaction).
+
 ## [1.6.3] - 2026-10-16
 
 ### Changed
