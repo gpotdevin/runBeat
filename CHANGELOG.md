@@ -4,6 +4,30 @@ All notable changes to RunBeat are documented in this file. Format based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.3] - 2026-10-16
+
+### Changed
+
+- **Google Play compliance**: resolved all five pre-launch warnings reported by
+  Google Play Console.
+  - Release builds now run R8 obfuscation and resource shrinking, keeping only
+    JNI-bound classes (aubio, SoundTouch), JAudiotagger and the persisted
+    `TrackSource` enum unobfuscated; stack traces keep file/line information.
+  - Adopted edge-to-edge display (`enableEdgeToEdge()`), removed the
+    deprecated `statusBarColor`/`navigationBarColor` theme attributes, set an
+    explicit `adjustResize` IME mode, and fixed status-bar inset
+    double-padding on the Settings and Library screens.
+  - Removed the portrait `screenOrientation` restriction and declared
+    `resizeableActivity`; the Player and BPM Tools screens now adapt to
+    landscape and large screens.
+  - Native libraries (aubio, SoundTouch) are now linked with 16 KB page-size
+    alignment, as required by Google Play for apps targeting SDK 35+.
+
+### Fixed
+
+- **Settings**: language selector buttons now wrap below their label instead
+  of overflowing.
+
 ## [1.6] - 2026-10-06
 
 ### Changed
