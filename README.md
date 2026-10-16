@@ -60,7 +60,7 @@ See [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) for detailed legal analysis.
    cd runBeat
    ```
 
-2. Set up an Android development environment (SDK, NDK 25.1.8937393, CMake).
+2. Set up an Android development environment (SDK, NDK 26.1.10909125, CMake).
 3. Build:
 
    ```bash

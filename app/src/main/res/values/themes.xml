@@ -5,10 +5,5 @@
         <item name="colorPrimary">@color/purple_500</item>
         <item name="colorPrimaryDark">@color/purple_700</item>
         <item name="colorAccent">@color/teal_200</item>
-        
-        <!-- Status bar and navigation bar -->
-        <item name="android:statusBarColor">@color/purple_700</item>
-        <item name="android:navigationBarColor">@color/black</item>
-        <item name="android:windowLightStatusBar">false</item>
     </style>
 </resources>

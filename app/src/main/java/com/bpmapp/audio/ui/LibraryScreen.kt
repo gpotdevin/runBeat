@@ -615,6 +615,7 @@ fun LibraryScreen(
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
                 .padding(paddingValues)
+                .imePadding()
                 .pointerInput(Unit) {
                     detectTapGestures {
                         focusManager.clearFocus()
@@ -1041,8 +1042,7 @@ fun LibraryScreen(
                         state = lazyListState,
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(AppSpacing.xs)
-                            .imePadding(),
+                            .padding(AppSpacing.xs),
                         verticalArrangement = Arrangement.spacedBy(AppSpacing.xxxs)
                      ) {
                          // Play all filtered tracks button as sticky header

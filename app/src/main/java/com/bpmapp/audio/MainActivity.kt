@@ -4,10 +4,12 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
@@ -16,6 +18,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -80,6 +83,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -140,11 +144,14 @@ class MainActivity : ComponentActivity() {
         
         requestNotificationPermissionIfNeeded()
         
+        enableEdgeToEdge()
+        
         setContent {
             BpmAppTheme {
                 val context = LocalContext.current
                 val prefs = remember { context.getSharedPreferences("AppSettings", Context.MODE_PRIVATE) }
                 var showIntro by remember { mutableStateOf(!prefs.getBoolean("intro_seen", false)) }
+                val snackbarHostState = remember { SnackbarHostState() }
                 
                 Box(modifier = Modifier.fillMaxSize()) {
                     Surface(
@@ -158,7 +165,7 @@ class MainActivity : ComponentActivity() {
                             bottomBar = {
                                 BottomNavigationBar(navController = navController)
                             },
-                            snackbarHost = { SnackbarHost(hostState = remember { SnackbarHostState() }) }
+                            snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
                         ) { paddingValues ->
                             NavHost(
                                 navController = navController,
@@ -265,7 +272,7 @@ fun PlayerScreenWrapper(
         playerViewModel.updateMusicBpm(selectedTrackBpm)
     }
 
-    Box(modifier = modifier) {
+    Box(modifier = Modifier.fillMaxSize()) {
         if (showLibrary) {
             LibraryScreen(
                 onTrackSelected = { track ->
@@ -317,14 +324,16 @@ fun PlayerScreenWrapper(
             }
             
             // Use the existing PlayerScreen from the original MainActivity
-            PlayerScreen(
-                playerRepository = playerRepository,
-                onOpenLibrary = { 
-                    showLibrary = true
-                    selectedTrackBpm = null
-                },
-                libraryViewModel = libraryViewModel
-            )
+            Box(modifier = modifier) {
+                PlayerScreen(
+                    playerRepository = playerRepository,
+                    onOpenLibrary = { 
+                        showLibrary = true
+                        selectedTrackBpm = null
+                    },
+                    libraryViewModel = libraryViewModel
+                )
+            }
         }
     }
 }
@@ -443,13 +452,10 @@ fun PlayerScreen(
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .padding(AppSpacing.xs),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.xxs)
-    ) {
+    val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+    // Left pane: app version header, error message, playback controls and tempo/BPM section
+    val leftPane: @Composable () -> Unit = {
         // ========== APP VERSION HEADER ==========
         val context = LocalContext.current
         val versionPrefix = stringResource(R.string.player_version_prefix)
@@ -533,7 +539,10 @@ fun PlayerScreen(
                 .padding(AppSpacing.xxs)
         )
 
-        
+    }
+
+    // Right pane: playlist header and playlist
+    val rightPane: @Composable ColumnScope.() -> Unit = {
         // ========== PLAYLIST SECTION ==========
         Column(
             modifier = Modifier
@@ -624,7 +633,44 @@ fun PlayerScreen(
                 .fillMaxWidth()
                 .weight(1f)
         )
+    }
 
+    if (isLandscape) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                .padding(AppSpacing.xs),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.xxs)
+        ) {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.xxs)
+            ) {
+                leftPane()
+            }
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.xxs)
+            ) {
+                rightPane()
+            }
+        }
+    } else {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                .padding(AppSpacing.xs),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.xxs)
+        ) {
+            leftPane()
+            rightPane()
+        }
     }
 
     // ========== SAVE PLAYLIST DIALOG ==========

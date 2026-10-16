@@ -7,7 +7,10 @@ import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.LocaleListCompat
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -51,7 +54,7 @@ import com.bpmapp.audio.viewmodel.SettingsViewModel
  * Settings Screen
  * Application settings and preferences
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen(
     modifier: Modifier = Modifier,
@@ -99,7 +102,8 @@ fun SettingsScreen(
     
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
+        contentWindowInsets = WindowInsets(0, 0, 0, 0)
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -125,6 +129,7 @@ fun SettingsScreen(
                     )
                 }
             },
+            windowInsets = WindowInsets(0, 0, 0, 0),
             modifier = Modifier.fillMaxWidth()
         )
         
@@ -268,10 +273,13 @@ fun SettingsScreen(
             SettingsSection(title = "🌐 ${stringResource(R.string.settings_section_language)}") {
                 SettingItem(
                     title = stringResource(R.string.settings_language_title),
-                    description = stringResource(R.string.settings_language_desc)
+                    description = stringResource(R.string.settings_language_desc),
+                    contentBelow = true
                 ) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(AppSpacing.xxs)
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(AppSpacing.xxs),
+                        verticalArrangement = Arrangement.spacedBy(AppSpacing.xxxs),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         TextButton(onClick = {
                             AppCompatDelegate.setApplicationLocales(
@@ -471,17 +479,14 @@ fun SettingItem(
     title: String,
     description: String,
     modifier: Modifier = Modifier,
+    contentBelow: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(vertical = AppSpacing.xxxs),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
+    if (contentBelow) {
         Column(
-            modifier = Modifier.weight(1f),
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(vertical = AppSpacing.xxxs),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.xxxs)
         ) {
             Text(
@@ -494,8 +499,33 @@ fun SettingItem(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            content()
         }
-        content()
+    } else {
+        Row(
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(vertical = AppSpacing.xxxs),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.xxxs)
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            content()
+        }
     }
 }
 
