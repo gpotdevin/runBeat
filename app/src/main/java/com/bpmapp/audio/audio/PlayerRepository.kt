@@ -104,6 +104,11 @@ class PlayerRepository @Inject constructor(
     // fires once per track start (not on every play/resume).
     private var lastBeepedTrackId: String? = null
 
+    // Player volume before the current mode-beep ducking (null = not ducked).
+    // Captured only once per ducking sequence so a superseding beep signal
+    // cannot mistake an already-ducked volume for the original one.
+    private var volumeBeforeDuck: Float? = null
+
     init {
         updatePlayerState()
         
@@ -426,14 +431,22 @@ class PlayerRepository @Inject constructor(
         val count = modeBeepPlayer.beepCountForFactor(factor)
         if (count > 0) {
             lastBeepedTrackId = dedupKey
-            // Duck the music to 30% of its current volume while the beeps play,
-            // then restore the original volume once they finish.
-            val originalVolume = exoPlayer.volume
-            val duckedVolume = (originalVolume * 0.3f).coerceIn(0f, 1f)
+            // Duck the music to 30% of its pre-signal volume while the beeps play,
+            // then restore the original volume once they finish. ModeBeepPlayer
+            // cancels the callbacks of a superseded signal, so capture the
+            // original volume only on the first duck of a sequence: otherwise a
+            // second signal (e.g. skipping track mid-beeps) would duck from the
+            // already-ducked level and restore that as the new original forever.
             modeBeepPlayer.beep(
                 count,
-                onStart = { exoPlayer.volume = duckedVolume },
-                onFinish = { exoPlayer.volume = originalVolume }
+                onStart = {
+                    if (volumeBeforeDuck == null) volumeBeforeDuck = exoPlayer.volume
+                    exoPlayer.volume = (volumeBeforeDuck!! * 0.3f).coerceIn(0f, 1f)
+                },
+                onFinish = {
+                    volumeBeforeDuck?.let { exoPlayer.volume = it }
+                    volumeBeforeDuck = null
+                }
             )
         }
     }
