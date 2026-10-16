@@ -6,7 +6,7 @@ This project builds with the Gradle wrapper; no global Gradle install is require
 
 - **JDK 17** (the project targets Java/Kotlin `JVM 17`)
 - **Android SDK** with platforms `android-34`
-- **Android NDK** version `25.1.8937393` (required for the `aubio` native module)
+- **Android NDK** version `26.1.10909125` (required for the `aubio` native module)
 - **CMake** (used by the `aubio` native build)
 
 ## Environment setup
