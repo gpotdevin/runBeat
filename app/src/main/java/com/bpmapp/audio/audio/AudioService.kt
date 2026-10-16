@@ -57,7 +57,6 @@ class AudioService : MediaSessionService() {
 
     @Inject lateinit var playerRepository: PlayerRepository
     @Inject lateinit var exoPlayer: ExoPlayer
-    @Inject lateinit var tempoStretcher: TempoStretcher
 
     private lateinit var notificationManager: NotificationManager
     private lateinit var mediaSession: MediaSession
@@ -67,10 +66,6 @@ class AudioService : MediaSessionService() {
     // Pending self-stop after the idle grace period (no playback, no interaction)
     private var idleStopJob: Job? = null
     
-    // Track audio format for SoundTouch initialization
-    private var currentSampleRate = 44100
-    private var currentChannels = 2
-    
     override fun onCreate() {
         super.onCreate()
         Log.d("AudioService", "onCreate called")
@@ -78,10 +73,6 @@ class AudioService : MediaSessionService() {
         // Initialize notification manager
         notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         createNotificationChannel()
-        
-        // Initialize SoundTouch with default format
-        // This will be updated when actual audio format is known
-        tempoStretcher.initializeSoundTouch(currentSampleRate, currentChannels)
         
         // Initialize MediaSession for Bluetooth controls and notification
         mediaSession = MediaSession.Builder(this, exoPlayer)
@@ -120,7 +111,7 @@ class AudioService : MediaSessionService() {
             }
             
             override fun onAudioAttributesChanged(audioAttributes: androidx.media3.common.AudioAttributes) {
-                // Audio attributes changed, may need to reinitialize SoundTouch
+                // Audio attributes changed
                 Log.d("AudioService", "Audio attributes changed: ${audioAttributes}")
             }
         })
