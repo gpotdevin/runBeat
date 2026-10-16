@@ -108,6 +108,7 @@
     <!-- Library filter chips -->
     <string name="library_filter_bpm_known">BPM Known</string>
     <string name="library_filter_speed">Speed 0.9-1.1</string>
+    <string name="library_filter_speed_wide">Speed 0.85-1.15</string>
     <string name="library_clear_filters">Clear filters</string>
 
     <!-- Library browse dimensions -->
