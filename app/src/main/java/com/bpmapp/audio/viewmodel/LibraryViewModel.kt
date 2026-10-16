@@ -96,7 +96,7 @@ class LibraryViewModel @Inject constructor(
     // filter; it only changes which set of chips is displayed. Selections made
     // in one dimension persist when switching to another.
     enum class BrowseDimension { ARTIST, ALBUM, GENRE, PATH }
-    private val _browseDimension = MutableStateFlow(BrowseDimension.ARTIST)
+    private val _browseDimension = MutableStateFlow(BrowseDimension.GENRE)
     val browseDimension: StateFlow<BrowseDimension> = _browseDimension.asStateFlow()
 
     // Path drill-down (N-level). Level 0 is single-select (the base folder);
@@ -116,7 +116,7 @@ class LibraryViewModel @Inject constructor(
     private val _filterBySpeedFactor = MutableStateFlow(false)
     val filterBySpeedFactor: StateFlow<Boolean> = _filterBySpeedFactor.asStateFlow()
     
-    private val _sortByBpm = MutableStateFlow(true)
+    private val _sortByBpm = MutableStateFlow(false)
     val sortByBpm: StateFlow<Boolean> = _sortByBpm.asStateFlow()
     
     private val _sortByAlbum = MutableStateFlow(false)
@@ -713,7 +713,7 @@ class LibraryViewModel @Inject constructor(
         _selectedPathLevels.value = listOf(emptySet())
         _showOnlyKnownBpm.value = false
         _filterBySpeedFactor.value = false
-        _sortByBpm.value = true
+        _sortByBpm.value = false
         _sortByAlbum.value = false
         _sortByArtist.value = false
         _sortDescending.value = false
@@ -982,6 +982,8 @@ class LibraryViewModel @Inject constructor(
                         if (bpm != null && bpm > 0) {
                             successCount++
                             playerRepository.updateBpmForTrack(track.id, bpm)
+                            playerRepository.onTrackBpmResolved(track.id)
+                            removeTrackFromUpcomingIfOutOfSpeedWindow(track, bpm)
                         }
                     } catch (e: Exception) {
                         Log.w(TAG, "Failed to analyze BPM for track ${track.id}", e)
@@ -1013,6 +1015,19 @@ class LibraryViewModel @Inject constructor(
     // ==================== BPM Resolution (upcoming songs) ====================
 
     /**
+     * After background analysis resolves a track's BPM: when the "speed
+     * factor" library filter is active and the track's optimal speed factor
+     * falls outside the [0.9, 1.1] window, remove the track from the
+     * upcoming playlist.
+     */
+    private fun removeTrackFromUpcomingIfOutOfSpeedWindow(track: Track, bpm: Float) {
+        if (!_filterBySpeedFactor.value) return
+        if (!track.copy(bpm = bpm).matchesSpeedFactor(playerRepository.targetCadence.value)) {
+            playerRepository.removeTrackFromUpcoming(track.id)
+        }
+    }
+
+    /**
      * Resolve the BPM for a single track if it is not already known in the database.
      * Reads ID3 tags first, then falls back to automatic Aubio detection, and persists
      * any resolved value to the database.
@@ -1031,6 +1046,8 @@ class LibraryViewModel @Inject constructor(
                 if (resolved != null && resolved > 0) {
                     Log.d(TAG, "Resolved BPM for ${track.fileName}: $resolved")
                     playerRepository.updateBpmForTrack(track.id, resolved)
+                    playerRepository.onTrackBpmResolved(track.id)
+                    removeTrackFromUpcomingIfOutOfSpeedWindow(track, resolved)
                 }
                 resolved
             } catch (e: Exception) {
@@ -1062,6 +1079,7 @@ class LibraryViewModel @Inject constructor(
             val knownBpm = track.bpm?.takeIf { it > 0 }
             if (knownBpm != null) {
                 playerRepository.updateBpmForTrack(track.id, knownBpm)
+                playerRepository.onTrackBpmResolved(track.id)
                 withContext(Dispatchers.Main) {
                     onResult(knownBpm)
                 }
@@ -1106,6 +1124,8 @@ class LibraryViewModel @Inject constructor(
                         resolvedCount++
                         if (track != null) {
                             playerRepository.updateBpmForTrack(track.id, bpm)
+                            playerRepository.onTrackBpmResolved(track.id)
+                            removeTrackFromUpcomingIfOutOfSpeedWindow(track, bpm)
                         }
                     }
                     _bpmResolutionProgress.value = completed to total

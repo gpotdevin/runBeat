@@ -3,6 +3,7 @@ package com.bpmapp.audio.audio
 import com.bpmapp.audio.R
 
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
@@ -188,6 +189,7 @@ class PlayerRepository @Inject constructor(
      * Play a specific media item
      */
     fun playMediaItem(mediaItem: MediaItem) {
+        ensurePlaybackService()
         _error.value = null
         _currentTrack.value = mediaItem
         try {
@@ -210,6 +212,7 @@ class PlayerRepository @Inject constructor(
         if (exoPlayer.isPlaying) {
             exoPlayer.pause()
         } else {
+            ensurePlaybackService()
             exoPlayer.play()
             maybePlayModeBeep()
         }
@@ -220,6 +223,7 @@ class PlayerRepository @Inject constructor(
      * Play the current track
      */
     fun play() {
+        ensurePlaybackService()
         exoPlayer.play()
         updatePlayerState()
         maybePlayModeBeep()
@@ -449,6 +453,59 @@ class PlayerRepository @Inject constructor(
      */
     fun isSpeedCorrectionEnabled(): Boolean {
         return _speedCorrectionEnabled.value
+    }
+
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    /**
+     * Start the foreground playback service so playback continues in the
+     * background with notification and Bluetooth controls. Called lazily
+     * when playback actually begins, never when the app merely opens.
+     */
+    private fun ensurePlaybackService() {
+        try {
+            context.startForegroundService(Intent(context, AudioService::class.java))
+        } catch (e: Exception) {
+            Log.e("PlayerRepository", "Failed to start AudioService", e)
+        }
+    }
+
+    /**
+     * Called when background analysis resolves the BPM of a track. When that
+     * track is the one currently playing, play the rhythm-mode beep signal
+     * (if the option is enabled) and then adapt the playback speed, mirroring
+     * what happens when a track with a known BPM starts playing.
+     */
+    fun onTrackBpmResolved(trackId: String) {
+        mainHandler.post {
+            val currentId = _currentTrack.value?.mediaMetadata?.extras?.getString("trackId")
+            if (currentId != trackId || !exoPlayer.isPlaying) return@post
+            maybePlayModeBeep()
+            reapplySpeedCorrection()
+        }
+    }
+
+    /**
+     * Remove a track from the upcoming playlist and the player queue, e.g.
+     * when analysis reveals that its speed factor falls outside the
+     * acceptable window. The currently playing track is never removed.
+     */
+    fun removeTrackFromUpcoming(trackId: String) {
+        mainHandler.post {
+            if (_currentTrack.value?.mediaMetadata?.extras?.getString("trackId") == trackId) return@post
+            _playlist.value = _playlist.value.filter {
+                it.mediaMetadata.extras?.getString("trackId") != trackId
+            }
+            // Mirror the removal in the player queue so the track is not auto-played
+            val indices = (0 until exoPlayer.mediaItemCount).filter { i ->
+                i != exoPlayer.currentMediaItemIndex &&
+                    exoPlayer.getMediaItemAt(i).mediaMetadata.extras?.getString("trackId") == trackId
+            }
+            for (index in indices.asReversed()) {
+                exoPlayer.removeMediaItems(index, index + 1)
+            }
+            if (_shuffleEnabled.value) rebuildShuffleOrder()
+        }
     }
 
     /**

@@ -25,6 +25,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
@@ -46,6 +49,10 @@ class AudioService : MediaSessionService() {
         const val ACTION_SKIP_PREVIOUS = "action_skip_previous"
         const val ACTION_STOP = "action_stop"
         const val ACTION_TOGGLE_SPEED_CORRECTION = "action_toggle_speed_correction"
+
+        // Grace period after the last playback or user interaction before the
+        // service stops itself, so the app does not keep running when not in use.
+        const val IDLE_STOP_GRACE_MS = 5 * 60 * 1000L
     }
 
     @Inject lateinit var playerRepository: PlayerRepository
@@ -56,6 +63,9 @@ class AudioService : MediaSessionService() {
     private lateinit var mediaSession: MediaSession
     private val serviceJob = SupervisorJob()
     private val serviceScope = CoroutineScope(Dispatchers.Main + serviceJob)
+
+    // Pending self-stop after the idle grace period (no playback, no interaction)
+    private var idleStopJob: Job? = null
     
     // Track audio format for SoundTouch initialization
     private var currentSampleRate = 44100
@@ -93,6 +103,12 @@ class AudioService : MediaSessionService() {
         
         // Set up player listeners to update notification and handle audio format
         exoPlayer.addListener(object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                // Any playback start resets the idle timer; playback stopping
+                // starts the grace-period countdown to stop the service.
+                if (isPlaying) cancelIdleStop() else scheduleIdleStop()
+            }
+
             override fun onPlaybackStateChanged(state: Int) {
                 Log.d("AudioService", "Playback state changed: $state")
                 updateNotification()
@@ -277,8 +293,36 @@ class AudioService : MediaSessionService() {
         notificationManager.notify(NOTIFICATION_ID, createNotification())
     }
 
+    /**
+     * Schedule the service to stop itself after [IDLE_STOP_GRACE_MS] without
+     * playback or user interaction. Any new interaction or playback start
+     * cancels the pending stop.
+     */
+    private fun scheduleIdleStop() {
+        idleStopJob?.cancel()
+        idleStopJob = serviceScope.launch {
+            delay(IDLE_STOP_GRACE_MS)
+            Log.d("AudioService", "Idle grace period expired, stopping service")
+            playerRepository.stop()
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+        }
+    }
+
+    /**
+     * Cancel a pending idle stop (called when playback resumes or the user
+     * interacts with the notification).
+     */
+    private fun cancelIdleStop() {
+        idleStopJob?.cancel()
+        idleStopJob = null
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
+        // Any interaction with the notification counts as usage and resets the
+        // idle stop timer.
+        cancelIdleStop()
         intent?.action?.let { action ->
             when (action) {
                 ACTION_PLAY -> {
@@ -300,6 +344,9 @@ class AudioService : MediaSessionService() {
                 ACTION_STOP -> {
                     playerRepository.stop()
                     stopForeground(STOP_FOREGROUND_REMOVE)
+                    // The user explicitly stopped playback: exit the service
+                    // so the app does not keep running when not in use.
+                    stopSelf()
                 }
                 ACTION_TOGGLE_SPEED_CORRECTION -> {
                     playerRepository.toggleSpeedCorrection()
@@ -308,7 +355,13 @@ class AudioService : MediaSessionService() {
             }
         }
         
-        return START_STICKY
+        // If playback is not running after handling the action, start the
+        // grace-period countdown towards stopping the service.
+        if (!exoPlayer.isPlaying) scheduleIdleStop()
+
+        // Do not let the system resurrect the service after a kill: that is
+        // what re-posts the media notification unexpectedly.
+        return START_NOT_STICKY
     }
 
     override fun onDestroy() {

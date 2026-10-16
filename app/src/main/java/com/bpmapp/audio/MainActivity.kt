@@ -2,7 +2,6 @@ package com.bpmapp.audio
 
 import android.Manifest
 import android.content.Context
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.Build
@@ -99,7 +98,6 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.bpmapp.audio.R
-import com.bpmapp.audio.audio.AudioService
 import com.bpmapp.audio.audio.CadenceMatcher
 import com.bpmapp.audio.audio.PlayerRepository
 import com.bpmapp.audio.data.Track
@@ -138,9 +136,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // Start AudioService for notification and Bluetooth controls
-        // Use startForegroundService to allow foreground service start
-        startForegroundService(Intent(this, AudioService::class.java))
+        // The AudioService is started lazily by PlayerRepository when playback
+        // actually begins, so the app does not run in the background when idle.
         
         requestNotificationPermissionIfNeeded()
         

@@ -386,7 +386,7 @@ fun LibraryScreen(
                         }
                     }
                     else -> {
-                        compareBy<Track> { it.fileName.lowercase() }
+                        hierarchicalTrackOrder()
                     }
                 }
             )
@@ -684,9 +684,9 @@ fun LibraryScreen(
                 // clear selections made in other dimensions.
                 if (selectedTabIndex == 0) {
                     val dimensionOptions = listOf(
+                        BrowseDimension.GENRE to stringResource(R.string.library_browse_genre),
                         BrowseDimension.ARTIST to stringResource(R.string.library_browse_artist),
                         BrowseDimension.ALBUM to stringResource(R.string.library_browse_album),
-                        BrowseDimension.GENRE to stringResource(R.string.library_browse_genre),
                         BrowseDimension.PATH to stringResource(R.string.library_browse_path)
                     )
                     val activeOptions: List<String> = when (browseDimension) {
