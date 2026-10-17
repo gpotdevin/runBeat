@@ -5,23 +5,18 @@ package com.bpmapp.audio.audio
 import android.util.Log
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.exoplayer.ExoPlayer
 
 /**
  * Applies the cadence-matched tempo to playback.
  *
- * With SoundTouch available, the tempo is applied inside ExoPlayer's audio sink
- * by [SoundTouchAudioProcessor]: pitch-preserving WSOLA time-stretching on the
- * decoded PCM. ExoPlayer's own playbackParameters speed stays at 1.0 so the
- * built-in Sonic processor remains a pass-through and does not stretch a second
- * time. When the SoundTouch native library is unavailable, the tempo falls back
- * to ExoPlayer's built-in Sonic time-stretch via playbackParameters (which also
- * preserves pitch at the ratios used here).
- *
- * Limitation of the SoundTouch path: ExoPlayer reports positions and durations
- * in the wall-clock of the stretched output, so the progress bar drifts by the
- * tempo factor (e.g. runs fast at 1.2x). Playback, track transitions and
- * auto-advance are not affected.
+ * The tempo is always applied via playbackParameters.speed. The audio sink's
+ * [SoundTouchAudioProcessorChain] routes that speed to
+ * [SoundTouchAudioProcessor] when the native engine is available, keeping the
+ * built-in Sonic processor at 1.0 (a pass-through) so the audio is stretched
+ * exactly once; when SoundTouch is unavailable the speed falls back to
+ * ExoPlayer's built-in Sonic time-stretch (which also preserves pitch at the
+ * ratios used here). In both cases ExoPlayer's clock sees the true speed, so
+ * positions and durations map by the tempo factor.
  */
 @UnstableApi
 class TempoStretcher(
@@ -61,24 +56,10 @@ class TempoStretcher(
         val clampedFactor = factor.coerceIn(MIN_TEMPO, MAX_TEMPO)
         currentTempoFactor = clampedFactor
 
-        if (player !is ExoPlayer) {
-            Log.e(TAG, "Player is not ExoPlayer, cannot apply tempo stretching")
-            return
-        }
-
-        if (isSoundTouchAvailable()) {
-            // SoundTouch stretches inside the audio sink; keep the player's own
-            // speed at 1.0 so Sonic stays a pass-through.
-            soundTouchProcessor?.setTempo(clampedFactor)
-            if (player.playbackParameters.speed != 1.0f) {
-                player.playbackParameters = player.playbackParameters.withSpeed(1.0f)
-            }
-            Log.d(TAG, "Applied SoundTouch tempo stretching: tempo=$clampedFactor, pitch preserved")
-        } else {
-            // Fall back to ExoPlayer's built-in pitch-preserving time-stretch.
-            player.playbackParameters = player.playbackParameters.withSpeed(clampedFactor)
-            Log.d(TAG, "Applied ExoPlayer Sonic time-stretch: speed=$clampedFactor")
-        }
+        // The sink's processor chain applies this speed to SoundTouch when
+        // available, or to ExoPlayer's Sonic time-stretch otherwise.
+        player.playbackParameters = player.playbackParameters.withSpeed(clampedFactor)
+        Log.d(TAG, "Applied tempo: speed=$clampedFactor")
     }
 
     /**

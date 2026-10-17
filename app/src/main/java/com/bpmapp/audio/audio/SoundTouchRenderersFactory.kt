@@ -3,7 +3,6 @@
 package com.bpmapp.audio.audio
 
 import android.content.Context
-import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.audio.AudioSink
@@ -26,7 +25,7 @@ class SoundTouchRenderersFactory(
         enableAudioTrackPlaybackParams: Boolean
     ): AudioSink {
         return DefaultAudioSink.Builder(context)
-            .setAudioProcessors(arrayOf<AudioProcessor>(soundTouchProcessor))
+            .setAudioProcessorChain(SoundTouchAudioProcessorChain(soundTouchProcessor))
             .setEnableFloatOutput(enableFloatOutput)
             .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
             .build()
