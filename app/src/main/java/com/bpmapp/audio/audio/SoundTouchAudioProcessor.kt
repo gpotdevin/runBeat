@@ -20,9 +20,9 @@ import java.nio.ByteOrder
  * audio sink via [SoundTouchRenderersFactory], so the stretch is applied to live
  * playback.
  *
- * While this processor is active, ExoPlayer's playbackParameters speed must stay
- * at 1.0 (TempoStretcher enforces this) - otherwise the built-in Sonic processor
- * would stretch the audio a second time.
+ * SoundTouchAudioProcessorChain routes playbackParameters.speed to this
+ * processor and keeps the built-in Sonic processor at speed 1.0, so the audio
+ * is stretched exactly once while ExoPlayer clock and position stay correct.
  *
  * Implemented directly against the AudioProcessor interface (like Media3's own
  * SonicAudioProcessor) because SoundTouch buffers samples internally: pending
