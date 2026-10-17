@@ -665,6 +665,7 @@ fun LibraryScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
                             .padding(horizontal = AppSpacing.sm, vertical = AppSpacing.xs),
                         horizontalArrangement = Arrangement.Start,
                         verticalAlignment = Alignment.CenterVertically
@@ -699,7 +700,9 @@ fun LibraryScreen(
                             ) {
                                 Text(
                                     text = stringResource(R.string.library_clear_filters),
-                                    style = MaterialTheme.typography.labelMedium
+                                    style = MaterialTheme.typography.labelMedium,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                 )
                             }
                         }
