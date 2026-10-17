@@ -221,6 +221,7 @@ fun LibraryScreen(
     // Filter state (persisted in the Activity-scoped ViewModel)
     val showOnlyKnownBpm by viewModel.showOnlyKnownBpm.collectAsState()
     val filterBySpeedFactor by viewModel.filterBySpeedFactor.collectAsState()
+    val filterByWideSpeedFactor by viewModel.filterByWideSpeedFactor.collectAsState()
 
     // Sort state - default to BPM sort (persisted in the Activity-scoped ViewModel)
     val sortByBpm by viewModel.sortByBpm.collectAsState()
@@ -336,11 +337,12 @@ fun LibraryScreen(
     
     // Check if any filter is active
     val hasActiveFilter = remember(
-        showOnlyKnownBpm, filterBySpeedFactor, searchQuery,
+        showOnlyKnownBpm, filterBySpeedFactor, filterByWideSpeedFactor, searchQuery,
         selectedArtists, selectedAlbums, selectedGenres,
         selectedPathLevels
     ) {
-        showOnlyKnownBpm || filterBySpeedFactor || searchQuery.isNotBlank() ||
+        showOnlyKnownBpm || filterBySpeedFactor || filterByWideSpeedFactor ||
+            searchQuery.isNotBlank() ||
             selectedArtists.isNotEmpty() || selectedAlbums.isNotEmpty() || selectedGenres.isNotEmpty() ||
             selectedPathLevels.any { it.isNotEmpty() }
     }
@@ -660,6 +662,13 @@ fun LibraryScreen(
                             label = stringResource(R.string.library_filter_speed),
                             selected = filterBySpeedFactor,
                             onSelected = { viewModel.setFilterBySpeedFactor(it) },
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(AppSpacing.xs))
+                        FilterChip(
+                            label = stringResource(R.string.library_filter_speed_wide),
+                            selected = filterByWideSpeedFactor,
+                            onSelected = { viewModel.setFilterByWideSpeedFactor(it) },
                             color = MaterialTheme.colorScheme.primary
                         )
                         if (hasActiveFilter) {

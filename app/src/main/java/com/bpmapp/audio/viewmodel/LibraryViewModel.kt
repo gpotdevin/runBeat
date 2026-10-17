@@ -116,6 +116,9 @@ class LibraryViewModel @Inject constructor(
     private val _filterBySpeedFactor = MutableStateFlow(false)
     val filterBySpeedFactor: StateFlow<Boolean> = _filterBySpeedFactor.asStateFlow()
     
+    private val _filterByWideSpeedFactor = MutableStateFlow(false)
+    val filterByWideSpeedFactor: StateFlow<Boolean> = _filterByWideSpeedFactor.asStateFlow()
+    
     private val _sortByBpm = MutableStateFlow(false)
     val sortByBpm: StateFlow<Boolean> = _sortByBpm.asStateFlow()
     
@@ -152,21 +155,35 @@ class LibraryViewModel @Inject constructor(
             }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
     
-    // Base filter: search query + BPM-known + speed-factor (within 0.9-1.1).
-    // Everything that is NOT a category/dimension filter. Dimension option
-    // flows and the final track list both build on top of this, so the chip
-    // rows reflect the BPM/speed filters exactly as the track list does.
+    // Base filter: search query + BPM-known + speed factor (0.9-1.1 and/or
+    // 0.85-1.15 windows, ANDed when both are enabled). Everything that is
+    // NOT a category/dimension filter. Dimension option flows and the final
+    // track list both build on top of this, so the chip rows reflect the
+    // BPM/speed filters exactly as the track list does.
+    // Six source flows exceed the largest typed combine overload, so the
+    // vararg form with explicit casts is used here.
+    @Suppress("UNCHECKED_CAST")
     private val baseFilteredTrackFlow: Flow<List<Track>> = combine(
         allTracks,
         _searchQuery,
         _showOnlyKnownBpm,
         _filterBySpeedFactor,
+        _filterByWideSpeedFactor,
         playerRepository.targetCadence
-    ) { tracks, query, showKnownBpm, filterSpeed, targetCadence ->
+    ) { values ->
+        val tracks = values[0] as List<Track>
+        val query = values[1] as String
+        val showKnownBpm = values[2] as Boolean
+        val filterSpeed = values[3] as Boolean
+        val filterWideSpeed = values[4] as Boolean
+        val targetCadence = values[5] as Float
         tracks.filter { track ->
             val matchesQuery = query.isBlank() || track.matchesSearch(query)
             val matchesBpm = !showKnownBpm || (track.bpm != null && track.bpm > 0)
-            val matchesSpeed = !filterSpeed || track.matchesSpeedFactor(targetCadence)
+            val matchesSpeed = (!filterSpeed ||
+                track.matchesSpeedFactor(targetCadence, SPEED_WINDOW_MIN, SPEED_WINDOW_MAX)) &&
+                (!filterWideSpeed ||
+                    track.matchesSpeedFactor(targetCadence, WIDE_SPEED_WINDOW_MIN, WIDE_SPEED_WINDOW_MAX))
             matchesQuery && matchesBpm && matchesSpeed
         }
     }
@@ -667,6 +684,13 @@ class LibraryViewModel @Inject constructor(
     }
     
     /**
+     * Update the "speed factor within 0.85-1.15" filter
+     */
+    fun setFilterByWideSpeedFactor(enabled: Boolean) {
+        _filterByWideSpeedFactor.value = enabled
+    }
+    
+    /**
      * Set the primary sort key (true = sort by BPM, mutually exclusive with album/artist)
      */
     fun setSortByBpm(enabled: Boolean) {
@@ -713,6 +737,7 @@ class LibraryViewModel @Inject constructor(
         _selectedPathLevels.value = listOf(emptySet())
         _showOnlyKnownBpm.value = false
         _filterBySpeedFactor.value = false
+        _filterByWideSpeedFactor.value = false
         _sortByBpm.value = false
         _sortByAlbum.value = false
         _sortByArtist.value = false
@@ -1015,14 +1040,20 @@ class LibraryViewModel @Inject constructor(
     // ==================== BPM Resolution (upcoming songs) ====================
 
     /**
-     * After background analysis resolves a track's BPM: when the "speed
+     * After background analysis resolves a track's BPM: when a "speed
      * factor" library filter is active and the track's optimal speed factor
-     * falls outside the [0.9, 1.1] window, remove the track from the
-     * upcoming playlist.
+     * falls outside the [0.85, 1.15] window, remove the track from the
+     * upcoming playlist. The wide window is used because stretches up to
+     * 0.85/1.15 have been confirmed acceptable for playback.
      */
     private fun removeTrackFromUpcomingIfOutOfSpeedWindow(track: Track, bpm: Float) {
-        if (!_filterBySpeedFactor.value) return
-        if (!track.copy(bpm = bpm).matchesSpeedFactor(playerRepository.targetCadence.value)) {
+        if (!_filterBySpeedFactor.value && !_filterByWideSpeedFactor.value) return
+        if (!track.copy(bpm = bpm).matchesSpeedFactor(
+                playerRepository.targetCadence.value,
+                WIDE_SPEED_WINDOW_MIN,
+                WIDE_SPEED_WINDOW_MAX
+            )
+        ) {
             playerRepository.removeTrackFromUpcoming(track.id)
         }
     }
@@ -1331,17 +1362,31 @@ private fun Track.matchesDimensions(
 }
 
 /**
- * Whether the track's optimal cadence-match speed factor falls within the
- * playable [0.9, 1.1] range for the given target cadence. Mirrors the per-track
- * speed-factor computation shown on TrackCard.
+ * Speed-factor window bounds for the "Speed 0.9-1.1" library filter.
  */
-private fun Track.matchesSpeedFactor(targetCadence: Float): Boolean {
+private const val SPEED_WINDOW_MIN = 0.9f
+private const val SPEED_WINDOW_MAX = 1.1f
+
+/**
+ * Speed-factor window bounds for the wider "Speed 0.85-1.15" library
+ * filter. Stretches in this window have been confirmed acceptable for
+ * playback.
+ */
+private const val WIDE_SPEED_WINDOW_MIN = 0.85f
+private const val WIDE_SPEED_WINDOW_MAX = 1.15f
+
+/**
+ * Whether the track's optimal cadence-match speed factor falls within the
+ * playable [minFactor, maxFactor] range for the given target cadence.
+ * Mirrors the per-track speed-factor computation shown on TrackCard.
+ */
+private fun Track.matchesSpeedFactor(targetCadence: Float, minFactor: Float, maxFactor: Float): Boolean {
     val bpm = bpm ?: return false
     if (bpm <= 0f) return false
     val match = CadenceMatcher().findOptimalMatch(bpm.toFloat(), targetCadence)
     if (match.rhythmPattern.factor <= 0f) return false
     val factor = targetCadence / (bpm * match.rhythmPattern.factor)
-    return factor in 0.9f..1.1f
+    return factor in minFactor..maxFactor
 }
 
 /**
