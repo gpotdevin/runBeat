@@ -5,6 +5,7 @@ package com.bpmapp.audio.util
 import android.Manifest
 import android.app.Activity
 import android.content.Context
+import android.content.Intent
 import android.content.IntentSender
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -48,18 +49,24 @@ object PermissionUtils {
     }
     
     /**
-     * Check if the app has the read permission needed to scan the audio library.
+     * The permission required to read the audio library on this device:
+     * READ_MEDIA_AUDIO on Android 13+ (API 33), READ_EXTERNAL_STORAGE below.
      */
-    fun hasReadMediaAudioPermission(context: Context): Boolean {
-        // READ_MEDIA_AUDIO only exists on Android 13+ (API 33); older devices use READ_EXTERNAL_STORAGE
-        val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+    fun requiredReadMediaAudioPermission(): String {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             READ_MEDIA_AUDIO
         } else {
             Manifest.permission.READ_EXTERNAL_STORAGE
         }
+    }
+    
+    /**
+     * Check if the app has the read permission needed to scan the audio library.
+     */
+    fun hasReadMediaAudioPermission(context: Context): Boolean {
         return ContextCompat.checkSelfPermission(
             context,
-            permission
+            requiredReadMediaAudioPermission()
         ) == PackageManager.PERMISSION_GRANTED
     }
     
@@ -163,19 +170,29 @@ object PermissionUtils {
     }
     
     /**
-     * Request READ_MEDIA_AUDIO permission (Android 13+)
+     * Request the read-media permission required on the current Android version
      */
     fun requestReadMediaAudioPermission(activity: Activity) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            val permission = READ_MEDIA_AUDIO
-            if (ContextCompat.checkSelfPermission(activity, permission)
-                != PackageManager.PERMISSION_GRANTED) {
-                activity.requestPermissions(
-                    arrayOf(permission),
-                    REQUEST_CODE_READ_MEDIA
-                )
-            }
+        val permission = requiredReadMediaAudioPermission()
+        if (ContextCompat.checkSelfPermission(activity, permission)
+            != PackageManager.PERMISSION_GRANTED) {
+            activity.requestPermissions(
+                arrayOf(permission),
+                REQUEST_CODE_READ_MEDIA
+            )
         }
+    }
+    
+    /**
+     * Open the system app-details settings page, used when a permission has
+     * been permanently denied and the runtime dialog can no longer be shown.
+     */
+    fun openAppSettings(activity: Activity) {
+        val intent = Intent(
+            android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+            Uri.fromParts("package", activity.packageName, null)
+        )
+        activity.startActivity(intent)
     }
     
     /**

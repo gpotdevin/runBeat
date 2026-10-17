@@ -1,6 +1,7 @@
 package com.bpmapp.audio.audio
 
 import com.bpmapp.audio.R
+import com.bpmapp.audio.util.PermissionUtils
 
 import android.content.Context
 import android.content.Intent
@@ -111,7 +112,12 @@ class PlayerRepository @Inject constructor(
         exoPlayer.addListener(object : androidx.media3.common.Player.Listener {
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                 Log.e("PlayerRepository", "Player error: ${error.message}", error)
-                _error.value = context.getString(R.string.error_player_error, error.message ?: "")
+                _error.value =
+                    if (error.errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_IO_NO_PERMISSION) {
+                        context.getString(R.string.error_player_permission)
+                    } else {
+                        context.getString(R.string.error_player_error, error.message ?: "")
+                    }
                 _playerState.update { it.copy(error = error.message) }
             }
             
@@ -186,9 +192,24 @@ class PlayerRepository @Inject constructor(
     }
 
     /**
+     * True when the item points at a MediaStore URI the app has no read
+     * permission for. Fast-fails playback with a friendly error instead
+     * of an ExoPlayer "Source error" after a SecurityException.
+     */
+    private fun isMediaReadBlocked(mediaItem: MediaItem?): Boolean {
+        val uri = mediaItem?.localConfiguration?.uri ?: return false
+        return uri.scheme == "content" && !PermissionUtils.hasReadMediaAudioPermission(context)
+    }
+
+    /**
      * Play a specific media item
      */
     fun playMediaItem(mediaItem: MediaItem) {
+        if (isMediaReadBlocked(mediaItem)) {
+            _error.value = context.getString(R.string.error_player_permission)
+            updatePlayerState()
+            return
+        }
         ensurePlaybackService()
         _error.value = null
         _currentTrack.value = mediaItem
@@ -223,6 +244,11 @@ class PlayerRepository @Inject constructor(
      * Play the current track
      */
     fun play() {
+        if (isMediaReadBlocked(_currentTrack.value)) {
+            _error.value = context.getString(R.string.error_player_permission)
+            updatePlayerState()
+            return
+        }
         ensurePlaybackService()
         exoPlayer.play()
         updatePlayerState()

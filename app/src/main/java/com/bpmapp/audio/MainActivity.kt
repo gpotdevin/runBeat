@@ -114,6 +114,7 @@ import com.bpmapp.audio.ui.theme.BpmAppTheme
 import com.bpmapp.audio.ui.theme.bpmColor
 import com.bpmapp.audio.ui.theme.speedFactorColor
 import com.bpmapp.audio.ui.theme.touchTarget
+import com.bpmapp.audio.util.PermissionUtils
 import com.bpmapp.audio.viewmodel.PlayerViewModel
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -132,6 +133,7 @@ class MainActivity : ComponentActivity() {
     lateinit var playerRepository: PlayerRepository
 
     private val notificationPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    private val mediaPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -140,6 +142,7 @@ class MainActivity : ComponentActivity() {
         // actually begins, so the app does not run in the background when idle.
         
         requestNotificationPermissionIfNeeded()
+        requestMediaPermissionIfNeeded()
         
         enableEdgeToEdge()
         
@@ -244,6 +247,15 @@ class MainActivity : ComponentActivity() {
         if (prefs.getBoolean("notification_permission_asked", false)) return
         prefs.edit().putBoolean("notification_permission_asked", true).apply()
         notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
+    
+    /**
+     * The music library cannot be scanned or played without media read
+     * access, so request it on every start where it is missing.
+     */
+    private fun requestMediaPermissionIfNeeded() {
+        if (PermissionUtils.hasReadMediaAudioPermission(this)) return
+        mediaPermissionLauncher.launch(PermissionUtils.requiredReadMediaAudioPermission())
     }
 }
 

@@ -146,6 +146,8 @@
     <string name="library_scan_offer_cancel">Ahora no</string>
     <string name="library_no_tracks_unscanned">Todavía no se ha escaneado ninguna biblioteca musical</string>
     <string name="library_scan_now">Escanear biblioteca</string>
+    <string name="library_permission_denied">El acceso a la música está desactivado. Concede el permiso de audio para cargar tu biblioteca.</string>
+    <string name="library_permission_open_settings">Abrir ajustes</string>
     <string name="library_try_adjusting">Intenta ajustar tus filtros</string>
 
     <!-- Library snackbar messages -->
@@ -378,6 +380,7 @@
     <string name="info_bpm_saved_library_only">BPM guardados en biblioteca de pistas (no se pudo escribir en metadatos del archivo)</string>
     <string name="error_failed_save_bpm">Error al guardar BPM: %1$s</string>
     <string name="error_player_error">Error: %1$s</string>
+    <string name="error_player_permission">Acceso de audio denegado. Permite el acceso a la música en Ajustes e inténtalo de nuevo.</string>
     <string name="error_could_not_prepare_media">Error: No se pudo preparar el medio para reproducción</string>
     <string name="error_unknown">Desconocido</string>
 </resources>
