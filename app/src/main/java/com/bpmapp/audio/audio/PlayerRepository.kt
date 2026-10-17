@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
@@ -110,13 +111,32 @@ class PlayerRepository @Inject constructor(
     // cannot mistake an already-ducked volume for the original one.
     private var volumeBeforeDuck: Float? = null
 
+    // Throttle for the periodic playback-state diagnostic log in the position
+    // poller (at most one log every 5 seconds).
+    private var lastPlaybackStateLogMs = 0L
+
     init {
         updatePlayerState()
         
          // Set up player listener for state changes and periodic position updates
         exoPlayer.addListener(object : androidx.media3.common.Player.Listener {
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                Log.e("PlayerRepository", "Player error: ${error.message}", error)
+                val causeChain = buildString {
+                    var cause = error.cause
+                    var depth = 1
+                    while (cause != null && depth <= 20) {
+                        append("\n  cause[$depth]: ${cause.javaClass.name}: ${cause.message}")
+                        cause = cause.cause
+                        depth++
+                    }
+                }
+                val failedTrack = _currentTrack.value
+                Log.e(
+                    "PlayerRepository",
+                    "Player error code=${error.errorCodeName} (${error.errorCode}): ${error.message}, " +
+                        "mediaId=${failedTrack?.mediaId}, uri=${failedTrack?.localConfiguration?.uri}$causeChain",
+                    error
+                )
                 _error.value =
                     if (error.errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_IO_NO_PERMISSION) {
                         context.getString(R.string.error_player_permission)
@@ -153,6 +173,16 @@ class PlayerRepository @Inject constructor(
                         )
                     }
                     _currentPosition.value = exoPlayer.currentPosition
+                }
+                val now = SystemClock.elapsedRealtime()
+                if (now - lastPlaybackStateLogMs >= 5000L) {
+                    lastPlaybackStateLogMs = now
+                    Log.d(
+                        "PlayerRepository",
+                        "Playback state: isPlaying=${exoPlayer.isPlaying}, playbackState=${exoPlayer.playbackState}, " +
+                            "position=${exoPlayer.currentPosition}, duration=${exoPlayer.duration}, " +
+                            "speed=${exoPlayer.playbackParameters.speed}, volume=${exoPlayer.volume}"
+                    )
                 }
                 handler.postDelayed(this, positionUpdateInterval)
             }
@@ -221,6 +251,7 @@ class PlayerRepository @Inject constructor(
         try {
             exoPlayer.setMediaItem(mediaItem)
             exoPlayer.prepare()
+            Log.d("PlayerRepository", "Playing media item: ${mediaItem.mediaMetadata.title}, URI: ${mediaItem.localConfiguration?.uri}")
             exoPlayer.playWhenReady = true
             updatePlayerState()
             maybePlayModeBeep()
@@ -477,10 +508,15 @@ class PlayerRepository @Inject constructor(
                 count,
                 onStart = {
                     if (volumeBeforeDuck == null) volumeBeforeDuck = exoPlayer.volume
-                    exoPlayer.volume = (volumeBeforeDuck!! * 0.3f).coerceIn(0f, 1f)
+                    val duckedVolume = (volumeBeforeDuck!! * 0.3f).coerceIn(0f, 1f)
+                    Log.d("PlayerRepository", "Mode beep duck: before=${volumeBeforeDuck}, ducked=$duckedVolume")
+                    exoPlayer.volume = duckedVolume
                 },
                 onFinish = {
-                    volumeBeforeDuck?.let { exoPlayer.volume = it }
+                    volumeBeforeDuck?.let {
+                        exoPlayer.volume = it
+                        Log.d("PlayerRepository", "Mode beep restore: volume=$it")
+                    }
                     volumeBeforeDuck = null
                 }
             )

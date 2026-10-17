@@ -2,6 +2,7 @@
 
 package com.bpmapp.audio.audio
 
+import android.os.SystemClock
 import android.util.Log
 import androidx.media3.common.C
 import androidx.media3.common.audio.AudioProcessor
@@ -59,6 +60,13 @@ class SoundTouchAudioProcessor : AudioProcessor {
     private var tempo = 1.0f
     private var inputEnded = false
 
+    // Diagnostics: cumulative frame counters plus one-shot/throttle state for
+    // queueInput logging. Reset whenever a new engine is created.
+    private var framesQueued = 0L
+    private var framesOutput = 0L
+    private var firstQueueInputLogged = false
+    private var lastQueueInputLogMs = 0L
+
     // Processed output chunks ready for the sink, plus a recycle pool so
     // steady-state playback does not allocate new direct buffers.
     private val outputBuffers = ArrayDeque<ByteBuffer>()
@@ -112,6 +120,10 @@ class SoundTouchAudioProcessor : AudioProcessor {
                 Log.w(TAG, "Unsupported audio format for SoundTouch: $inputFormat, bypassing")
                 AudioProcessor.AudioFormat.NOT_SET
             }
+        Log.d(
+            TAG,
+            "configure: input=$inputFormat, active=${pendingOutputAudioFormat != AudioProcessor.AudioFormat.NOT_SET}"
+        )
         return pendingOutputAudioFormat
     }
 
@@ -134,10 +146,28 @@ class SoundTouchAudioProcessor : AudioProcessor {
         // channels * 16-bit values, so frames = bytes / (2 * channels).
         val frames = remaining / (BYTES_PER_SAMPLE * channels)
         st.putSamples(inputScratch, 0, frames)
+        framesQueued += frames.toLong()
+        if (!firstQueueInputLogged) {
+            firstQueueInputLogged = true
+            Log.d(
+                TAG,
+                "First buffer queued: format=$engineAudioFormat, channels=$channels, frames=$frames, tempo=$tempo"
+            )
+        }
         drain(st)
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastQueueInputLogMs >= 5000L) {
+            lastQueueInputLogMs = now
+            Log.d(
+                TAG,
+                "queueInput status: framesQueued=$framesQueued, framesOutput=$framesOutput, " +
+                    "stNumSamples=${st.numSamples()}, stUnprocessed=${st.numUnprocessedSamples()}"
+            )
+        }
     }
 
     override fun queueEndOfStream() {
+        Log.d(TAG, "queueEndOfStream: framesQueued=$framesQueued, framesOutput=$framesOutput")
         soundTouch?.let { st ->
             // Flush pushes the samples still inside the processing pipeline to
             // the output FIFO so the drain below can extract them.
@@ -157,6 +187,7 @@ class SoundTouchAudioProcessor : AudioProcessor {
     override fun isEnded(): Boolean = inputEnded && outputBuffers.isEmpty()
 
     override fun flush() {
+        Log.d(TAG, "flush: framesQueued=$framesQueued, framesOutput=$framesOutput, inputEnded=$inputEnded")
         // Seek / (re)start of playback: discard any partial output.
         inputEnded = false
         while (outputBuffers.isNotEmpty()) {
@@ -166,6 +197,7 @@ class SoundTouchAudioProcessor : AudioProcessor {
     }
 
     override fun reset() {
+        Log.d(TAG, "reset: framesQueued=$framesQueued, framesOutput=$framesOutput")
         releaseEngine()
         inputEnded = false
         pendingInputAudioFormat = AudioProcessor.AudioFormat.NOT_SET
@@ -186,6 +218,9 @@ class SoundTouchAudioProcessor : AudioProcessor {
         if (format == AudioProcessor.AudioFormat.NOT_SET) return null
         val existing = soundTouch
         if (existing != null && format == engineAudioFormat) return existing
+        if (existing != null) {
+            Log.d(TAG, "Audio format changed, recreating engine: previous=$engineAudioFormat, new=$format")
+        }
         releaseEngine()
         return try {
             val st = SoundTouch()
@@ -196,6 +231,10 @@ class SoundTouchAudioProcessor : AudioProcessor {
             soundTouch = st
             channels = format.channelCount
             engineAudioFormat = format
+            framesQueued = 0
+            framesOutput = 0
+            firstQueueInputLogged = false
+            lastQueueInputLogMs = 0
             Log.d(TAG, "SoundTouch engine created: $format, tempo=$tempo")
             st
         } catch (t: Throwable) {
@@ -227,6 +266,7 @@ class SoundTouchAudioProcessor : AudioProcessor {
             buffer.put(outputScratch, 0, length)
             buffer.flip()
             outputBuffers.addLast(buffer)
+            framesOutput += received.toLong()
             if (received < CHUNK_FRAMES) break
         }
     }
