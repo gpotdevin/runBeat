@@ -4,6 +4,32 @@ All notable changes to RunBeat are documented in this file. Format based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8] - 2026-10-17
+
+### Added
+
+- **Sound quality**: playback tempo correction now uses SoundTouch (WSOLA)
+  instead of Sonic, giving noticeably better audio quality for running-cadence
+  speed matching (typically 0.82x - 1.16x).
+- **Library**: a second speed-factor filter window (0.85 - 1.15) complements the
+  existing 0.9 - 1.1 filter; both can be combined.
+
+### Changed
+
+- **Permissions**: READ_MEDIA_AUDIO is now requested and verified on install
+  and on app resume, so playback never starts without a granted permission.
+- **Position accuracy**: player position and remaining time no longer drift when
+  tempo correction is active.
+
+### Fixed
+
+- **Playback**: certain MP3 tracks went silent after the mode beeps when tempo
+  correction was active; end-of-stream handling no longer generates trailing
+  silence.
+- **Playback**: mode beeps no longer permanently lower the playback volume.
+- **Library**: the filter chip row no longer breaks the layout when a filter is
+  active (the row is now horizontally scrollable).
+
 ## [1.7] - 2026-10-16
 
 ### Added
