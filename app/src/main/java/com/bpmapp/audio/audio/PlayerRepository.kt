@@ -1,6 +1,7 @@
 package com.bpmapp.audio.audio
 
 import com.bpmapp.audio.R
+import com.bpmapp.audio.util.PermissionUtils
 
 import android.content.Context
 import android.content.Intent
@@ -8,6 +9,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
@@ -104,14 +106,43 @@ class PlayerRepository @Inject constructor(
     // fires once per track start (not on every play/resume).
     private var lastBeepedTrackId: String? = null
 
+    // Player volume before the current mode-beep ducking (null = not ducked).
+    // Captured only once per ducking sequence so a superseding beep signal
+    // cannot mistake an already-ducked volume for the original one.
+    private var volumeBeforeDuck: Float? = null
+
+    // Throttle for the periodic playback-state diagnostic log in the position
+    // poller (at most one log every 5 seconds).
+    private var lastPlaybackStateLogMs = 0L
+
     init {
         updatePlayerState()
         
          // Set up player listener for state changes and periodic position updates
         exoPlayer.addListener(object : androidx.media3.common.Player.Listener {
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                Log.e("PlayerRepository", "Player error: ${error.message}", error)
-                _error.value = context.getString(R.string.error_player_error, error.message ?: "")
+                val causeChain = buildString {
+                    var cause = error.cause
+                    var depth = 1
+                    while (cause != null && depth <= 20) {
+                        append("\n  cause[$depth]: ${cause.javaClass.name}: ${cause.message}")
+                        cause = cause.cause
+                        depth++
+                    }
+                }
+                val failedTrack = _currentTrack.value
+                Log.e(
+                    "PlayerRepository",
+                    "Player error code=${error.errorCodeName} (${error.errorCode}): ${error.message}, " +
+                        "mediaId=${failedTrack?.mediaId}, uri=${failedTrack?.localConfiguration?.uri}$causeChain",
+                    error
+                )
+                _error.value =
+                    if (error.errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_IO_NO_PERMISSION) {
+                        context.getString(R.string.error_player_permission)
+                    } else {
+                        context.getString(R.string.error_player_error, error.message ?: "")
+                    }
                 _playerState.update { it.copy(error = error.message) }
             }
             
@@ -142,6 +173,16 @@ class PlayerRepository @Inject constructor(
                         )
                     }
                     _currentPosition.value = exoPlayer.currentPosition
+                }
+                val now = SystemClock.elapsedRealtime()
+                if (now - lastPlaybackStateLogMs >= 5000L) {
+                    lastPlaybackStateLogMs = now
+                    Log.d(
+                        "PlayerRepository",
+                        "Playback state: isPlaying=${exoPlayer.isPlaying}, playbackState=${exoPlayer.playbackState}, " +
+                            "position=${exoPlayer.currentPosition}, duration=${exoPlayer.duration}, " +
+                            "speed=${exoPlayer.playbackParameters.speed}, volume=${exoPlayer.volume}"
+                    )
                 }
                 handler.postDelayed(this, positionUpdateInterval)
             }
@@ -186,15 +227,31 @@ class PlayerRepository @Inject constructor(
     }
 
     /**
+     * True when the item points at a MediaStore URI the app has no read
+     * permission for. Fast-fails playback with a friendly error instead
+     * of an ExoPlayer "Source error" after a SecurityException.
+     */
+    private fun isMediaReadBlocked(mediaItem: MediaItem?): Boolean {
+        val uri = mediaItem?.localConfiguration?.uri ?: return false
+        return uri.scheme == "content" && !PermissionUtils.hasReadMediaAudioPermission(context)
+    }
+
+    /**
      * Play a specific media item
      */
     fun playMediaItem(mediaItem: MediaItem) {
+        if (isMediaReadBlocked(mediaItem)) {
+            _error.value = context.getString(R.string.error_player_permission)
+            updatePlayerState()
+            return
+        }
         ensurePlaybackService()
         _error.value = null
         _currentTrack.value = mediaItem
         try {
             exoPlayer.setMediaItem(mediaItem)
             exoPlayer.prepare()
+            Log.d("PlayerRepository", "Playing media item: ${mediaItem.mediaMetadata.title}, URI: ${mediaItem.localConfiguration?.uri}")
             exoPlayer.playWhenReady = true
             updatePlayerState()
             maybePlayModeBeep()
@@ -223,6 +280,11 @@ class PlayerRepository @Inject constructor(
      * Play the current track
      */
     fun play() {
+        if (isMediaReadBlocked(_currentTrack.value)) {
+            _error.value = context.getString(R.string.error_player_permission)
+            updatePlayerState()
+            return
+        }
         ensurePlaybackService()
         exoPlayer.play()
         updatePlayerState()
@@ -279,8 +341,13 @@ class PlayerRepository @Inject constructor(
      * falls back to ExoPlayer's built-in speed adjustment
      */
     fun setPlaybackSpeed(speed: Float) {
-        // Clamp to reasonable range for music playback
-        val clampedSpeed = speed.coerceIn(TempoStretcher.RUNNER_MIN_TEMPO, TempoStretcher.RUNNER_MAX_TEMPO)
+        // Clamp to the cadence matcher's valid speed window. Using the runner
+        // tempo range here (0.8..1.25) silently raised tracks that need 0.75x,
+        // desynchronizing the cadence by up to 6.7%.
+        val clampedSpeed = speed.coerceIn(
+            CadenceMatcher.MIN_SPEED_FACTOR,
+            CadenceMatcher.MAX_SPEED_FACTOR
+        )
         _playbackSpeed.value = clampedSpeed
         tempoStretcher.setTempoFactor(clampedSpeed)
         updatePlayerState()
@@ -398,8 +465,13 @@ class PlayerRepository @Inject constructor(
         val bpm = currentTrackBpm()
         if (bpm == null || bpm <= 0) return
         val matchResult = bestCadenceMatch(bpm, _targetCadence.value)
-        if (matchResult.rhythmPattern.factor > 0) {
+        if (matchResult.rhythmPattern.factor > 0 && matchResult.isAdjustable) {
             setPlaybackSpeed(matchResult.speedFactor)
+        } else {
+            // No rhythm match keeps the speed within the valid window: play at
+            // normal speed rather than clamping an out-of-range factor, which
+            // would both sound worse and still fail to match the cadence.
+            setPlaybackSpeed(1.0f)
         }
     }
 
@@ -426,14 +498,27 @@ class PlayerRepository @Inject constructor(
         val count = modeBeepPlayer.beepCountForFactor(factor)
         if (count > 0) {
             lastBeepedTrackId = dedupKey
-            // Duck the music to 30% of its current volume while the beeps play,
-            // then restore the original volume once they finish.
-            val originalVolume = exoPlayer.volume
-            val duckedVolume = (originalVolume * 0.3f).coerceIn(0f, 1f)
+            // Duck the music to 30% of its pre-signal volume while the beeps play,
+            // then restore the original volume once they finish. ModeBeepPlayer
+            // cancels the callbacks of a superseded signal, so capture the
+            // original volume only on the first duck of a sequence: otherwise a
+            // second signal (e.g. skipping track mid-beeps) would duck from the
+            // already-ducked level and restore that as the new original forever.
             modeBeepPlayer.beep(
                 count,
-                onStart = { exoPlayer.volume = duckedVolume },
-                onFinish = { exoPlayer.volume = originalVolume }
+                onStart = {
+                    if (volumeBeforeDuck == null) volumeBeforeDuck = exoPlayer.volume
+                    val duckedVolume = (volumeBeforeDuck!! * 0.3f).coerceIn(0f, 1f)
+                    Log.d("PlayerRepository", "Mode beep duck: before=${volumeBeforeDuck}, ducked=$duckedVolume")
+                    exoPlayer.volume = duckedVolume
+                },
+                onFinish = {
+                    volumeBeforeDuck?.let {
+                        exoPlayer.volume = it
+                        Log.d("PlayerRepository", "Mode beep restore: volume=$it")
+                    }
+                    volumeBeforeDuck = null
+                }
             )
         }
     }
