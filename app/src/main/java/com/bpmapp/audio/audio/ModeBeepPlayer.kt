@@ -68,6 +68,7 @@ class ModeBeepPlayer @Inject constructor() {
         onStart: (() -> Unit)? = null,
         onFinish: (() -> Unit)? = null
     ) {
+        Log.d(TAG, "beep: count=$count")
         if (count <= 0) {
             onStart?.invoke()
             onFinish?.invoke()

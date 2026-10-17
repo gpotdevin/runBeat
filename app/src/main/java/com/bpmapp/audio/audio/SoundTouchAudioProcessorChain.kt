@@ -2,6 +2,7 @@
 
 package com.bpmapp.audio.audio
 
+import android.util.Log
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.audio.DefaultAudioSink
@@ -26,13 +27,23 @@ class SoundTouchAudioProcessorChain(
     private val soundTouchProcessor: SoundTouchAudioProcessor
 ) : DefaultAudioSink.DefaultAudioProcessorChain(soundTouchProcessor) {
 
+    companion object {
+        private const val TAG = "SoundTouchProcessor"
+    }
+
     // Tempo most recently applied to SoundTouch; 1.0 until the sink reports
     // playback parameters.
     private var lastAppliedTempo = 1.0f
 
     override fun applyPlaybackParameters(playbackParameters: PlaybackParameters): PlaybackParameters {
+        Log.d(
+            TAG,
+            "applyPlaybackParameters: speed=${playbackParameters.speed}, " +
+                "engineAvailable=${soundTouchProcessor.engineAvailable}"
+        )
         if (!soundTouchProcessor.engineAvailable) {
             // No native engine: let the base chain stretch with Sonic.
+            Log.d(TAG, "No native engine, applying speed=${playbackParameters.speed} via base chain (Sonic)")
             return super.applyPlaybackParameters(playbackParameters)
         }
         val tempo = playbackParameters.speed
@@ -42,6 +53,7 @@ class SoundTouchAudioProcessorChain(
         // result and report the original parameters so ExoPlayer's clock
         // tracks the true stretch ratio.
         super.applyPlaybackParameters(playbackParameters.withSpeed(1f))
+        Log.d(TAG, "Applied SoundTouch tempo=$tempo, Sonic kept at speed=1.0")
         return playbackParameters
     }
 

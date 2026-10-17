@@ -5,6 +5,7 @@ package com.bpmapp.audio.audio
 import android.util.Log
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.ExoPlayer
 
 /**
  * Applies the cadence-matched tempo to playback.
@@ -59,7 +60,7 @@ class TempoStretcher(
         // The sink's processor chain applies this speed to SoundTouch when
         // available, or to ExoPlayer's Sonic time-stretch otherwise.
         player.playbackParameters = player.playbackParameters.withSpeed(clampedFactor)
-        Log.d(TAG, "Applied tempo: speed=$clampedFactor")
+        Log.d(TAG, "Applied tempo: speed=$clampedFactor, isExoPlayer=${player is ExoPlayer}")
     }
 
     /**
