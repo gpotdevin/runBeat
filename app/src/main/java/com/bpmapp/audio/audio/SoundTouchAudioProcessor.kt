@@ -167,11 +167,20 @@ class SoundTouchAudioProcessor : AudioProcessor {
     }
 
     override fun queueEndOfStream() {
+        // Media3 calls queueEndOfStream repeatedly (the renderer polls
+        // handleEndOfStream until the sink reports ended), so this must be
+        // idempotent: a second call must not produce more output.
+        if (inputEnded) return
         Log.d(TAG, "queueEndOfStream: framesQueued=$framesQueued, framesOutput=$framesOutput")
         soundTouch?.let { st ->
-            // Flush pushes the samples still inside the processing pipeline to
-            // the output FIFO so the drain below can extract them.
-            st.flush()
+            // Deliberately do NOT call SoundTouch::flush() here: this vendored
+            // implementation feeds blank samples into the pipeline (up to
+            // 200 x 128) and pads the output buffer, i.e. it MANUFACTURES
+            // silence (~0.5s per call). With Media3 polling until ended, that
+            // becomes an endless silence generator that plays instead of the
+            // next track. flush() is for offline file processing only. The few
+            // hundred ms of samples still inside the pipeline are dropped; the
+            // processor's flush() clears them when the next stream starts.
             drain(st)
         }
         inputEnded = true
