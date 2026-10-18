@@ -12,6 +12,18 @@ repositories {
     mavenCentral()
 }
 
+// Media3 1.11.x declares a kotlin-stdlib 2.2.10 dependency in its POM although
+// its artifacts ship no Kotlin classes. This project compiles with Kotlin
+// 1.9.22, which cannot read kotlin-stdlib 2.2 metadata, so keep the stdlib at
+// the compiler's version (same classpath as before the Media3 upgrade).
+configurations.all {
+    resolutionStrategy {
+        force 'org.jetbrains.kotlin:kotlin-stdlib:1.9.22'
+        force 'org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.22'
+        force 'org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.22'
+    }
+}
+
 android {
     namespace 'com.bpmapp.audio'
     compileSdk 36
@@ -107,11 +119,11 @@ dependencies {
     implementation 'sh.calvin.reorderable:reorderable:1.5.2'
     
     // ExoPlayer
-    implementation 'androidx.media3:media3-exoplayer:1.2.1'
-    implementation 'androidx.media3:media3-ui:1.2.1'
-    implementation 'androidx.media3:media3-session:1.2.1'
-    implementation 'androidx.media3:media3-exoplayer-dash:1.2.1'
-    implementation 'androidx.media3:media3-exoplayer-hls:1.2.1'
+    implementation 'androidx.media3:media3-exoplayer:1.11.1'
+    implementation 'androidx.media3:media3-ui:1.11.1'
+    implementation 'androidx.media3:media3-session:1.11.1'
+    implementation 'androidx.media3:media3-exoplayer-dash:1.11.1'
+    implementation 'androidx.media3:media3-exoplayer-hls:1.11.1'
     implementation 'androidx.media:media:1.6.0'
     
     // SoundTouch for time-stretching (LGPL)
