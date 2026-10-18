@@ -5,7 +5,8 @@ This project builds with the Gradle wrapper; no global Gradle install is require
 ## Prerequisites
 
 - **JDK 17** (the project targets Java/Kotlin `JVM 17`)
-- **Android SDK** with platforms `android-34`
+- **Android SDK** with platforms `android-36`
+- **Android SDK build tools** `34.0.0` (pinned via `buildToolsVersion` in `app/build.gradle`)
 - **Android NDK** version `26.1.10909125` (required for the `aubio` native module)
 - **CMake** (used by the `aubio` native build)
 
@@ -96,5 +97,10 @@ Changes to their C++/native sources require a full rebuild of those modules:
 
 ## Versioning
 
-`versionCode` is read from (and auto-incremented in) `build-counter.txt` at the
-repository root. `versionName` is set in `app/build.gradle`.
+`versionCode` is read from `build-counter.txt` at the repository root;
+`versionName` is set in `app/build.gradle`.
+
+`build-counter.txt` is a **manually incremented** counter — it is not derived
+from the git commit count. It must be bumped for each release, and it is the
+single source of truth for `versionCode` (F-Droid's `UpdateCheckData` also
+reads it).
