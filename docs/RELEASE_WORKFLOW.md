@@ -2,9 +2,11 @@
 
 ## Critical Rule
 
-**Every push to GitHub MUST increment `build-counter.txt`**
+**Every release MUST have a `versionCode` higher than any previously published one.**
 
-This ensures each release has a unique version code, which is required by Google Play and F-Droid.
+`build-counter.txt` is a manually incremented counter and the single source of truth
+for `versionCode`. Bump it once per release (not per push), and never reuse a value
+already published to Google Play or F-Droid.
 
 ## Standard Release Process
 
@@ -51,7 +53,7 @@ This automatically triggers the Release workflow (`release.yml`) which:
 ## Important Notes
 
 1. **Never reuse version codes** - Google Play requires each upload to have a higher versionCode than any previously published version
-2. **Build counter must always increment** - Even for non-release pushes, to avoid conflicts
+2. **Build counter is bumped once per release** - `build-counter.txt` is a manually incremented counter, not the git commit count
 3. **Release workflow auto-triggers** - Pushing a tag matching `v*` pattern triggers the GitHub Actions workflow
 4. **MANAGE_EXTERNAL_STORAGE** - Must NOT be declared. Writing BPM metadata to
    audio files uses per-file write grants (`MediaStore.createWriteRequest`) and

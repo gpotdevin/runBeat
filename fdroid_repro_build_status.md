@@ -91,7 +91,7 @@ MR !48280 state: **opened** (not yet merged).
    build-counter.txt says 33 and the tag v1.5.4 is on commit 71f8934 (33rd
    commit). This is correct — build-counter.txt should match the commit
    count at the tagged release commit, not the current HEAD. For the next
-   release, update build-counter.txt to the new commit count before tagging.
+   release, manually increment build-counter.txt before tagging (it is a manual counter, not the commit count).
 
 ## Key references
 

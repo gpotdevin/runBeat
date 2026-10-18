@@ -29,15 +29,28 @@ Builds:
       - yes
     ndk: r26b
 
+  # The final v1.8 release tag does not exist yet; bd1ca37 is the commit that
+  # merged the v1.8 integration branch into main. Update `commit` to the `v1.8`
+  # tag once it has been created.
+  - versionName: 1.8
+    versionCode: 45
+    commit: bd1ca37
+    subdir: app
+    gradle:
+      - yes
+    ndk: r26b
+
 AllowedAPKSigningKeys: 17c79696d6cd7f28e9ae9b8931dc8b7c402856318fe450ec777a23fddf12ca02
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags
 UpdateCheckData: build-counter.txt|(\d+)
-CurrentVersion: 1.5.4
-CurrentVersionCode: 33
+CurrentVersion: 1.8
+CurrentVersionCode: 45
 ```
 
 > Note: The versionCode is read from `build-counter.txt` to ensure consistency
-> with F-Droid's UpdateCheckData. Update `build-counter.txt` with the commit
-> count before tagging each release.
+> with F-Droid's UpdateCheckData. `build-counter.txt` is a manually incremented
+> counter — not the git commit count — and must be bumped for each release. It is
+> the single source of truth for `versionCode` (`app/build.gradle` reads it at
+> build time).
