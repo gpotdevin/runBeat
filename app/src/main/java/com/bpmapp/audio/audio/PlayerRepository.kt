@@ -28,7 +28,7 @@ import javax.inject.Singleton
  * for the UI to interact with the player
  */
 @Singleton
-@Suppress("UnstableApi")
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class PlayerRepository @Inject constructor(
     @ApplicationContext private val context: Context,
     private val exoPlayer: ExoPlayer,

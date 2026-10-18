@@ -26,6 +26,7 @@ import javax.inject.Inject
  */
 @HiltViewModel
 @SuppressLint("StaticFieldLeak") // @ApplicationContext field is application-scoped
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class PlayerViewModel @Inject constructor(
     private val playerRepository: PlayerRepository,
     @ApplicationContext private val context: Context
