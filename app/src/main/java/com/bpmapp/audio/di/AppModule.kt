@@ -30,6 +30,7 @@ import javax.inject.Singleton
  */
 @Module
 @InstallIn(SingletonComponent::class)
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 object AppModule {
 
     @Provides
