@@ -303,12 +303,17 @@
     <string name="settings_section_help">AYUDA</string>
     <string name="settings_section_about">ACERCA DE</string>
     <string name="settings_section_language">IDIOMA</string>
+    <string name="settings_section_garmin">GARMIN</string>
     <string name="settings_auto_apply_title">Auto-aplicar coincidencia de cadencia</string>
     <string name="settings_auto_apply_desc">Aplicar automáticamente la coincidencia de cadencia al cambiar de pista</string>
     <string name="settings_auto_scan_title">Escaneo automático al iniciar</string>
     <string name="settings_auto_scan_desc">Buscar automáticamente nuevas pistas al iniciar la aplicación</string>
     <string name="settings_exclude_not_for_running_title">Excluir pistas marcadas como \'no para correr\' de la reproducción</string>
     <string name="settings_exclude_not_for_running_desc">Las pistas marcadas como \'No para correr\' permanecen en tu biblioteca pero se excluyen de la cola de reproducción</string>
+    <string name="settings_garmin_watch_title">Reloj Garmin</string>
+    <string name="settings_garmin_watch_connected">Conectado</string>
+    <string name="settings_garmin_watch_connecting">Conectando…</string>
+    <string name="settings_garmin_watch_disconnected">No conectado</string>
     <string name="settings_dynamic_colors_title">Colores dinámicos</string>
     <string name="settings_dynamic_colors_desc">Usar colores dinámicos del sistema (Android 12+)</string>
     <string name="settings_import_csv_title">Importar CSV</string>

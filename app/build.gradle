@@ -97,6 +97,9 @@ android {
     buildFeatures {
         compose true
         viewBinding true
+        // Generates BuildConfig (FLAVOR) — used to gate the Garmin companion
+        // section in Settings to the garmin flavor.
+        buildConfig true
     }
     
     composeOptions {

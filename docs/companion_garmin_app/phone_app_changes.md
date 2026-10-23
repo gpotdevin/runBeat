@@ -99,16 +99,20 @@ and is unit-tested in every flavor (it has no Garmin SDK imports):
 | `GarminMessageCodec.kt` | `GarminCommand` sealed class, `GarminWatchState` data class, `GarminAck`, and the pure Kotlin + `org.json` (de)serialization of the protocol in [architecture.md](architecture.md). Unit-testable without the SDK. |
 | `CadenceAverager.kt` | 60-sample ring buffer with timestamps (`add(sample)`, `meanLast60s()`). Fallback path if raw cadence samples are ever streamed to the phone. Unit-testable. |
 | `MediaKeyDispatcher.kt` | Forwards transport commands to external apps via `AudioManager.dispatchMediaKeyEvent()`; adjusts/reads STREAM_MUSIC volume via `AudioManager`. No permissions required; `AudioManager` is constructor-injected for tests. |
-| `CompanionInitializer.kt` | `CompanionInitializer` interface + `NoopCompanionInitializer` (the fdroid flavor has no companion SDK). |
+| `CompanionInitializer.kt` | `CompanionInitializer` interface + `NoopCompanionInitializer` (the fdroid flavor has no companion SDK). The interface also has a default no-op `shutdown()` hook so the SDK listeners can be released on termination. |
+| `GarminCommandRouter.kt` | **Built (Phase 2b).** SDK-free routing + state builder, unit-tested in every flavor: implements the routing table below (transport → `PlayerRepository` when RunBeat is active, else media keys; volume always STREAM_MUSIC; cadence / speed-correction / mark-not-for-running are RunBeat-only), plus `currentState()` (`source` = "RunBeat" / "none"). Main-thread confined. |
+| `GarminConnectionState.kt` | **Built (Phase 2b).** `GarminConnectionState` enum (DISCONNECTED/CONNECTING/CONNECTED) + `GarminWatchConnection` holder that carries the state across the source-set boundary (the manager writes it, the Settings screen reads it). |
+| `GarminCompanionStarter.kt` | **Built (Phase 2b).** Marker interface (`GarminCompanionStarter : CompanionInitializer`) bound only by the garmin flavor; lets the main source set's default binding prefer the real initializer without a Hilt binding override. |
+| `CompanionModule.kt` | **Built (Phase 2b).** Hilt module: provides `MediaKeyDispatcher` (both flavors) and binds `CompanionInitializer` — to `NoopCompanionInitializer` unless a `GarminCompanionStarter` is bound (garmin flavor). |
 
 Only the Connect IQ SDK wiring goes in the flavor-specific source set
 `app/src/garmin/java/com/bpmapp/audio/audio/garmin/` (see section 7):
 
 | File | Content |
 |------|---------|
-| `GarminCompanionManager.kt` | Hilt `@Singleton`. Initializes `ConnectIQ`, registers the IQ app by UUID, implements the message listener, **routes** commands (RunBeat vs external app per [architecture.md](architecture.md)), collects state (repository flows + AudioManager volume + playback source) and pushes `state` messages to the watch. Exposes `connectionState: StateFlow<GarminConnectionState>`. |
-| `CompanionInitializer` implementation | The garmin flavor's real initializer (wraps `GarminCompanionManager`); overrides the main source set's no-op. |
-| `ExternalPlaybackMonitor.kt` (optional) | `NotificationListenerService` reading MediaStyle notifications to expose external apps' now-playing title/source. Requires user-granted notification access (see manifest note, §8). Keep optional; document in PRIVACY.md. |
+| `GarminCompanionManager.kt` | **Built (Phase 2b).** Hilt `@Singleton`. Thin Connect IQ SDK shell (the only file importing `com.garmin.*`): initializes `ConnectIQ`, registers the IQ app by UUID, receives watch messages, decodes them via `GarminMessageCodec` and **delegates routing to `GarminCommandRouter`**, pushes acks + `state` messages (repository flows + ~1 Hz volume poll while connected), and exposes `connectionState: StateFlow<GarminConnectionState>`. |
+| `GarminCompanionInitializer.kt` + `GarminCompanionModule.kt` | **Built (Phase 2b).** The garmin flavor's real initializer (wraps `GarminCompanionManager`); the `@Binds` module binds it as the `GarminCompanionStarter`, which the main source set's `CompanionModule` prefers over `NoopCompanionInitializer` (Hilt has no binding override, so the real initializer is bound under the marker key rather than re-binding `CompanionInitializer`). |
+| `ExternalPlaybackMonitor.kt` (optional) | `NotificationListenerService` reading MediaStyle notifications to expose external apps' now-playing title/source. Requires user-granted notification access (see manifest note, §8). Keep optional; document in PRIVACY.md. **Not implemented (out of scope): `source` is "RunBeat" or "none".** |
 
 Routing + mark orchestration in `GarminCompanionManager` (it needs
 `PlayerRepository`, `TrackRepository` and `MediaKeyDispatcher`; putting the
@@ -154,6 +158,17 @@ private fun markCurrentTrackNotForRunning() {
 }
 ```
 
+**Built (Phase 2b):** the routing above lives in `GarminCommandRouter` (main
+source set — SDK-free, unit-tested in every flavor); `GarminCompanionManager`
+(garmin source set) is the thin Connect IQ SDK shell that decodes watch
+messages, delegates to the router, and pushes acks + state. RunBeat is treated
+as active when `playerState.isPlaying || playbackState == STATE_BUFFERING`
+(the simplest robust signal from the discussion below); paused RunBeat falls
+through to media keys, as documented. Marking a track reads the current
+`trackId` from `PlayerRepository.currentTrack` extras, flags it in Room and
+skips immediately. `ExternalPlaybackMonitor` is not implemented, so `source`
+is `"RunBeat"` or `"none"`.
+
 `audioServiceRunning()`: check whether `AudioService` is foreground via
 `ActivityManager.getRunningServices()` (deprecated but functional) or
 `UsageStatsManager`, or simpler: track it from `PlayerRepository.playerState`
@@ -163,9 +178,13 @@ paused-RunBeat falls through to media keys (acceptable: a paused RunBeat
 would forward keys to the next app with focus, which is standard remote
 behavior).
 
-Initialization: start the manager lazily from `MainActivity` (or `BpmApp`)
-when the `garmin` flavor is present, via a small `CompanionInitializer`
-interface with a no-op implementation in the fdroid/default source set.
+Initialization (built, Phase 2b): `MainActivity` injects the Hilt-bound
+`CompanionInitializer` and calls `initialize` in `onCreate` (and `shutdown`
+in `onDestroy`). The main source set's `CompanionModule` binds
+`CompanionInitializer` to `NoopCompanionInitializer` unless the garmin flavor
+binds a `GarminCompanionStarter` — Hilt has no binding override, so the
+garmin flavor's `GarminCompanionModule` binds the real initializer under that
+marker key via `@Binds` instead of re-binding `CompanionInitializer`.
 
 ## 4. Queue building — filter flagged tracks (toggle, default ON)
 
@@ -289,13 +308,16 @@ app/src/main/java/com/bpmapp/audio/di/AppModule.kt               (MIGRATION_6_7)
 app/src/main/java/com/bpmapp/audio/audio/TrackRepository.kt      (2 wrappers)
 app/src/main/java/com/bpmapp/audio/audio/PlayerRepository.kt     (optional duck fix only)
 app/src/main/java/com/bpmapp/audio/viewmodel/LibraryViewModel.kt (filter + setting + toggleNotForRunning)
-app/src/main/java/com/bpmapp/audio/viewmodel/SettingsViewModel.kt(filter setting, garmin state)
+app/src/main/java/com/bpmapp/audio/viewmodel/SettingsViewModel.kt(filter setting, garmin connection state)
 app/src/main/java/com/bpmapp/audio/ui/LibraryScreen.kt           (badge/unmark)
 app/src/main/java/com/bpmapp/audio/ui/components/TrackCard.kt     (badge)
 app/src/main/java/com/bpmapp/audio/ui/screens/SettingsScreen.kt   (filter toggle, garmin section)
+app/src/main/java/com/bpmapp/audio/MainActivity.kt                (companion initializer wiring)
 app/src/main/res/values/strings.xml (+ fr, es)                   (new strings)
-app/src/main/java/com/bpmapp/audio/audio/garmin/               (NEW: codec, averager, dispatcher, CompanionInitializer + no-op)
-app/src/garmin/java/com/bpmapp/audio/audio/garmin/               (NEW: manager, garmin CompanionInitializer, optional monitor)
+app/src/main/java/com/bpmapp/audio/audio/garmin/               (NEW: codec, averager, dispatcher, router, connection state, starter marker, CompanionInitializer + no-op, CompanionModule)
+app/src/garmin/java/com/bpmapp/audio/audio/garmin/               (NEW: manager, garmin CompanionInitializer + @Binds module; optional monitor not implemented)
+app/src/test/java/com/bpmapp/audio/audio/garmin/GarminCommandRouterTest.kt (NEW)
+garmin-watch/manifest.xml                                        (IQ app UUID)
 app/src/main/AndroidManifest.xml                                (only if ExternalPlaybackMonitor: listener service)
 app/build.gradle                                                 (flavors + garmin dep)
 docs/PRIVACY.md, CHANGELOG.md, docs/fdroid-metadata.yml          (doc updates)
