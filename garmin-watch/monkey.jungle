@@ -7,11 +7,10 @@
 project.manifest = manifest.xml
 
 # Device targets (product ids; must be a subset of manifest.xml <iq:products>).
-# Forerunner 245/255/265/955/965, fenix 7 (all sizes), fenix 8, epix (Gen 2),
-# Venu 3.
-# NOTE: verify size-variant ids against the SDK's product list when building
-# (e.g. fenix 8 size variants, epix Gen 2 51mm, *music Forerunner variants).
-product = forerunner245,forerunner255,forerunner265,forerunner955,forerunner965,fenix7,fenix7s,fenix7x,fenix8,epix2,venu3,venu3s
+# Forerunner 245/255/265/955/965, fenix 7 (all sizes), fenix 8 (solar
+# 47/51mm, AMOLED 43/47mm), epix (Gen 2), Venu 3. Ids verified against
+# the Connect IQ SDK 9.3.0 device-reference and Garmin real device data.
+product = fr245,fr255,fr265,fr955,fr965,fenix7,fenix7s,fenix7x,fenix8solar47mm,fenix8solar51mm,fenix843mm,fenix847mm,epix2,venu3,venu3s
 
 # Minimum Connect IQ API level: all targets support >= 3.2 (ActivityMonitor
 # live cadence, SwitchableView, resource menus).

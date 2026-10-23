@@ -15,16 +15,20 @@
 
     <iq:products>
         <!-- Forerunner 245 / 255 / 265 / 955 / 965 -->
-        <iq:product id="forerunner245"/>
-        <iq:product id="forerunner255"/>
-        <iq:product id="forerunner265"/>
-        <iq:product id="forerunner955"/>
-        <iq:product id="forerunner965"/>
-        <!-- fenix 7 (all sizes) / fenix 8 -->
+        <iq:product id="fr245"/>
+        <iq:product id="fr255"/>
+        <iq:product id="fr265"/>
+        <iq:product id="fr955"/>
+        <iq:product id="fr965"/>
+        <!-- fenix 7 (all sizes) -->
         <iq:product id="fenix7"/>
         <iq:product id="fenix7s"/>
         <iq:product id="fenix7x"/>
-        <iq:product id="fenix8"/>
+        <!-- fenix 8 (solar 47/51mm, AMOLED 43/47mm) -->
+        <iq:product id="fenix8solar47mm"/>
+        <iq:product id="fenix8solar51mm"/>
+        <iq:product id="fenix843mm"/>
+        <iq:product id="fenix847mm"/>
         <!-- epix (Gen 2) -->
         <iq:product id="epix2"/>
         <!-- Venu 3 -->
