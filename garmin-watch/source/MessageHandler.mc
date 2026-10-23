@@ -32,14 +32,6 @@ class MessageHandler {
     // Outgoing commands (watch -> phone)
     // ---------------------------------------------------------------
 
-    function sendPlay() as Void {
-        sendJson("{\"type\":\"play\"}");
-    }
-
-    function sendPause() as Void {
-        sendJson("{\"type\":\"pause\"}");
-    }
-
     function sendToggle() as Void {
         sendJson("{\"type\":\"toggle\"}");
     }
@@ -50,10 +42,6 @@ class MessageHandler {
 
     function sendPrev() as Void {
         sendJson("{\"type\":\"prev\"}");
-    }
-
-    function sendCadenceSet(cadence as Number) as Void {
-        sendJson("{\"type\":\"cadence_set\",\"cadence\":" + cadence.format("%d") + "}");
     }
 
     function sendCadenceDelta(delta as Number) as Void {
