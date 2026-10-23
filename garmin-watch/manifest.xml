@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  RunBeat companion watch app (Connect IQ / Monkey C).
+
+  The id below is a PLACEHOLDER. Replace it with the UUID Garmin assigns when
+  registering this app at https://developer.garmin.com/connect-iq/ — the phone
+  side (GarminCompanionManager) registers the same id. Keep in sync with the
+  _appId constant in source/RunBeatCompanionApp.mc.
+-->
+<iq:application xmlns:iq="http://www.garmin.com/xml/connectiq"
+                id="00000000-0000-0000-0000-000000000000"
+                type="watch-app"
+                name="@Strings.AppName">
+
+    <iq:products>
+        <!-- Forerunner 245 / 255 / 265 / 955 / 965 -->
+        <iq:product id="forerunner245"/>
+        <iq:product id="forerunner255"/>
+        <iq:product id="forerunner265"/>
+        <iq:product id="forerunner955"/>
+        <iq:product id="forerunner965"/>
+        <!-- fenix 7 (all sizes) / fenix 8 -->
+        <iq:product id="fenix7"/>
+        <iq:product id="fenix7s"/>
+        <iq:product id="fenix7x"/>
+        <iq:product id="fenix8"/>
+        <!-- epix (Gen 2) -->
+        <iq:product id="epix2"/>
+        <!-- Venu 3 -->
+        <iq:product id="venu3"/>
+        <iq:product id="venu3s"/>
+    </iq:products>
+
+    <iq:permissions>
+        <!-- Phone messaging with the RunBeat companion (required). -->
+        <iq:uses-permission id="Communications"/>
+        <!-- Accelerometer-based cadence sampling. -->
+        <iq:uses-permission id="Sensor"/>
+        <!-- Step count / live cadence (Toybox.ActivityMonitor). -->
+        <iq:uses-permission id="ActivityMonitor"/>
+        <!-- NOTE: no Media permission — music always plays on the phone, the
+             watch only sends messages. -->
+        <!-- NOTE: no FitContributor — this app is not a data field. -->
+    </iq:permissions>
+
+    <iq:languages>
+        <iq:language>eng</iq:language>
+    </iq:languages>
+</iq:application>

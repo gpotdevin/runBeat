@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<menus>
+    <menu id="ControlViewMenu" title="@Strings.ControlMenuTitle">
+        <menu-item id="speed_correction" label="@Strings.MenuSpeedCorrection"/>
+        <menu-item id="volume_down" label="@Strings.MenuVolumeDown"/>
+        <menu-item id="volume_up" label="@Strings.MenuVolumeUp"/>
+        <menu-item id="mark_not_for_running" label="@Strings.MenuMarkNotForRunning"/>
+    </menu>
+</menus>
