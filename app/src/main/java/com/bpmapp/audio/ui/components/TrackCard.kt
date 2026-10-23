@@ -82,6 +82,7 @@ fun TrackCard(
     isSelected: Boolean = false,
     isFavorite: Boolean = false,
     onToggleFavorite: (() -> Unit)? = null,
+    onToggleNotForRunning: (() -> Unit)? = null,
     onLongClick: () -> Unit = {}
 ) {
     // Get speed factor color for BPM display
@@ -104,6 +105,7 @@ fun TrackCard(
     // Accessibility strings resolved in composable scope
     val unknownArtist = stringResource(R.string.trackcard_unknown_artist)
     val unknownBpmText = stringResource(R.string.trackcard_unknown_bpm)
+    val notForRunningDesc = stringResource(R.string.trackcard_not_for_running_desc)
     val bpmText = if (track.bpm != null && track.bpm > 0)
         stringResource(R.string.trackcard_bpm_value, DecimalFormat("#.##").format(track.bpm))
     else unknownBpmText
@@ -153,16 +155,34 @@ fun TrackCard(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.Center
             ) {
-                // Title
+                // Title, with a "Not for running" badge when the track is flagged
                 val displayTitle = track.metadataTitle ?: track.fileName.takeIf { it.isNotEmpty() } ?: stringResource(R.string.trackcard_unknown)
-                Text(
-                    text = displayTitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = displayTitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (track.notForRunning) {
+                        Spacer(modifier = Modifier.width(AppSpacing.xxs))
+                        Text(
+                            text = stringResource(R.string.trackcard_not_for_running),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.error,
+                            maxLines = 1,
+                            modifier = Modifier.semantics {
+                                contentDescription = notForRunningDesc
+                            }
+                        )
+                    }
+                }
                 
                 // Artist (if available)
                 track.metadataArtist?.let { artist ->
@@ -360,6 +380,40 @@ fun TrackCard(
                             }
                         )
                         
+                        if (onToggleNotForRunning != null) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        stringResource(
+                                            if (track.notForRunning) {
+                                                R.string.trackcard_unmark_not_for_running
+                                            } else {
+                                                R.string.trackcard_mark_not_for_running
+                                            }
+                                        ),
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                },
+                                onClick = {
+                                    onToggleNotForRunning()
+                                    showContextMenu = false
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Filled.Warning,
+                                        contentDescription = stringResource(
+                                            if (track.notForRunning) {
+                                                R.string.trackcard_unmark_not_for_running
+                                            } else {
+                                                R.string.trackcard_mark_not_for_running
+                                            }
+                                        ),
+                                        modifier = Modifier.size(16.dp),
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                }
+                            )
+                        }
                         DropdownMenuItem(
                             text = { 
                                 Text(

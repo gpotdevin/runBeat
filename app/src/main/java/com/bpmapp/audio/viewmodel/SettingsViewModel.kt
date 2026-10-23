@@ -36,6 +36,7 @@ class SettingsViewModel @Inject constructor(
         
         // Library settings keys
         private const val KEY_AUTO_SCAN_ON_STARTUP = "auto_scan_on_startup"
+        private const val KEY_EXCLUDE_NOT_FOR_RUNNING_TRACKS = "exclude_not_for_running_tracks"
         
         // Appearance settings keys
         private const val KEY_DYNAMIC_COLORS = "dynamic_colors"
@@ -44,6 +45,7 @@ class SettingsViewModel @Inject constructor(
         private const val DEFAULT_DEFAULT_CADENCE = 172
         private const val DEFAULT_AUTO_APPLY_CADENCE_MATCH = true
         private const val DEFAULT_AUTO_SCAN_ON_STARTUP = true
+        private const val DEFAULT_EXCLUDE_NOT_FOR_RUNNING_TRACKS = true
         private const val DEFAULT_DYNAMIC_COLORS = true
     }
     
@@ -59,7 +61,10 @@ class SettingsViewModel @Inject constructor(
     // Library settings
     private val _autoScanOnStartup = MutableStateFlow(getAutoScanOnStartup())
     val autoScanOnStartup: StateFlow<Boolean> = _autoScanOnStartup.asStateFlow()
-    
+
+    private val _excludeNotForRunningTracks = MutableStateFlow(getExcludeNotForRunningTracks())
+    val excludeNotForRunningTracks: StateFlow<Boolean> = _excludeNotForRunningTracks.asStateFlow()
+
     // Appearance settings
     private val _dynamicColors = MutableStateFlow(getDynamicColors())
     val dynamicColors: StateFlow<Boolean> = _dynamicColors.asStateFlow()
@@ -72,6 +77,7 @@ class SettingsViewModel @Inject constructor(
     private fun getDefaultCadence(): Int = prefs.getInt(KEY_DEFAULT_CADENCE, DEFAULT_DEFAULT_CADENCE)
     private fun getAutoApplyCadenceMatch(): Boolean = prefs.getBoolean(KEY_AUTO_APPLY_CADENCE_MATCH, DEFAULT_AUTO_APPLY_CADENCE_MATCH)
     private fun getAutoScanOnStartup(): Boolean = prefs.getBoolean(KEY_AUTO_SCAN_ON_STARTUP, DEFAULT_AUTO_SCAN_ON_STARTUP)
+    private fun getExcludeNotForRunningTracks(): Boolean = prefs.getBoolean(KEY_EXCLUDE_NOT_FOR_RUNNING_TRACKS, DEFAULT_EXCLUDE_NOT_FOR_RUNNING_TRACKS)
     private fun getDynamicColors(): Boolean = prefs.getBoolean(KEY_DYNAMIC_COLORS, DEFAULT_DYNAMIC_COLORS)
     
     // Setters for SharedPreferences
@@ -93,6 +99,13 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             _autoScanOnStartup.value = value
             prefs.edit().putBoolean(KEY_AUTO_SCAN_ON_STARTUP, value).apply()
+        }
+    }
+
+    fun setExcludeNotForRunningTracks(value: Boolean) {
+        viewModelScope.launch {
+            _excludeNotForRunningTracks.value = value
+            prefs.edit().putBoolean(KEY_EXCLUDE_NOT_FOR_RUNNING_TRACKS, value).apply()
         }
     }
     

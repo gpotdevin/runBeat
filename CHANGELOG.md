@@ -4,6 +4,20 @@ All notable changes to RunBeat are documented in this file. Format based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Library**: tracks can be marked "Not for running" — a marker meaning the
+  track does not feel right to run on (not a quality rating). Flagged tracks
+  show a "Not for running" badge in the library and can be unmarked at any
+  time; they are never deleted.
+- **Playback**: tracks marked "Not for running" are excluded from the play
+  queue (Play All, playlist play, batch add-to-upcoming) behind a new Settings
+  toggle "Exclude tracks marked 'not for running' from playback", on by default.
+- **Library**: database version 7 adds the `notForRunning` column to the tracks
+  table (migration from version 6).
+
 ## [1.8] - 2026-10-17
 
 ### Added

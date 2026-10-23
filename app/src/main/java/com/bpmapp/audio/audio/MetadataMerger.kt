@@ -69,7 +69,7 @@ object MetadataMerger {
      * Build an actual [Track] instance from the merged metadata overrides.
      *
      * @param existing The current track in the DB (may be null). When present, its
-     *   [Track.isFavorite] and [Track.lastUpdated] are preserved.
+     *   [Track.isFavorite], [Track.notForRunning] and [Track.lastUpdated] are preserved.
      * @param id3Data Non-null values from the audio file's ID3 tags (keys: title, artist, album, genre, bpm).
      * @param systemData Non-null values revealed by the system library (keys: title, artist, album, genre).
      * @param csvData Non-null values from a CSV row (keys: title, artist, album, genre, bpm).
@@ -116,7 +116,8 @@ object MetadataMerger {
             metadataAlbum = merged["album"] as? String,
             metadataGenre = merged["genre"] as? String,
             metadataTrackNumber = merged["trackNumber"] as? String,
-            isFavorite = existing?.isFavorite ?: false
+            isFavorite = existing?.isFavorite ?: false,
+            notForRunning = existing?.notForRunning ?: false
         )
     }
 

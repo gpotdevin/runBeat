@@ -72,6 +72,11 @@ class LibraryViewModel @Inject constructor(
     
     companion object {
         private const val TAG = "LibraryViewModel"
+
+        // "AppSettings" SharedPreferences (same file SettingsViewModel uses)
+        private const val SETTINGS_PREFS_NAME = "AppSettings"
+        private const val KEY_EXCLUDE_NOT_FOR_RUNNING_TRACKS = "exclude_not_for_running_tracks"
+        private const val DEFAULT_EXCLUDE_NOT_FOR_RUNNING_TRACKS = true
     }
     
     // All tracks from repository
@@ -318,6 +323,22 @@ class LibraryViewModel @Inject constructor(
     private fun setHasScannedLibrary(value: Boolean) {
         prefs.edit().putBoolean("has_scanned_library", value).apply()
         _hasScannedLibrary.value = value
+    }
+
+    // Persisted setting: exclude tracks marked "not for running" from the play
+    // queue (default ON). Stored in the "AppSettings" SharedPreferences, the
+    // same file the Settings screen toggle writes to.
+    private val settingsPrefs = context.getSharedPreferences(SETTINGS_PREFS_NAME, Context.MODE_PRIVATE)
+
+    private val _excludeNotForRunningTracks = MutableStateFlow(
+        settingsPrefs.getBoolean(KEY_EXCLUDE_NOT_FOR_RUNNING_TRACKS, DEFAULT_EXCLUDE_NOT_FOR_RUNNING_TRACKS)
+    )
+
+    val excludeNotForRunningTracks: StateFlow<Boolean> = _excludeNotForRunningTracks.asStateFlow()
+
+    fun setExcludeNotForRunningTracks(value: Boolean) {
+        settingsPrefs.edit().putBoolean(KEY_EXCLUDE_NOT_FOR_RUNNING_TRACKS, value).apply()
+        _excludeNotForRunningTracks.value = value
     }
     
     // Import count (number of tracks imported in last operation)
@@ -763,6 +784,25 @@ class LibraryViewModel @Inject constructor(
         }
     }
     
+    // ==================== Not for running ====================
+
+    /**
+     * Toggle the "not for running" flag for a track
+     */
+    fun toggleNotForRunning(trackId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val track = trackDao.getTrackById(trackId).firstOrNull()
+                if (track != null) {
+                    trackDao.updateNotForRunning(trackId, !track.notForRunning)
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = context.getString(R.string.error_failed_update_not_for_running, e.message ?: "")
+                Log.e(TAG, "Not-for-running toggle error", e)
+            }
+        }
+    }
+
     // ==================== Playlists ====================
     
     /**
@@ -937,6 +977,27 @@ class LibraryViewModel @Inject constructor(
         }
     }
     
+    /**
+     * Tracks eligible for the play queue. When the "exclude not for running"
+     * setting is on (default), tracks flagged as not for running are left out.
+     * The setting is read fresh from SharedPreferences so a change made on the
+     * Settings screen applies even though this ViewModel is Activity-scoped.
+     */
+    fun playableTracks(tracks: List<Track>): List<Track> {
+        val exclude = settingsPrefs.getBoolean(
+            KEY_EXCLUDE_NOT_FOR_RUNNING_TRACKS,
+            DEFAULT_EXCLUDE_NOT_FOR_RUNNING_TRACKS
+        )
+        return if (exclude) tracks.filterNot { it.notForRunning } else tracks
+    }
+
+    /**
+     * Build the MediaItem play queue for the given tracks, leaving out tracks
+     * marked "not for running" when the exclusion setting is on.
+     */
+    fun getPlayableMediaItems(tracks: List<Track>): List<MediaItem> =
+        playableTracks(tracks).map { getMediaItemForTrack(it) }
+
     /**
      * Get a MediaItem for a track to play it
      * Includes BPM information in the media metadata for display in playlist
