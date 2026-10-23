@@ -116,7 +116,7 @@ class GarminCommandRouterTest {
     @Test
     fun toggle_routesToPlayerRepositoryWhenActive() {
         setRunBeatActive(true)
-        val ack = router.handleCommand(GarminCommand.Toggle)
+        val ack = runBlocking { router.handleCommand(GarminCommand.Toggle) }
         verify(playerRepository).togglePlayPause()
         verify(mediaKeyDispatcher, never()).toggle()
         assertTrue(ack.ok)
@@ -126,7 +126,7 @@ class GarminCommandRouterTest {
     @Test
     fun play_routesToPlayerRepositoryWhenActive() {
         setRunBeatActive(true)
-        val ack = router.handleCommand(GarminCommand.Play)
+        val ack = runBlocking { router.handleCommand(GarminCommand.Play) }
         verify(playerRepository).play()
         verify(mediaKeyDispatcher, never()).play()
         assertTrue(ack.ok)
@@ -136,7 +136,7 @@ class GarminCommandRouterTest {
     @Test
     fun pause_routesToPlayerRepositoryWhenActive() {
         setRunBeatActive(true)
-        val ack = router.handleCommand(GarminCommand.Pause)
+        val ack = runBlocking { router.handleCommand(GarminCommand.Pause) }
         verify(playerRepository).pause()
         verify(mediaKeyDispatcher, never()).pause()
         assertTrue(ack.ok)
@@ -146,7 +146,7 @@ class GarminCommandRouterTest {
     @Test
     fun next_routesToPlayerRepositoryWhenActive() {
         setRunBeatActive(true)
-        val ack = router.handleCommand(GarminCommand.Next)
+        val ack = runBlocking { router.handleCommand(GarminCommand.Next) }
         verify(playerRepository).playNext()
         verify(mediaKeyDispatcher, never()).next()
         assertTrue(ack.ok)
@@ -156,7 +156,7 @@ class GarminCommandRouterTest {
     @Test
     fun prev_routesToPlayerRepositoryWhenActive() {
         setRunBeatActive(true)
-        val ack = router.handleCommand(GarminCommand.Prev)
+        val ack = runBlocking { router.handleCommand(GarminCommand.Prev) }
         verify(playerRepository).playPrevious()
         verify(mediaKeyDispatcher, never()).previous()
         assertTrue(ack.ok)
@@ -170,7 +170,7 @@ class GarminCommandRouterTest {
     @Test
     fun toggle_routesToMediaKeyDispatcherWhenInactive() {
         setRunBeatActive(false)
-        val ack = router.handleCommand(GarminCommand.Toggle)
+        val ack = runBlocking { router.handleCommand(GarminCommand.Toggle) }
         verify(mediaKeyDispatcher).toggle()
         verify(playerRepository, never()).togglePlayPause()
         assertTrue(ack.ok)
@@ -179,7 +179,7 @@ class GarminCommandRouterTest {
     @Test
     fun play_routesToMediaKeyDispatcherWhenInactive() {
         setRunBeatActive(false)
-        val ack = router.handleCommand(GarminCommand.Play)
+        val ack = runBlocking { router.handleCommand(GarminCommand.Play) }
         verify(mediaKeyDispatcher).play()
         verify(playerRepository, never()).play()
         assertTrue(ack.ok)
@@ -188,7 +188,7 @@ class GarminCommandRouterTest {
     @Test
     fun pause_routesToMediaKeyDispatcherWhenInactive() {
         setRunBeatActive(false)
-        val ack = router.handleCommand(GarminCommand.Pause)
+        val ack = runBlocking { router.handleCommand(GarminCommand.Pause) }
         verify(mediaKeyDispatcher).pause()
         verify(playerRepository, never()).pause()
         assertTrue(ack.ok)
@@ -197,7 +197,7 @@ class GarminCommandRouterTest {
     @Test
     fun next_routesToMediaKeyDispatcherWhenInactive() {
         setRunBeatActive(false)
-        val ack = router.handleCommand(GarminCommand.Next)
+        val ack = runBlocking { router.handleCommand(GarminCommand.Next) }
         verify(mediaKeyDispatcher).next()
         verify(playerRepository, never()).playNext()
         assertTrue(ack.ok)
@@ -206,7 +206,7 @@ class GarminCommandRouterTest {
     @Test
     fun prev_routesToMediaKeyDispatcherWhenInactive() {
         setRunBeatActive(false)
-        val ack = router.handleCommand(GarminCommand.Prev)
+        val ack = runBlocking { router.handleCommand(GarminCommand.Prev) }
         verify(mediaKeyDispatcher).previous()
         verify(playerRepository, never()).playPrevious()
         assertTrue(ack.ok)
@@ -219,7 +219,7 @@ class GarminCommandRouterTest {
     @Test
     fun volumeDelta_usesDispatcherWhenActive() {
         setRunBeatActive(true)
-        val ack = router.handleCommand(GarminCommand.VolumeDelta(1))
+        val ack = runBlocking { router.handleCommand(GarminCommand.VolumeDelta(1)) }
         verify(mediaKeyDispatcher).adjustStreamVolume(1)
         assertTrue(ack.ok)
         assertEquals("volume_delta", ack.command)
@@ -228,7 +228,7 @@ class GarminCommandRouterTest {
     @Test
     fun volumeDelta_usesDispatcherWhenInactive() {
         setRunBeatActive(false)
-        val ack = router.handleCommand(GarminCommand.VolumeDelta(-1))
+        val ack = runBlocking { router.handleCommand(GarminCommand.VolumeDelta(-1)) }
         verify(mediaKeyDispatcher).adjustStreamVolume(-1)
         assertTrue(ack.ok)
     }
@@ -240,7 +240,7 @@ class GarminCommandRouterTest {
     @Test
     fun cadenceSet_appliesTargetCadenceWhenActive() {
         setRunBeatActive(true)
-        val ack = router.handleCommand(GarminCommand.CadenceSet(180f))
+        val ack = runBlocking { router.handleCommand(GarminCommand.CadenceSet(180f)) }
         verify(playerRepository).setTargetCadence(180f)
         assertTrue(ack.ok)
         assertEquals("cadence_set", ack.command)
@@ -249,7 +249,16 @@ class GarminCommandRouterTest {
     @Test
     fun cadenceSet_rejectedWhenInactive() {
         setRunBeatActive(false)
-        val ack = router.handleCommand(GarminCommand.CadenceSet(180f))
+        val ack = runBlocking { router.handleCommand(GarminCommand.CadenceSet(180f)) }
+        verify(playerRepository, never()).setTargetCadence(any())
+        assertFalse(ack.ok)
+        assertEquals("cadence_set", ack.command)
+    }
+
+    @Test
+    fun cadenceSet_rejectsNonFiniteCadenceWhenActive() {
+        setRunBeatActive(true)
+        val ack = runBlocking { router.handleCommand(GarminCommand.CadenceSet(Float.NaN)) }
         verify(playerRepository, never()).setTargetCadence(any())
         assertFalse(ack.ok)
         assertEquals("cadence_set", ack.command)
@@ -258,7 +267,7 @@ class GarminCommandRouterTest {
     @Test
     fun cadenceUseCurrent_appliesTargetCadenceWhenActive() {
         setRunBeatActive(true)
-        val ack = router.handleCommand(GarminCommand.CadenceUseCurrent(171f))
+        val ack = runBlocking { router.handleCommand(GarminCommand.CadenceUseCurrent(171f)) }
         verify(playerRepository).setTargetCadence(171f)
         assertTrue(ack.ok)
         assertEquals("cadence_use_current", ack.command)
@@ -267,15 +276,26 @@ class GarminCommandRouterTest {
     @Test
     fun cadenceUseCurrent_rejectedWhenInactive() {
         setRunBeatActive(false)
-        val ack = router.handleCommand(GarminCommand.CadenceUseCurrent(171f))
+        val ack = runBlocking { router.handleCommand(GarminCommand.CadenceUseCurrent(171f)) }
         verify(playerRepository, never()).setTargetCadence(any())
         assertFalse(ack.ok)
     }
 
     @Test
+    fun cadenceUseCurrent_rejectsNonFiniteCadenceWhenActive() {
+        setRunBeatActive(true)
+        val ack = runBlocking {
+            router.handleCommand(GarminCommand.CadenceUseCurrent(Float.POSITIVE_INFINITY))
+        }
+        verify(playerRepository, never()).setTargetCadence(any())
+        assertFalse(ack.ok)
+        assertEquals("cadence_use_current", ack.command)
+    }
+
+    @Test
     fun cadenceDelta_incrementsTargetCadenceWhenActive() {
         setRunBeatActive(true)
-        val ack = router.handleCommand(GarminCommand.CadenceDelta(1))
+        val ack = runBlocking { router.handleCommand(GarminCommand.CadenceDelta(1)) }
         verify(playerRepository).incrementTargetCadence()
         verify(playerRepository, never()).decrementTargetCadence()
         assertTrue(ack.ok)
@@ -285,7 +305,7 @@ class GarminCommandRouterTest {
     @Test
     fun cadenceDelta_decrementsTargetCadenceWhenActive() {
         setRunBeatActive(true)
-        val ack = router.handleCommand(GarminCommand.CadenceDelta(-1))
+        val ack = runBlocking { router.handleCommand(GarminCommand.CadenceDelta(-1)) }
         verify(playerRepository).decrementTargetCadence()
         verify(playerRepository, never()).incrementTargetCadence()
         assertTrue(ack.ok)
@@ -294,7 +314,7 @@ class GarminCommandRouterTest {
     @Test
     fun cadenceDelta_rejectedWhenInactive() {
         setRunBeatActive(false)
-        val ack = router.handleCommand(GarminCommand.CadenceDelta(1))
+        val ack = runBlocking { router.handleCommand(GarminCommand.CadenceDelta(1)) }
         verify(playerRepository, never()).incrementTargetCadence()
         verify(playerRepository, never()).decrementTargetCadence()
         assertFalse(ack.ok)
@@ -307,7 +327,7 @@ class GarminCommandRouterTest {
     @Test
     fun speedCorrectionToggle_togglesWhenActive() {
         setRunBeatActive(true)
-        val ack = router.handleCommand(GarminCommand.SpeedCorrectionToggle)
+        val ack = runBlocking { router.handleCommand(GarminCommand.SpeedCorrectionToggle) }
         verify(playerRepository).toggleSpeedCorrection()
         assertTrue(ack.ok)
         assertEquals("speed_correction_toggle", ack.command)
@@ -316,7 +336,7 @@ class GarminCommandRouterTest {
     @Test
     fun speedCorrectionToggle_rejectedWhenInactive() {
         setRunBeatActive(false)
-        val ack = router.handleCommand(GarminCommand.SpeedCorrectionToggle)
+        val ack = runBlocking { router.handleCommand(GarminCommand.SpeedCorrectionToggle) }
         verify(playerRepository, never()).toggleSpeedCorrection()
         assertFalse(ack.ok)
     }
@@ -331,7 +351,7 @@ class GarminCommandRouterTest {
         currentTrack.value = track("track-1", "Song Title", "140")
         runBlocking { whenever(trackRepository.markTrackNotForRunning("track-1")).thenReturn(1) }
 
-        val ack = router.handleCommand(GarminCommand.MarkNotForRunning)
+        val ack = runBlocking { router.handleCommand(GarminCommand.MarkNotForRunning) }
 
         assertTrue(ack.ok)
         assertEquals("mark_not_for_running", ack.command)
@@ -344,7 +364,7 @@ class GarminCommandRouterTest {
         setRunBeatActive(true)
         currentTrack.value = null
 
-        val ack = router.handleCommand(GarminCommand.MarkNotForRunning)
+        val ack = runBlocking { router.handleCommand(GarminCommand.MarkNotForRunning) }
 
         assertFalse(ack.ok)
         verifyNoInteractions(trackRepository)
@@ -356,7 +376,7 @@ class GarminCommandRouterTest {
         setRunBeatActive(true)
         currentTrack.value = MediaItem.Builder().setMediaId("no-extras").build()
 
-        val ack = router.handleCommand(GarminCommand.MarkNotForRunning)
+        val ack = runBlocking { router.handleCommand(GarminCommand.MarkNotForRunning) }
 
         assertFalse(ack.ok)
         verifyNoInteractions(trackRepository)
@@ -368,7 +388,7 @@ class GarminCommandRouterTest {
         setRunBeatActive(false)
         currentTrack.value = track("track-1", "Song Title", "140")
 
-        val ack = router.handleCommand(GarminCommand.MarkNotForRunning)
+        val ack = runBlocking { router.handleCommand(GarminCommand.MarkNotForRunning) }
 
         assertFalse(ack.ok)
         verifyNoInteractions(trackRepository)
@@ -414,10 +434,22 @@ class GarminCommandRouterTest {
         assertNull(state.targetCadence)
         assertNull(state.speedCorrection)
         assertNull(state.playbackSpeed)
-        // The title is not a RunBeat-only field: it is reported whenever a
-        // track is loaded.
-        assertEquals("Song Title", state.title)
+        // The title is RunBeat-only too: it is omitted when RunBeat is not
+        // active so the watch does not show a stale RunBeat title with
+        // source "none".
+        assertNull(state.title)
         assertEquals(7, state.volume)
+    }
+
+    @Test
+    fun currentState_omitsTitleWhenRunBeatInactive() {
+        setRunBeatActive(false)
+        currentTrack.value = track("track-1", "Song Title", "140.5")
+
+        val state = router.currentState()
+
+        assertEquals("none", state.source)
+        assertNull(state.title)
     }
 
     @Test
