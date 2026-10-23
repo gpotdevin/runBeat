@@ -12,8 +12,9 @@ project.manifest = manifest.xml
 # the Connect IQ SDK 9.3.0 device-reference and Garmin real device data.
 product = fr245,fr255,fr265,fr955,fr965,fenix7,fenix7s,fenix7x,fenix8solar47mm,fenix8solar51mm,fenix843mm,fenix847mm,epix2,venu3,venu3s
 
-# Minimum Connect IQ API level: all targets support >= 3.2 (ActivityMonitor
-# live cadence, SwitchableView, resource menus).
+# Minimum Connect IQ API level: all targets support >= 3.2. ViewLoop paging
+# needs 3.4.0 and is guarded at runtime ("WatchUi has :ViewLoop"); a real
+# fr245 at CIQ 3.3.1 takes the MainView-only fallback.
 minSdkVersion = 3.2.0
 
 # Developer key (free, from Garmin) — required to produce a signed .prg.

@@ -130,6 +130,7 @@ class MessageHandler {
             // RunBeat-only fields are omitted or null for other sources; drop
             // stale values so nothing RunBeat-specific lingers on screen.
             s.trackId = "";
+            s.title = "";
             s.bpm = null;
             s.targetCadence = null;
             s.speedCorrection = false;
@@ -171,7 +172,7 @@ class MessageHandler {
 
     private function sendJson(json as String) as Void {
         // transmit() reports failure through the ConnectionListener's
-        // onError() (Monkey C has no try/catch).
+        // onError() callback.
         Communications.transmit(json, null, new RunBeatConnectionListener(_state));
     }
 
