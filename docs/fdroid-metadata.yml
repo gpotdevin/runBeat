@@ -26,7 +26,7 @@ Builds:
     commit: c7392859a6837ae84eee99f1b975fa9581eb123d
     subdir: app
     gradle:
-      - yes
+      - assembleFdroidRelease
     ndk: r26b
 
   # The final v1.8 release tag does not exist yet; bd1ca37 is the commit that
@@ -37,7 +37,7 @@ Builds:
     commit: bd1ca37
     subdir: app
     gradle:
-      - yes
+      - assembleFdroidRelease
     ndk: r26b
 
 AllowedAPKSigningKeys: 17c79696d6cd7f28e9ae9b8931dc8b7c402856318fe450ec777a23fddf12ca02
