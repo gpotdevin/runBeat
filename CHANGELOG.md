@@ -17,6 +17,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   toggle "Exclude tracks marked 'not for running' from playback", on by default.
 - **Library**: database version 7 adds the `notForRunning` column to the tracks
   table (migration from version 6).
+- **Garmin watch companion (groundwork)**: new Gradle product flavors `fdroid`
+  (default; no proprietary dependencies — the F-Droid build) and `garmin`
+  (adds Garmin's Connect IQ Mobile SDK for the future watch companion app).
+  The SDK-free companion core — the watch/phone message codec matching the
+  watch app's wire protocol, a 60-second cadence averager, a media-key
+  dispatcher for controlling other music apps, and a no-op companion
+  initializer — lives in the main source set and is unit-tested in every
+  flavor.
 
 ## [1.8] - 2026-10-17
 

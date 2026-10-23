@@ -88,18 +88,27 @@ interaction disappears for watch users; the in-app edge case remains
 (volume changed during the ~1 s beep window gets clobbered on restore).
 Fix by storing the duck as a multiplier of the current player volume.
 
-## 3. New Garmin package (behind the `garmin` flavor)
+## 3. New Garmin package (SDK-free core in main, SDK wiring in `garmin`)
 
-`app/src/garmin/java/com/bpmapp/audio/audio/garmin/` (flavor-specific
-source set — see section 7):
+Final placement decision: the SDK-free core lives in the **main** source
+set — `app/src/main/java/com/bpmapp/audio/audio/garmin/` — so it compiles
+and is unit-tested in every flavor (it has no Garmin SDK imports):
+
+| File | Content |
+|------|---------|
+| `GarminMessageCodec.kt` | `GarminCommand` sealed class, `GarminWatchState` data class, `GarminAck`, and the pure Kotlin + `org.json` (de)serialization of the protocol in [architecture.md](architecture.md). Unit-testable without the SDK. |
+| `CadenceAverager.kt` | 60-sample ring buffer with timestamps (`add(sample)`, `meanLast60s()`). Fallback path if raw cadence samples are ever streamed to the phone. Unit-testable. |
+| `MediaKeyDispatcher.kt` | Forwards transport commands to external apps via `AudioManager.dispatchMediaKeyEvent()`; adjusts/reads STREAM_MUSIC volume via `AudioManager`. No permissions required; `AudioManager` is constructor-injected for tests. |
+| `CompanionInitializer.kt` | `CompanionInitializer` interface + `NoopCompanionInitializer` (the fdroid flavor has no companion SDK). |
+
+Only the Connect IQ SDK wiring goes in the flavor-specific source set
+`app/src/garmin/java/com/bpmapp/audio/audio/garmin/` (see section 7):
 
 | File | Content |
 |------|---------|
 | `GarminCompanionManager.kt` | Hilt `@Singleton`. Initializes `ConnectIQ`, registers the IQ app by UUID, implements the message listener, **routes** commands (RunBeat vs external app per [architecture.md](architecture.md)), collects state (repository flows + AudioManager volume + playback source) and pushes `state` messages to the watch. Exposes `connectionState: StateFlow<GarminConnectionState>`. |
-| `MediaKeyDispatcher.kt` | Forwards transport commands to external apps via `AudioManager.dispatchMediaKeyEvent()`; adjusts/reads STREAM_MUSIC volume via `AudioManager`. No permissions required. |
+| `CompanionInitializer` implementation | The garmin flavor's real initializer (wraps `GarminCompanionManager`); overrides the main source set's no-op. |
 | `ExternalPlaybackMonitor.kt` (optional) | `NotificationListenerService` reading MediaStyle notifications to expose external apps' now-playing title/source. Requires user-granted notification access (see manifest note, §8). Keep optional; document in PRIVACY.md. |
-| `GarminMessageCodec.kt` | Pure Kotlin + `org.json` (de)serialization of the protocol in [architecture.md](architecture.md). Unit-testable without the SDK. |
-| `CadenceAverager.kt` | 60-sample ring buffer with timestamps (`add(sample)`, `meanLast60s()`). Fallback path if raw cadence samples are ever streamed to the phone. Unit-testable. |
 
 Routing + mark orchestration in `GarminCompanionManager` (it needs
 `PlayerRepository`, `TrackRepository` and `MediaKeyDispatcher`; putting the
@@ -220,12 +229,20 @@ dependencies {
 }
 ```
 
-plus the Garmin Maven repo in the module `repositories` block (the module
-already declares its own) or in the root `build.gradle`.
+The SDK (`com.garmin.connectiq:ciq-companion-app-sdk`) is published on Maven
+Central, which the module already declares — no additional repository is
+needed.
 
-Source sets: put the Garmin classes in `app/src/garmin/java/...` so the
-`fdroid` flavor compiles without the SDK, and add a no-op
-`CompanionInitializer` in `app/src/main/java/...` (or `app/src/fdroid/`).
+Source sets: the SDK-free classes (codec, averager, dispatcher,
+`CompanionInitializer` + no-op) live in `app/src/main/java/...` and compile
+in every flavor; only the Connect IQ wiring (`GarminCompanionManager`, the
+garmin `CompanionInitializer` implementation, the optional
+`ExternalPlaybackMonitor`) goes in `app/src/garmin/java/...`, so the
+`fdroid` flavor compiles without the SDK.
+
+F-Droid consequence: with product flavors there is no plain `assembleRelease`
+task anymore, so `docs/fdroid-metadata.yml` builds the flavor-specific task
+`assembleFdroidRelease` instead of `yes` (see section 9).
 
 ## 8. Manifest
 
@@ -246,8 +263,10 @@ Source sets: put the Garmin classes in `app/src/garmin/java/...` so the
   playback state and cadence; no new phone permissions) and, if implemented,
   the optional notification-access for external now-playing metadata.
 - `CHANGELOG.md`: feature entries once implemented.
-- `docs/fdroid-metadata.yml`: no change (F-Droid keeps building the
-  `fdroid` flavor with the current dependency set).
+- `docs/fdroid-metadata.yml`: the gradle build command changes from `yes` to
+  the flavor-specific task `assembleFdroidRelease` (with product flavors there
+  is no plain `assembleRelease` task anymore). F-Droid keeps building the
+  `fdroid` flavor with the current dependency set.
 
 ## 10. Tests
 
@@ -275,9 +294,9 @@ app/src/main/java/com/bpmapp/audio/ui/LibraryScreen.kt           (badge/unmark)
 app/src/main/java/com/bpmapp/audio/ui/components/TrackCard.kt     (badge)
 app/src/main/java/com/bpmapp/audio/ui/screens/SettingsScreen.kt   (filter toggle, garmin section)
 app/src/main/res/values/strings.xml (+ fr, es)                   (new strings)
-app/src/garmin/java/com/bpmapp/audio/audio/garmin/               (NEW: manager, dispatcher, codec, averager, optional monitor)
+app/src/main/java/com/bpmapp/audio/audio/garmin/               (NEW: codec, averager, dispatcher, CompanionInitializer + no-op)
+app/src/garmin/java/com/bpmapp/audio/audio/garmin/               (NEW: manager, garmin CompanionInitializer, optional monitor)
 app/src/main/AndroidManifest.xml                                (only if ExternalPlaybackMonitor: listener service)
 app/build.gradle                                                 (flavors + garmin dep)
-build.gradle                                                     (Garmin maven repo)
-docs/PRIVACY.md, CHANGELOG.md                                    (doc updates)
+docs/PRIVACY.md, CHANGELOG.md, docs/fdroid-metadata.yml          (doc updates)
 ```
