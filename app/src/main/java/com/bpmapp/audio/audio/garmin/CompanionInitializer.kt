@@ -15,8 +15,9 @@ interface CompanionInitializer {
     fun initialize(context: Context)
 
     /**
-     * Releases companion resources (the Connect IQ SDK requires unregistering
-     * its listeners on app termination). No-op by default.
+     * Releases companion resources. No-op by default; not wired to any
+     * lifecycle callback — the companion lives for the whole process and the
+     * OS reclaims the SDK receivers when it dies (see GarminCompanionManager).
      */
     fun shutdown() {
         // Nothing to release by default.

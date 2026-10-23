@@ -3,6 +3,8 @@
 package com.bpmapp.audio.audio.garmin
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import com.bpmapp.audio.audio.PlayerRepository
 import com.garmin.android.connectiq.ConnectIQ
@@ -46,9 +48,13 @@ import javax.inject.Singleton
  * missing or outdated Garmin Connect Mobile — are logged and surfaced as
  * DISCONNECTED; they never crash or block playback.
  *
- * Lifecycle: [initialize] is idempotent and called on app start (via
- * GarminCompanionInitializer); [shutdown] unregisters the SDK listeners as the
- * SDK requires and is called when the app terminates.
+ * Lifecycle: [initialize] is idempotent and called at process scope (BpmApp,
+ * plus AudioService for service-started processes), so the companion survives
+ * activity destruction and keeps working while the app is backgrounded during
+ * a run. There is deliberately no explicit shutdown wired to any lifecycle
+ * callback: the OS reclaims the SDK's receivers and service bindings when the
+ * process dies. [shutdown] remains as the release path (it also cancels
+ * pending device-refresh retries) but nothing invokes it.
  */
 @Singleton
 class GarminCompanionManager @Inject constructor(
@@ -73,6 +79,12 @@ class GarminCompanionManager @Inject constructor(
     private val deviceStatuses = HashMap<Long, IQDevice.IQDeviceStatus>()
     private var statePushJob: Job? = null
     private var initializeCalled = false
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var deviceRefreshRetryCount = 0
+    private val deviceRefreshRetryRunnable = Runnable {
+        Log.i(TAG, "Retrying device refresh (attempt $deviceRefreshRetryCount)")
+        refreshDevices()
+    }
 
     private val sendMessageListener = object : ConnectIQ.IQSendMessageListener {
         override fun onMessageStatus(device: IQDevice, app: IQApp, status: ConnectIQ.IQMessageStatus) {
@@ -102,11 +114,14 @@ class GarminCompanionManager @Inject constructor(
     }
 
     /**
-     * Unregisters the SDK listeners (the SDK requires this on termination) and
-     * shuts ConnectIQ down. Playback is never affected.
+     * Unregisters the SDK listeners and shuts ConnectIQ down, cancelling any
+     * pending device-refresh retry. Not wired to any lifecycle callback — see
+     * the class KDoc for the shutdown policy. Playback is never affected.
      */
     fun shutdown() {
         stopStatePush()
+        mainHandler.removeCallbacks(deviceRefreshRetryRunnable)
+        deviceRefreshRetryCount = 0
         try {
             connectIQ.unregisterAllForEvents()
         } catch (e: Exception) {
@@ -129,6 +144,8 @@ class GarminCompanionManager @Inject constructor(
 
     override fun onSdkReady() {
         Log.i(TAG, "ConnectIQ SDK ready")
+        // A new SDK event re-arms the device-refresh retry cycle.
+        deviceRefreshRetryCount = 0
         refreshDevices()
         recomputeConnection(finalizeConnecting = true)
     }
@@ -141,6 +158,7 @@ class GarminCompanionManager @Inject constructor(
     override fun onSdkShutDown() {
         Log.i(TAG, "ConnectIQ SDK shut down")
         stopStatePush()
+        mainHandler.removeCallbacks(deviceRefreshRetryRunnable)
         GarminWatchConnection.update(GarminConnectionState.DISCONNECTED)
     }
 
@@ -171,11 +189,22 @@ class GarminCompanionManager @Inject constructor(
                 continue
             }
             Log.d(TAG, "Watch command from ${device.friendlyName}: $json")
-            val ack = router.handleCommand(command)
-            sendToWatch(GarminMessageCodec.encodeAck(ack))
-            // Volume is not a repository flow: push the new state right away
-            // instead of waiting for the next 1 Hz tick.
-            if (command is GarminCommand.VolumeDelta) pushState()
+            scope.launch {
+                try {
+                    val ack = router.handleCommand(command)
+                    // Ack only the state-changing RunBeat commands; transport and
+                    // volume are confirmed by the pushed state message.
+                    if (command.needsAck()) {
+                        sendToWatch(GarminMessageCodec.encodeAck(ack))
+                    }
+                    // Volume is not a repository flow: push the new state right away
+                    // instead of waiting for the next 1 Hz tick.
+                    if (command is GarminCommand.VolumeDelta) pushState()
+                } catch (e: Exception) {
+                    // A failing watch command must never crash playback.
+                    Log.e(TAG, "Failed to handle watch command: $json", e)
+                }
+            }
         }
     }
 
@@ -184,30 +213,64 @@ class GarminCompanionManager @Inject constructor(
     // ---------------------------------------------------------------
 
     private fun refreshDevices() {
+        // A fresh refresh supersedes any pending retry.
+        mainHandler.removeCallbacks(deviceRefreshRetryRunnable)
         try {
-            for (device in connectIQ.getKnownDevices()) {
-                registerDevice(device)
+            val known = connectIQ.getKnownDevices()
+            if (known.isEmpty()) {
+                // GCM is reachable but lists no paired devices (yet).
+                Log.i(TAG, "No known Garmin devices; will retry")
+                scheduleDeviceRefreshRetry()
+                return
+            }
+            var allRegistered = true
+            for (device in known) {
+                allRegistered = registerDevice(device) && allRegistered
+            }
+            if (allRegistered) {
+                deviceRefreshRetryCount = 0
+            } else {
+                scheduleDeviceRefreshRetry()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to list known Garmin devices", e)
+            scheduleDeviceRefreshRetry()
         }
     }
 
-    private fun registerDevice(device: IQDevice) {
-        if (devices.containsKey(device.deviceIdentifier)) return
-        devices[device.deviceIdentifier] = device
+    /** @return true when the device is registered for events. */
+    private fun registerDevice(device: IQDevice): Boolean {
+        if (devices.containsKey(device.deviceIdentifier)) return true
         try {
             // Device status events + messages from our IQ app on this device.
             connectIQ.registerForEvents(device, this, iqApp, this)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to register for events on ${device.friendlyName}", e)
-            return
+            return false
         }
+        devices[device.deviceIdentifier] = device
         try {
             deviceStatuses[device.deviceIdentifier] = connectIQ.getDeviceStatus(device)
         } catch (e: Exception) {
             Log.w(TAG, "Device status unavailable for ${device.friendlyName}", e)
         }
+        return true
+    }
+
+    /**
+     * Retries a failed or empty device refresh with exponential backoff on the
+     * main looper (2s, 4s, 8s, 16s, 32s — about a minute in total), then stops
+     * until the next SDK event re-arms the cycle (see [onSdkReady]).
+     */
+    private fun scheduleDeviceRefreshRetry() {
+        if (deviceRefreshRetryCount >= MAX_DEVICE_REFRESH_RETRIES) {
+            Log.i(TAG, "Device refresh retries exhausted; waiting for the next SDK event")
+            return
+        }
+        deviceRefreshRetryCount++
+        val delayMs = DEVICE_REFRESH_RETRY_BASE_MS * (1L shl (deviceRefreshRetryCount - 1))
+        Log.i(TAG, "Scheduling device refresh retry $deviceRefreshRetryCount/$MAX_DEVICE_REFRESH_RETRIES in ${delayMs}ms")
+        mainHandler.postDelayed(deviceRefreshRetryRunnable, delayMs)
     }
 
     private fun recomputeConnection(finalizeConnecting: Boolean = false) {
@@ -301,6 +364,17 @@ class GarminCompanionManager @Inject constructor(
         }
     }
 
+    /** Commands the watch expects an ack for (state-changing RunBeat commands). */
+    private fun GarminCommand.needsAck(): Boolean = when (this) {
+        is GarminCommand.CadenceSet,
+        is GarminCommand.CadenceDelta,
+        is GarminCommand.CadenceUseCurrent,
+        is GarminCommand.SpeedCorrectionToggle,
+        is GarminCommand.MarkNotForRunning,
+        -> true
+        else -> false
+    }
+
     companion object {
         private const val TAG = "GarminCompanionManager"
 
@@ -312,5 +386,9 @@ class GarminCompanionManager @Inject constructor(
 
         /** Volume poll interval while a watch is connected (~1 Hz). */
         private const val VOLUME_POLL_INTERVAL_MS = 1000L
+
+        /** Device-refresh retries after a transient failure (exponential backoff). */
+        private const val MAX_DEVICE_REFRESH_RETRIES = 5
+        private const val DEVICE_REFRESH_RETRY_BASE_MS = 2000L
     }
 }

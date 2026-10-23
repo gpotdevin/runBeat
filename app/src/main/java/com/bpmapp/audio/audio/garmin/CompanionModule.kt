@@ -7,6 +7,7 @@ import android.media.AudioManager
 import dagger.BindsOptionalOf
 import dagger.Module
 import dagger.Provides
+import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
@@ -46,4 +47,14 @@ abstract class CompanionModule {
         fun provideMediaKeyDispatcher(@ApplicationContext context: Context): MediaKeyDispatcher =
             MediaKeyDispatcher(context.getSystemService(Context.AUDIO_SERVICE) as AudioManager)
     }
+}
+
+/**
+ * Entry point so the Application class can start the companion at process
+ * scope (Hilt does not inject into the @HiltAndroidApp Application itself).
+ */
+@EntryPoint
+@InstallIn(SingletonComponent::class)
+interface CompanionInitializerEntryPoint {
+    fun companionInitializer(): CompanionInitializer
 }
