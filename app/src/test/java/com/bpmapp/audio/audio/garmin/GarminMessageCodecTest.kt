@@ -2,6 +2,9 @@
 
 package com.bpmapp.audio.audio.garmin
 
+import android.content.Context
+import android.content.SharedPreferences
+import com.bpmapp.audio.audio.PlayerRepository
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -9,6 +12,9 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.mockito.kotlin.any
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.whenever
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
@@ -84,6 +90,49 @@ class GarminMessageCodecTest {
         assertNull(GarminMessageCodec.decodeCommand("{\"foo\":1}"))
         // A phone->watch message is not a command.
         assertNull(GarminMessageCodec.decodeCommand("{\"type\":\"state\",\"source\":\"RunBeat\"}"))
+    }
+
+    // ---------------------------------------------------------------
+    // Malformed numeric fields must decode to null, never to NaN
+    // ---------------------------------------------------------------
+
+    @Test
+    fun decodeCommandRejectsMissingOrInvalidCadence() {
+        // Missing field: optDouble would yield NaN.
+        assertNull(GarminMessageCodec.decodeCommand("{\"type\":\"cadence_set\"}"))
+        assertNull(GarminMessageCodec.decodeCommand("{\"type\":\"cadence_use_current\"}"))
+        // Non-numeric field: optDouble would yield NaN.
+        assertNull(GarminMessageCodec.decodeCommand("{\"type\":\"cadence_set\",\"cadence\":\"abc\"}"))
+        assertNull(GarminMessageCodec.decodeCommand("{\"type\":\"cadence_use_current\",\"cadence\":\"abc\"}"))
+        // JSON null.
+        assertNull(GarminMessageCodec.decodeCommand("{\"type\":\"cadence_set\",\"cadence\":null}"))
+        assertNull(GarminMessageCodec.decodeCommand("{\"type\":\"cadence_use_current\",\"cadence\":null}"))
+    }
+
+    @Test
+    fun decodeCommandRejectsMissingInvalidOrAbsurdDelta() {
+        // Missing field: optInt would yield 0, indistinguishable from a real
+        // "no-op" delta.
+        assertNull(GarminMessageCodec.decodeCommand("{\"type\":\"cadence_delta\"}"))
+        assertNull(GarminMessageCodec.decodeCommand("{\"type\":\"volume_delta\"}"))
+        // Non-numeric field.
+        assertNull(GarminMessageCodec.decodeCommand("{\"type\":\"cadence_delta\",\"delta\":\"abc\"}"))
+        assertNull(GarminMessageCodec.decodeCommand("{\"type\":\"volume_delta\",\"delta\":\"abc\"}"))
+        // JSON null.
+        assertNull(GarminMessageCodec.decodeCommand("{\"type\":\"cadence_delta\",\"delta\":null}"))
+        // Non-integral and out-of-range deltas are rejected too.
+        assertNull(GarminMessageCodec.decodeCommand("{\"type\":\"cadence_delta\",\"delta\":1.5}"))
+        assertNull(GarminMessageCodec.decodeCommand("{\"type\":\"cadence_delta\",\"delta\":100000}"))
+        assertNull(GarminMessageCodec.decodeCommand("{\"type\":\"volume_delta\",\"delta\":-100000}"))
+        // In-range deltas at the sanity bound still decode.
+        assertEquals(
+            GarminCommand.CadenceDelta(100),
+            GarminMessageCodec.decodeCommand("{\"type\":\"cadence_delta\",\"delta\":100}")
+        )
+        assertEquals(
+            GarminCommand.VolumeDelta(-100),
+            GarminMessageCodec.decodeCommand("{\"type\":\"volume_delta\",\"delta\":-100}")
+        )
     }
 
     // ---------------------------------------------------------------
@@ -220,6 +269,27 @@ class GarminMessageCodecTest {
         assertNull(GarminMessageCodec.decodeState("{\"type\":\"ack\",\"command\":\"play\",\"ok\":true}"))
     }
 
+    @Test
+    fun encodeStateSkipsNonFiniteNumericFields() {
+        // org.json rejects NaN/Infinity ("Forbidden numeric value"), which
+        // used to kill the state-push coroutine. Non-finite fields must be
+        // omitted instead.
+        val state = GarminWatchState(
+            source = "RunBeat",
+            isPlaying = true,
+            bpm = Float.NaN,
+            targetCadence = Float.POSITIVE_INFINITY,
+            playbackSpeed = Float.NaN,
+            volume = 5,
+        )
+        val encoded = GarminMessageCodec.encodeState(state)
+        val obj = JSONObject(encoded)
+        assertFalse("bpm should be omitted: $encoded", obj.has("bpm"))
+        assertFalse("targetCadence should be omitted: $encoded", obj.has("targetCadence"))
+        assertFalse("playbackSpeed should be omitted: $encoded", obj.has("playbackSpeed"))
+        assertEquals(5, obj.getInt("volume"))
+    }
+
     // ---------------------------------------------------------------
     // Phone -> watch: ack
     // ---------------------------------------------------------------
@@ -251,5 +321,32 @@ class GarminMessageCodecTest {
         assertNull(GarminMessageCodec.decodeAck("not json"))
         assertNull(GarminMessageCodec.decodeAck("{\"type\":\"state\"}"))
         assertNull(GarminMessageCodec.decodeAck("{\"type\":\"ack\",\"ok\":true}")) // no command
+    }
+
+    // ---------------------------------------------------------------
+    // PlayerRepository NaN guard (defense in depth behind the codec)
+    // ---------------------------------------------------------------
+
+    @Test
+    fun setTargetCadenceIgnoresNonFiniteValues() {
+        // Same mock style as PlayerRepositoryModeBeepDuckTest: nothing stored
+        // in prefs, mocked ExoPlayer, no current track so the speed-correction
+        // re-apply is a no-op.
+        val context = mock<Context>()
+        val prefs = mock<SharedPreferences>()
+        whenever(prefs.getStringSet(any(), any())).thenReturn(null)
+        whenever(prefs.getBoolean(any(), any())).thenReturn(true)
+        whenever(context.getSharedPreferences(any(), any())).thenReturn(prefs)
+        val repository = PlayerRepository(context, mock(), mock(), mock())
+
+        val before = repository.targetCadence.value
+        repository.setTargetCadence(Float.NaN)
+        repository.setTargetCadence(Float.POSITIVE_INFINITY)
+        repository.setTargetCadence(Float.NEGATIVE_INFINITY)
+        assertEquals(before, repository.targetCadence.value, 0f)
+
+        // Finite values still apply (clamped to the 150-195 range).
+        repository.setTargetCadence(180f)
+        assertEquals(180f, repository.targetCadence.value, 0f)
     }
 }

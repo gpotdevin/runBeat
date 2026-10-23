@@ -362,6 +362,7 @@ class PlayerRepository @Inject constructor(
      * Set target cadence for speed correction
      */
     fun setTargetCadence(cadence: Float) {
+        if (!cadence.isFinite()) return
         _targetCadence.value = cadence.coerceIn(150f, 195f)
         reapplySpeedCorrection()
     }
