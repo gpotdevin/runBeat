@@ -93,12 +93,18 @@ Garmin docs "Communications — Phone Messages".
 ## Cadence sampling
 
 - Timer fires every 1000 ms (`Toybox.Timer`).
-- Preferred: `ActivityMonitor.getLiveCadence()` (current cadence, spm) —
-  available on Connect IQ API level 3.x+ on most running watches; guard
-  with ` Toybox has :ActivityMonitor` checks and `method(:getLiveCadence)`
-  existence where needed.
-- Fallback: delta of `ActivityMonitor.getInfo().steps` between samples,
-  converted to steps/minute.
+- Primary source: `Toybox.Sensor` (accelerometer-based cadence; the
+  `Sensor` permission is declared in `manifest.xml`). Enable
+  `Sensor.SENSOR_ACCELEROMETER` with
+  `Sensor.setEnabledSensors([Sensor.SENSOR_ACCELEROMETER])`, read
+  `Sensor.getInfo().cadence` (`Sensor.Info.cadence`, spm) on each tick,
+  guard with `Toybox has :Sensor` checks. Sensors are disabled in
+  `onHide` and re-enabled in `onShow` (battery).
+- Last-resort fallback: delta of `ActivityMonitor.getInfo().steps`
+  between samples, converted to steps/minute. Coarse — with a 1 s tick
+  this quantizes cadence to multiples of 60 spm (120/180/240 ...), so it
+  is only used when `Toybox.Sensor` is unavailable or returns no
+  cadence.
 - Feed each sample into `CadenceRingBuffer` (60 slots). `mean()` ignores
   samples older than 60 s and treats 0 as "not running" (excluded unless
   all are 0 — then report "—" and refuse to set target).

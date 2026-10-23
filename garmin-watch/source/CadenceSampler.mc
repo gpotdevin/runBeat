@@ -1,22 +1,31 @@
 using Toybox.ActivityMonitor;
+using Toybox.Sensor;
 using Toybox.System;
 using Toybox.Timer;
 
 // Samples cadence once per second into a CadenceRingBuffer.
 //
-// Preferred source: ActivityMonitor.getLiveCadence() (live spm), guarded by
-// a method-existence check. Fallback: delta of ActivityMonitor.getInfo().steps
-// between two ticks, converted to steps/minute.
+// Primary source: Toybox.Sensor (accelerometer-based cadence; the Sensor
+// permission is declared in manifest.xml). Sensor.SENSOR_ACCELEROMETER is
+// enabled while the app is visible and disabled when it is hidden
+// (battery); each 1 Hz tick reads Sensor.getInfo().cadence (spm).
 //
-// Battery: 1 Hz sampling only; no phone polling (state is pushed phone->watch
-// on change, never requested). Starts/stops with the app lifecycle.
+// Last-resort fallback: steps-per-minute from the step-counter delta
+// between two ticks (ActivityMonitor.getInfo().steps). Coarse — with a
+// 1 s tick it quantizes cadence to multiples of 60 spm (120/180/240 ...),
+// so it is only used when Toybox.Sensor is unavailable or returns no
+// cadence.
+//
+// Battery: 1 Hz sampling only; no phone polling (state is pushed
+// phone->watch on change, never requested).
 class CadenceSampler {
 
-    private var _buffer;              // CadenceRingBuffer
-    private var _onSample;            // Method? invoked after each tick
+    private var _buffer;               // CadenceRingBuffer
+    private var _onSample;             // Method? invoked after each tick
     private var _timer as Timer.Timer? = null;
     private var _lastSteps as Number = -1;
-    private var _liveCadenceAvailable as Boolean = false;
+    private var _lastStepsAt as Number = 0;
+    private var _sensorsEnabled as Boolean = false;
 
     function initialize(buffer, onSample) {
         _buffer = buffer;
@@ -29,12 +38,15 @@ class CadenceSampler {
             return;
         }
         _lastSteps = -1;
-        _liveCadenceAvailable = liveCadenceAvailable();
-        _timer = new Timer.Timer();
-        _timer.start(method(:onTick), 1000, true);
+        _lastStepsAt = 0;
+        onShow();
+        var timer = new Timer.Timer();
+        timer.start(method(:onTick), 1000, true);
+        _timer = timer;
     }
 
     function stop() as Void {
+        onHide();
         var t = _timer;
         if (t != null) {
             (t as Timer.Timer).stop();
@@ -42,16 +54,40 @@ class CadenceSampler {
         }
     }
 
+    // Visibility hooks (battery): the accelerometer is powered only while
+    // the app is visible. start()/stop() route through these; the app or
+    // the views can also call them directly when visibility changes.
+    function onShow() as Void {
+        if (_sensorsEnabled || !(Toybox has :Sensor)) {
+            return;
+        }
+        try {
+            Sensor.setEnabledSensors([Sensor.SENSOR_ACCELEROMETER]);
+            _sensorsEnabled = true;
+        } catch (ex as Lang.Exception) {
+            // Enabling failed — the step-delta fallback still provides
+            // (coarse) cadence samples.
+        }
+    }
+
+    function onHide() as Void {
+        if (!_sensorsEnabled) {
+            return;
+        }
+        _sensorsEnabled = false;
+        try {
+            Sensor.setEnabledSensors([]);
+        } catch (ex as Lang.Exception) {
+            // Best effort — sensors are also released when the app
+            // process exits.
+        }
+    }
+
     function onTick() as Void {
-        if (_liveCadenceAvailable) {
-            var live = safeLiveCadence();
-            if (live != null) {
-                _buffer.add(live, System.getTimer());
-            } else {
-                storeStepDeltaSample();
-            }
-        } else {
-            storeStepDeltaSample();
+        var now = System.getTimer();
+        var sample = readCadence(now);
+        if (sample != null) {
+            _buffer.add(sample, now);
         }
         var cb = _onSample;
         if (cb != null) {
@@ -59,32 +95,64 @@ class CadenceSampler {
         }
     }
 
-    private function liveCadenceAvailable() as Boolean {
-        return (Toybox has :ActivityMonitor) && (Toybox.ActivityMonitor has :getLiveCadence);
-    }
-
-    private function safeLiveCadence() {
-        try {
-            return ActivityMonitor.getLiveCadence();
-        } catch (ex as Lang.Exception) {
-            return null;
+    // Current cadence in spm from the best available source, or null when
+    // no source produced a value this tick.
+    private function readCadence(now as Number) {
+        if (_sensorsEnabled) {
+            var cadence = sensorCadence();
+            if (cadence != null) {
+                return cadence;
+            }
         }
+        return stepDeltaCadence(now);
     }
 
-    private function storeStepDeltaSample() as Void {
+    // Accelerometer-based cadence in spm (Toybox.Sensor), or null when
+    // there is no cadence data (e.g. standing still, or sensors off).
+    private function sensorCadence() {
+        try {
+            var info = Sensor.getInfo();
+            if (info != null) {
+                var i = info as Sensor.Info;
+                return i.cadence;
+            }
+        } catch (ex as Lang.Exception) {
+            // Fall through — the step-delta fallback runs instead.
+        }
+        return null;
+    }
+
+    // Last-resort fallback: steps-per-minute from the step-counter delta
+    // between two ticks (ActivityMonitor.getInfo().steps). Coarse: with a
+    // 1 s tick this quantizes cadence to multiples of 60 spm
+    // (120/180/240 ...), so it is only used when Toybox.Sensor is
+    // unavailable or returns no cadence. The delta is only computed while
+    // the baseline is fresh (previous tick, at most 1.5 s old); otherwise
+    // this tick just re-baselines and produces no sample, so a stale
+    // baseline never yields a garbage value.
+    private function stepDeltaCadence(now as Number) {
         if (!(Toybox has :ActivityMonitor)) {
-            return;
+            return null;
         }
         var info = ActivityMonitor.getInfo();
         if (info == null) {
-            return;
+            return null;
         }
-        var steps = info.steps;
-        if (_lastSteps >= 0) {
-            var delta = steps - _lastSteps;
-            // One tick = 1 s, so steps/min = delta * 60.
-            _buffer.add(delta > 0 ? delta * 60 : 0, System.getTimer());
-        }
+        var i = info as ActivityMonitor.Info;
+        var steps = i.steps;
+        var sample = freshBaselineDelta(steps, now);
         _lastSteps = steps;
+        _lastStepsAt = now;
+        return sample;
+    }
+
+    // Step-counter delta over the last tick in steps/minute, or null when
+    // the baseline is stale (this tick only re-baselines).
+    private function freshBaselineDelta(steps as Number, now as Number) {
+        if (_lastSteps < 0 || now - _lastStepsAt > 1500) {
+            return null;
+        }
+        var delta = steps - _lastSteps;
+        return delta > 0 ? delta * 60 : 0;
     }
 }
