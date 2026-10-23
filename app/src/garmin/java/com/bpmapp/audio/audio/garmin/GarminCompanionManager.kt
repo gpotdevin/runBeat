@@ -22,6 +22,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -35,7 +37,8 @@ import javax.inject.Singleton
  *  - initialize ConnectIQ and register/listen for the RunBeat IQ app
  *    ([IQ_APP_ID]) on every known (paired) Garmin device;
  *  - decode watch messages with [GarminMessageCodec] and delegate them to
- *    [GarminCommandRouter], then push an ack back to the watch;
+ *    [GarminCommandRouter] (serialized through a mutex), then push an ack
+ *    back to the watch;
  *  - push [GarminWatchState] to the watch whenever any underlying flow
  *    changes (playerState, currentTrack, targetCadence, speedCorrectionEnabled,
  *    playbackSpeed), plus a ~1 Hz tick that picks up volume changes (volume is
@@ -73,6 +76,15 @@ class GarminCompanionManager @Inject constructor(
     }
     private val iqApp: IQApp by lazy { IQApp(IQ_APP_ID) }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    /**
+     * Serializes watch-command handling. The mark-not-for-running path
+     * suspends on a Room write, so without this mutex two commands from the
+     * same BLE batch (or a fast double-press) could interleave: both would
+     * read the same current track and both would call playNext(), skipping
+     * two tracks.
+     */
+    private val commandMutex = Mutex()
 
     // Main-thread confined (SDK callbacks arrive on the main thread).
     private val devices = LinkedHashMap<Long, IQDevice>()
@@ -191,7 +203,9 @@ class GarminCompanionManager @Inject constructor(
             Log.d(TAG, "Watch command from ${device.friendlyName}: $json")
             scope.launch {
                 try {
-                    val ack = router.handleCommand(command)
+                    // Serialized: two commands must never run handleCommand
+                    // concurrently (see [commandMutex]).
+                    val ack = commandMutex.withLock { router.handleCommand(command) }
                     // Ack only the state-changing RunBeat commands; transport and
                     // volume are confirmed by the pushed state message.
                     if (command.needsAck()) {
@@ -227,6 +241,11 @@ class GarminCompanionManager @Inject constructor(
             for (device in known) {
                 allRegistered = registerDevice(device) && allRegistered
             }
+            // A (backoff-retry) refresh that registers a CONNECTED device must
+            // update the connection state even when no further SDK event
+            // arrives; only onSdkReady/onDeviceStatusChanged recompute it
+            // otherwise.
+            recomputeConnection()
             if (allRegistered) {
                 deviceRefreshRetryCount = 0
             } else {
