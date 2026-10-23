@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<menus>
+    <menu id="MainViewMenu" title="@Strings.MainMenuTitle">
+        <menu-item id="menu_next" label="@Strings.MenuNext"/>
+        <menu-item id="menu_prev" label="@Strings.MenuPrev"/>
+    </menu>
+</menus>
