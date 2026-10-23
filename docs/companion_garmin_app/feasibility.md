@@ -60,7 +60,8 @@ messaging; Connect IQ is Garmin's supported channel. Rejected.
 | Target cadence = avg cadence of last minute | High | The **watch** measures cadence (wrist-worn, most accurate source). Sample once per second via `Toybox.ActivityMonitor` into a 60-sample ring buffer; the dedicated button sends the rolling mean to the phone, which calls `setTargetCadence(mean)`. Phone-side step counting was considered and rejected (see below). |
 | Toggle speed correction | High | Message -> `PlayerRepository.toggleSpeedCorrection()` (exists; enable re-applies cadence-matched speed, disable restores 1.0x). |
 | Volume up/down | High | Message -> `exoPlayer.volume` +/- step (0.1), clamped [0, 1]. Small addition to `PlayerRepository`. Edge case: interaction with the mode-beep ducking (`volumeBeforeDuck` in `PlayerRepository`) — see [phone_app_changes.md](phone_app_changes.md). |
-| Mark current track as bad | High | Message with current `trackId` (already in `MediaItem` extras) -> new `Track.isBad` Room column (migration 6->7) + `TrackDao` update + filter bad tracks when the play queue is built + `PlayerRepository.removeTrackFromUpcoming()` (exists) to drop it from the current session. |
+| Mark current track as "not for running" | High | Message with current `trackId` (already in `MediaItem` extras) -> new `Track.notForRunning` Room column (migration 6->7) + `TrackDao` update + `PlayerRepository.removeTrackFromUpcoming()` + `playNext()` to **skip immediately** + filter flagged tracks when the play queue is built (settings toggle, default on). Wording in the app must make clear it means "does not feel right to run on", not "bad track". |
+| Control other music apps (Spotify, Qobuz, audiobooks...) | High | When RunBeat is not playing, the phone companion forwards transport commands as media key events (`AudioManager.dispatchMediaKeyEvent`) and volume via `AudioManager` STREAM_MUSIC — no permissions needed. Now-playing *metadata* from other apps requires notification-listener access (optional, user-granted). See "External app control" below. |
 
 ## Why the cadence average must come from the watch
 
@@ -75,6 +76,38 @@ messaging; Connect IQ is Garmin's supported channel. Rejected.
 - This also keeps the project's privacy posture intact: no new phone
   permissions, no health-data collection on the phone
   (see `docs/PRIVACY.md`).
+
+## External app control (feature 6: default music app)
+
+Goal: when RunBeat is **not** the app producing sound, the watch remote
+works on whatever app is (Spotify, Qobuz, audiobook players, ...) — the same
+role Garmin's built-in music app plays.
+
+- **Transport (play/pause/next/prev):** the phone companion calls
+  `AudioManager.dispatchMediaKeyEvent(KeyEvent)`. Android routes the key to
+  the app that currently holds media focus. No permission required.
+- **Volume:** `AudioManager.adjustStreamVolume(STREAM_MUSIC, ...)` — global
+  media volume, works for every app. Recommended as the *single* volume
+  path for watch volume control (RunBeat included: ExoPlayer outputs to
+  STREAM_MUSIC and its own volume stays a multiplier on top).
+- **Now-playing metadata from other apps:** `MediaSessionManager
+  .getActiveSessions()` requires the system-only `MEDIA_CONTENT_CONTROL`
+  permission — not available to third-party apps. The realistic source is a
+  `NotificationListenerService` reading MediaStyle notifications, which
+  needs the user to grant notification access in system settings. Garmin
+  Connect Mobile does exactly this for the built-in music app.
+  **Decision: make metadata optional.** Without it the watch shows a generic
+  "External app" label; with it, title/source app. This is a privacy-
+  relevant permission, so it must stay opt-in and be documented in
+  `docs/PRIVACY.md`.
+- **Routing rule (phone side):** if RunBeat's playback service is active /
+  its player is playing, commands go to `PlayerRepository`; otherwise they
+  are forwarded as media keys. The watch stays dumb — it always sends the
+  same commands and displays the `source` field pushed by the phone
+  (`RunBeat` / external app name / none).
+- **Custom commands** (cadence target, speed correction, mark
+  not-for-running) only make sense for RunBeat; the watch disables them
+  when `source != RunBeat`.
 
 ## Constraints and caveats
 

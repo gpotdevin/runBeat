@@ -10,8 +10,18 @@ Suggested location in this repo: `garmin-watch/` (not part of
 
 ## Purpose
 
-Remote-control the RunBeat **phone** app (music stays on the phone) and
-feed the runner's live cadence back as the target cadence.
+Act as the user's **default music app** on the watch:
+
+- When **RunBeat** is playing on the phone: full remote control (transport,
+  target cadence, speed correction, mark not-for-running) plus feeding the
+  runner's live cadence back as the target cadence.
+- When **any other app** is playing (Spotify, Qobuz, audiobooks, ...):
+  transport (play/pause/next/prev) and volume, like Garmin's built-in music
+  app. Track title shown when the phone provides it (optional
+  notification access on the phone); otherwise a generic "External app"
+  label.
+
+Music always stays on the phone; the watch never plays audio itself.
 
 Note: this is different from `update_plans/garmin_app_plan.md`, which
 describes playing music stored **on the watch**. The cadence-sampling
@@ -50,13 +60,14 @@ garmin-watch/
 
 ## Screens / interaction model
 
-Three pages, navigable with up/down, actions with the select button
-(and/or per-page menus for devices with more buttons):
+**Three screens** (confirmed), navigable with up/down, actions with the
+select button (and/or per-page menus for devices with more buttons):
 
-1. **Main page**
+1. **Main page** (transport — works for RunBeat and external apps)
+   - Source label: "RunBeat" / external app name / "External app".
    - Current track title (truncated) + play/pause icon reflecting state.
    - Select: toggle play/pause. Menu: next, previous.
-2. **Cadence page**
+2. **Cadence page** (RunBeat only — greyed out when `source != "RunBeat"`)
    - Big number: live 60-second average cadence (spm).
    - Target cadence display (from phone state).
    - Select: nothing / menu entries:
@@ -64,10 +75,11 @@ Three pages, navigable with up/down, actions with the select button
      - `Use current as target`: send `cadence_use_current` with the ring
        buffer mean.
 3. **Control page**
-   - Speed correction toggle (shows on/off from phone state).
-   - Volume: `-` / `+` (send `volume_delta`).
-   - `Mark track as bad` (send `mark_bad`; show ack as a transient
-     confirmation; optionally auto-advance handled phone-side).
+   - Speed correction toggle (RunBeat only; shows on/off from phone state).
+   - Volume: `-` / `+` (send `volume_delta`; always STREAM_MUSIC).
+   - `Mark as "not for running"` (RunBeat only; send
+     `mark_not_for_running`; show the ack as a transient confirmation —
+     the phone flags the track in the library and skips to the next one).
 
 Connection handling: on `onMessage` absence / `onAppOOM`... — use
 `ConnectIQ.registerForAppEvents()` / listen for device status; when the
@@ -98,10 +110,13 @@ Implement the protocol from [architecture.md](architecture.md):
 
 - Outgoing commands are small JSON strings (see table there). Build them
   in `MessageHandler`.
-- Incoming `state` messages update a local `WatchState` object; each view
-  invalidates (`WatchUi.requestUpdate()`) on change.
-- Send an ack expectation only for `mark_bad` and `cadence_use_current`
-  (transient confirmation on the watch).
+- Incoming `state` messages update a local `WatchState` object (`source`,
+  `isPlaying`, `title`, cadence fields, `speedCorrection`, `volume`); each
+  view invalidates (`WatchUi.requestUpdate()`) on change.
+- Views read `WatchState.source` to grey out RunBeat-only controls
+  (cadence actions, speed-correction toggle, mark not-for-running).
+- Send an ack expectation only for `mark_not_for_running` and
+  `cadence_use_current` (transient confirmation on the watch).
 
 ## Device matrix (`monkey.jungle`)
 
@@ -128,4 +143,7 @@ Connect IQ phone messages. Round vs square layouts handled via
   round-trip latency (expect well under 1 s when the phone screen is on,
   possibly queued/delayed when the phone is doze-ing — Garmin Connect
   Mobile handles delivery; document observed behavior).
+- External-app mode: with Spotify/Qobuz/an audiobook app playing on the
+  phone, verify transport + volume from the watch; verify the RunBeat-only
+  controls appear disabled.
 - Pair with the phone app's `garmin` flavor build for end-to-end tests.
