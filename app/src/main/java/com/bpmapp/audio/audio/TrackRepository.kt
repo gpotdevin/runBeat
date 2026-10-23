@@ -64,6 +64,18 @@ class TrackRepository @Inject constructor(
     }
     
     /**
+     * Mark a track as "not for running" (it does not feel right to run on)
+     */
+    suspend fun markTrackNotForRunning(trackId: String): Int =
+        trackDao.updateNotForRunning(trackId, true)
+
+    /**
+     * Remove the "not for running" mark from a track
+     */
+    suspend fun unmarkTrackNotForRunning(trackId: String): Int =
+        trackDao.updateNotForRunning(trackId, false)
+
+    /**
      * Delete a track from the library
      */
     suspend fun deleteTrack(trackId: String): Int {

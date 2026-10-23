@@ -69,6 +69,7 @@ fun SettingsScreen(
     val autoApplyCadenceMatch by viewModel.autoApplyCadenceMatch.collectAsState()
     val modeBeepSignal by viewModel.modeBeepSignal.collectAsState()
     val autoScanOnStartup by viewModel.autoScanOnStartup.collectAsState()
+    val excludeNotForRunningTracks by viewModel.excludeNotForRunningTracks.collectAsState()
     val dynamicColors by viewModel.dynamicColors.collectAsState()
     
     val uriHandler = LocalUriHandler.current
@@ -177,6 +178,17 @@ fun SettingsScreen(
                     Switch(
                         checked = autoScanOnStartup,
                         onCheckedChange = { viewModel.setAutoScanOnStartup(it) },
+                        modifier = Modifier.padding(end = AppSpacing.sm)
+                    )
+                }
+                // Exclude tracks marked "not for running" from playback
+                SettingItem(
+                    title = stringResource(R.string.settings_exclude_not_for_running_title),
+                    description = stringResource(R.string.settings_exclude_not_for_running_desc)
+                ) {
+                    Switch(
+                        checked = excludeNotForRunningTracks,
+                        onCheckedChange = { viewModel.setExcludeNotForRunningTracks(it) },
                         modifier = Modifier.padding(end = AppSpacing.sm)
                     )
                 }

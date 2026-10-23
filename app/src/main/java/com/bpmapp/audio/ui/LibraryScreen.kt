@@ -1351,6 +1351,7 @@ onAddToPlaylist = {
                              onAddToUpcoming = { onAddToUpcoming(track) },
                              onToggleFavorite = { viewModel.toggleFavorite(track.id) },
                              isFavorite = track.isFavorite,
+                             onToggleNotForRunning = { viewModel.toggleNotForRunning(track.id) },
                              speedFactor = speedFactor,
                             isSelected = selectedTrackIds.contains(track.id),
                             onLongClick = {
@@ -1391,6 +1392,7 @@ onAddToPlaylist = {
                     onPlayTrack = onPlayTrack,
                     onPlayAll = { tracks -> onPlayAllTracks(tracks) },
                     onToggleFavorite = { track -> viewModel.toggleFavorite(track.id) },
+                    onToggleNotForRunning = { track -> viewModel.toggleNotForRunning(track.id) },
                     onAddToPlaylist = { track ->
                         targetTrackIds = listOf(track.id)
                         showAddToPlaylistDialog = true
@@ -2133,6 +2135,7 @@ fun FavoritesContent(
     onPlayTrack: (Track) -> Unit,
     onPlayAll: (List<Track>) -> Unit,
     onToggleFavorite: (Track) -> Unit,
+    onToggleNotForRunning: (Track) -> Unit = {},
     onAddToPlaylist: (Track) -> Unit,
     onAddToUpcoming: (Track) -> Unit = {}
 ) {
@@ -2200,6 +2203,7 @@ fun FavoritesContent(
                         onAddToUpcoming = { onAddToUpcoming(track) },
                         isFavorite = true,
                         onToggleFavorite = { onToggleFavorite(track) },
+                        onToggleNotForRunning = { onToggleNotForRunning(track) },
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = AppSpacing.xs, vertical = AppSpacing.xxxs)

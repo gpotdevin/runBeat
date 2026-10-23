@@ -51,5 +51,7 @@ data class Track(
     val metadataGenre: String? = null,  // Genre from metadata (ID3 tag)
     val metadataTrackNumber: String? = null,  // CD track number from metadata (e.g. "3" or "3/12")
     @ColumnInfo(defaultValue = "0")
-    val isFavorite: Boolean = false     // Whether the track is marked as a favorite
+    val isFavorite: Boolean = false,     // Whether the track is marked as a favorite
+    @ColumnInfo(defaultValue = "0")
+    val notForRunning: Boolean = false   // Marked "not for running" (does not feel right to run on)
 )

@@ -258,6 +258,10 @@
     <string name="trackcard_play_replace">Reproducir (reemplazar actual)</string>
     <string name="trackcard_play">Reproducir</string>
     <string name="trackcard_add_to_upcoming">Añadir a cola</string>
+    <string name="trackcard_not_for_running">No para correr</string>
+    <string name="trackcard_not_for_running_desc">Esta pista se omitirá durante las carreras. No se elimina y puedes quitar la marca en cualquier momento.</string>
+    <string name="trackcard_mark_not_for_running">Marcar como no para correr</string>
+    <string name="trackcard_unmark_not_for_running">Quitar marca no para correr</string>
     <string name="trackcard_edit_bpm">Editar BPM</string>
     <string name="trackcard_delete">Eliminar</string>
 
@@ -303,6 +307,8 @@
     <string name="settings_auto_apply_desc">Aplicar automáticamente la coincidencia de cadencia al cambiar de pista</string>
     <string name="settings_auto_scan_title">Escaneo automático al iniciar</string>
     <string name="settings_auto_scan_desc">Buscar automáticamente nuevas pistas al iniciar la aplicación</string>
+    <string name="settings_exclude_not_for_running_title">Excluir pistas marcadas como \'no para correr\' de la reproducción</string>
+    <string name="settings_exclude_not_for_running_desc">Las pistas marcadas como \'No para correr\' permanecen en tu biblioteca pero se excluyen de la cola de reproducción</string>
     <string name="settings_dynamic_colors_title">Colores dinámicos</string>
     <string name="settings_dynamic_colors_desc">Usar colores dinámicos del sistema (Android 12+)</string>
     <string name="settings_import_csv_title">Importar CSV</string>
@@ -358,6 +364,7 @@
     <string name="error_failed_delete_track">Error al eliminar pista: %1$s</string>
     <string name="error_failed_delete_tracks">Error al eliminar pistas: %1$s</string>
     <string name="error_failed_update_favorite">Error al actualizar favorito: %1$s</string>
+    <string name="error_failed_update_not_for_running">Error al actualizar la marca no para correr: %1$s</string>
     <string name="error_failed_create_playlist">Error al crear lista: %1$s</string>
     <string name="error_failed_rename_playlist">Error al renombrar lista: %1$s</string>
     <string name="error_failed_delete_playlist">Error al eliminar lista: %1$s</string>

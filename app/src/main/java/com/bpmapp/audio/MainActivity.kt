@@ -302,15 +302,13 @@ fun PlayerScreenWrapper(
                     }
                 },
                 onAddToUpcomingBatch = { tracks ->
-                    val mediaItems = tracks.map { libraryViewModel.getMediaItemForTrack(it) }
+                    val mediaItems = libraryViewModel.getPlayableMediaItems(tracks)
                     playerRepository.addAllToPlaylist(mediaItems)
                     libraryViewModel.resolveBmpsForTracksIfNeeded(tracks)
                 },
                 onPlayAllTracks = { tracks ->
                     // Load all tracks into playlist and play first
-                    val mediaItems = tracks.map { track ->
-                        libraryViewModel.getMediaItemForTrack(track)
-                    }
+                    val mediaItems = libraryViewModel.getPlayableMediaItems(tracks)
                     if (mediaItems.isNotEmpty()) {
                         playerRepository.loadPlaylist(mediaItems)
                         playerRepository.play()
@@ -381,15 +379,13 @@ fun LibraryScreenWrapper(
                 }
             },
             onAddToUpcomingBatch = { tracks ->
-                val mediaItems = tracks.map { libraryViewModel.getMediaItemForTrack(it) }
+                val mediaItems = libraryViewModel.getPlayableMediaItems(tracks)
                 playerRepository.addAllToPlaylist(mediaItems)
                 libraryViewModel.resolveBmpsForTracksIfNeeded(tracks)
             },
             onPlayAllTracks = { tracks ->
                 // Load all tracks into playlist and play first
-                val mediaItems = tracks.map { track ->
-                    libraryViewModel.getMediaItemForTrack(track)
-                }
+                val mediaItems = libraryViewModel.getPlayableMediaItems(tracks)
                 if (mediaItems.isNotEmpty()) {
                     playerRepository.loadPlaylist(mediaItems)
                     playerRepository.play()

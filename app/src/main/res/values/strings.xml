@@ -260,6 +260,10 @@
     <string name="trackcard_add_to_upcoming">Add to Upcoming</string>
     <string name="trackcard_edit_bpm">Edit BPM</string>
     <string name="trackcard_delete">Delete</string>
+    <string name="trackcard_not_for_running">Not for running</string>
+    <string name="trackcard_not_for_running_desc">This track will be skipped during runs. It is not deleted and can be unmarked anytime.</string>
+    <string name="trackcard_mark_not_for_running">Mark as not for running</string>
+    <string name="trackcard_unmark_not_for_running">Remove not-for-running mark</string>
 
     <!-- ==================== BPM Tools Screen ==================== -->
     <string name="bpmtools_tab_matcher">Cadence Matcher</string>
@@ -303,6 +307,8 @@
     <string name="settings_auto_apply_desc">Automatically apply cadence matching when track changes</string>
     <string name="settings_auto_scan_title">Auto-Scan on Startup</string>
     <string name="settings_auto_scan_desc">Automatically scan for new tracks when app starts</string>
+    <string name="settings_exclude_not_for_running_title">Exclude tracks marked \'not for running\' from playback</string>
+    <string name="settings_exclude_not_for_running_desc">Tracks marked \'Not for running\' stay in your library but are left out of the play queue</string>
     <string name="settings_dynamic_colors_title">Dynamic Colors</string>
     <string name="settings_dynamic_colors_desc">Use system dynamic colors (Android 12+)</string>
     <string name="settings_import_csv_title">Import CSV</string>
@@ -358,6 +364,7 @@
     <string name="error_failed_delete_track">Failed to delete track: %1$s</string>
     <string name="error_failed_delete_tracks">Failed to delete tracks: %1$s</string>
     <string name="error_failed_update_favorite">Failed to update favorite: %1$s</string>
+    <string name="error_failed_update_not_for_running">Failed to update not-for-running flag: %1$s</string>
     <string name="error_failed_create_playlist">Failed to create playlist: %1$s</string>
     <string name="error_failed_rename_playlist">Failed to rename playlist: %1$s</string>
     <string name="error_failed_delete_playlist">Failed to delete playlist: %1$s</string>
