@@ -5,7 +5,6 @@ package com.bpmapp.audio.audio.garmin
 import androidx.media3.common.Player
 import com.bpmapp.audio.audio.PlayerRepository
 import com.bpmapp.audio.audio.TrackRepository
-import kotlinx.coroutines.runBlocking
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -25,13 +24,12 @@ import javax.inject.Singleton
  * unit-tested in every flavor; the garmin flavor's GarminCompanionManager is
  * the thin SDK shell that feeds it.
  *
- * Threading: the router is main-thread confined. The manager invokes
- * [handleCommand] and [currentState] from the Connect IQ SDK callbacks, which
- * are delivered on the main thread. All calls made here are safe on the main
- * thread: PlayerRepository is itself main-thread confined, MediaKeyDispatcher
- * only touches AudioManager, and the Room suspend call in the mark path
- * dispatches to Room's query executor (runBlocking only parks the calling
- * thread for the duration of that single UPDATE).
+ * Threading: the manager invokes [handleCommand] (a suspend function) and
+ * [currentState] from the Connect IQ SDK callbacks, which are delivered on the
+ * main thread. The suspending mark path calls Room's suspend API directly, so
+ * the UPDATE runs on Room's query executor without blocking any thread;
+ * PlayerRepository is main-thread confined and MediaKeyDispatcher only
+ * touches AudioManager.
  */
 @Singleton
 class GarminCommandRouter @Inject constructor(
@@ -53,7 +51,7 @@ class GarminCommandRouter @Inject constructor(
     /**
      * Routes one watch command and returns the ack to push back to the watch.
      */
-    fun handleCommand(cmd: GarminCommand): GarminAck {
+    suspend fun handleCommand(cmd: GarminCommand): GarminAck {
         val active = isRunBeatActive()
         return when (cmd) {
             is GarminCommand.Toggle -> {
@@ -83,7 +81,11 @@ class GarminCommandRouter @Inject constructor(
                 GarminAck(cmd.wireType(), ok = true)
             }
             is GarminCommand.CadenceSet -> {
-                if (active) {
+                // Defensive: the codec filters non-finite values, but never
+                // forward NaN/Infinity to PlayerRepository.
+                if (!cmd.cadence.isFinite()) {
+                    GarminAck(cmd.wireType(), ok = false)
+                } else if (active) {
                     playerRepository.setTargetCadence(cmd.cadence)
                     GarminAck(cmd.wireType(), ok = true)
                 } else {
@@ -92,7 +94,9 @@ class GarminCommandRouter @Inject constructor(
             }
             // The watch computed the 60 s average itself; the phone just applies it.
             is GarminCommand.CadenceUseCurrent -> {
-                if (active) {
+                if (!cmd.cadence.isFinite()) {
+                    GarminAck(cmd.wireType(), ok = false)
+                } else if (active) {
                     playerRepository.setTargetCadence(cmd.cadence)
                     GarminAck(cmd.wireType(), ok = true)
                 } else {
@@ -126,10 +130,11 @@ class GarminCommandRouter @Inject constructor(
      * Builds the state message pushed to the watch. [GarminWatchState.source]
      * is "RunBeat" while RunBeat is the active playback app, "none" otherwise
      * (external now-playing metadata is out of scope: no notification listener).
-     * The RunBeat-only fields (trackId, bpm, targetCadence, speedCorrection,
-     * playbackSpeed) are null unless RunBeat is active; the codec omits null
-     * fields from the wire message. The title is not RunBeat-only and is
-     * reported whenever a track is loaded.
+     * The RunBeat-only fields (trackId, title, bpm, targetCadence,
+     * speedCorrection, playbackSpeed) are null unless RunBeat is active; the
+     * codec omits null fields from the wire message. In particular the title
+     * is omitted when RunBeat is not active so the watch does not show a
+     * stale RunBeat title with source "none".
      */
     fun currentState(): GarminWatchState {
         val active = isRunBeatActive()
@@ -139,7 +144,7 @@ class GarminCommandRouter @Inject constructor(
             source = if (active) SOURCE_RUNBEAT else SOURCE_NONE,
             isPlaying = playerRepository.playerState.value.isPlaying,
             trackId = if (active) extras?.getString("trackId") else null,
-            title = track?.mediaMetadata?.title?.toString(),
+            title = if (active) track?.mediaMetadata?.title?.toString() else null,
             bpm = if (active) extras?.getString("bpm")?.toFloatOrNull() else null,
             targetCadence = if (active) playerRepository.targetCadence.value else null,
             speedCorrection = if (active) playerRepository.speedCorrectionEnabled.value else null,
@@ -153,7 +158,7 @@ class GarminCommandRouter @Inject constructor(
      * (confirmed decision). Returns a not-ok ack when RunBeat is not active
      * or when no track is loaded.
      */
-    private fun markCurrentTrackNotForRunning(
+    private suspend fun markCurrentTrackNotForRunning(
         active: Boolean,
         cmd: GarminCommand.MarkNotForRunning,
     ): GarminAck {
@@ -161,9 +166,8 @@ class GarminCommandRouter @Inject constructor(
         val trackId = playerRepository.currentTrack.value
             ?.mediaMetadata?.extras?.getString("trackId")
             ?: return GarminAck(cmd.wireType(), ok = false)
-        // Single UPDATE; Room runs it on its query executor, so runBlocking only
-        // parks the (main) calling thread for the duration of the call.
-        runBlocking { trackRepository.markTrackNotForRunning(trackId) }
+        // Room suspend call: the UPDATE runs on Room's query executor.
+        trackRepository.markTrackNotForRunning(trackId)
         playerRepository.playNext()
         return GarminAck(cmd.wireType(), ok = true)
     }
