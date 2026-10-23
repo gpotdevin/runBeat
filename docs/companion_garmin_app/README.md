@@ -1,6 +1,6 @@
 # Garmin Companion App — Plans & Information
 
-**Status: decisions confirmed; watch app implemented and compiling for all 15 target devices; independent review verdict: merge-ready.**
+**Status: decisions confirmed; watch app implemented and compiling for all 16 target devices; independent review verdict: merge-ready.**
 **Date: 2026-10-22 (updated after decision review)**
 
 This folder contains the feasibility evaluation and implementation plans for a
@@ -83,8 +83,8 @@ A Garmin watch app, usable as the default music app, exposing from the wrist:
 
 ## Status (2026-10-23)
 
-The watch app is implemented and **compiles for all 15 target devices
-with Connect IQ SDK 9.3.0 (15/15, one `.prg` per device)**. The
+The watch app is implemented and **compiles for all 16 target devices
+with Connect IQ SDK 9.3.0 (16/16, one `.prg` per device)**. The
 independent review verdict is **merge-ready** (0 blockers, 0 majors, 4
 minors, 5 nits) with all actionable findings addressed — full report:
 [review_watch_app.md](review_watch_app.md). Build instructions and

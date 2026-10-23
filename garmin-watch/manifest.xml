@@ -31,6 +31,8 @@
         <iq:product id="fenix847mm"/>
         <!-- epix (Gen 2) -->
         <iq:product id="epix2"/>
+        <!-- Venu 2 -->
+        <iq:product id="venu2"/>
         <!-- Venu 3 -->
         <iq:product id="venu3"/>
         <iq:product id="venu3s"/>

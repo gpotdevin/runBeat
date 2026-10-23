@@ -4,11 +4,13 @@ Date: 2026-10-22
 
 ## Status (2026-10-23)
 
-**The watch app is implemented and compiles for all 15 target devices
-with Connect IQ SDK 9.3.0 — 15/15, one `.prg` per device, zero
+**The watch app is implemented and compiles for all 16 target devices
+with Connect IQ SDK 9.3.0 — 16/16, one `.prg` per device, zero
 warnings.** Device matrix: `fr245`, `fr255`, `fr265`, `fr955`, `fr965`,
 `fenix7`, `fenix7s`, `fenix7x`, `fenix8solar47mm`, `fenix8solar51mm`,
-`fenix843mm`, `fenix847mm`, `epix2`, `venu3`, `venu3s`.
+`fenix843mm`, `fenix847mm`, `epix2`, `venu2`, `venu3`, `venu3s`.
+`venu2` (Venu 2) was added as the developer's own device for on-device
+testing.
 
 - **Product-id correction (commit `bbe20f2`):** the original
   manifest/jungle used 12 ids, several of which do not exist as Garmin
@@ -39,7 +41,7 @@ warnings.** Device matrix: `fr245`, `fr255`, `fr265`, `fr955`, `fr965`,
   Compile scripts live outside the repo at
   `/c/Users/guill/dev/tools/garmin-build/` (`compile_one.sh <device>
   [project] [out]`, and `compile_repo_all.sh [project] [out]`, which
-  loops the 15 devices and writes `results.txt`). Gotcha: the SDK
+  loops the 16 devices and writes `results.txt`). Gotcha: the SDK
   `bin/default.jungle` had to be regenerated for the `round-WxH`
   deviceFamily syntax — do not hand-edit device entries there. A local
   developer key exists at
@@ -128,8 +130,8 @@ warnings.** Device matrix: `fr245`, `fr255`, `fr265`, `fr955`, `fr965`,
 - [x] `MessageHandler` + three views (transport / cadence / controls) per
       [watch_app_plan.md](watch_app_plan.md), incl. source label and
       RunBeat-only controls greyed out when `source != "RunBeat"`.
-- [x] Compiles for all 15 target devices with Connect IQ SDK 9.3.0
-      (15/15, one `.prg` per device — see Status above).
+- [x] Compiles for all 16 target devices with Connect IQ SDK 9.3.0
+      (16/16, one `.prg` per device — see Status above).
 - [ ] Sideload on a real device; verify cadence accuracy (on a real
       fr245 AND a fenix/Venu device — review finding 4, see Status) and
       message round-trip.

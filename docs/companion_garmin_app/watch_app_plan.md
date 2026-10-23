@@ -143,11 +143,15 @@ Implement the protocol from [architecture.md](architecture.md):
 ## Device matrix (`monkey.jungle`)
 
 Primary targets: Forerunner 245 / 255 / 265 / 955 / 965, fenix 7 / 8,
-epix (Gen 2), Venu 3 — 15 product ids in `monkey.jungle` /
+epix (Gen 2), Venu 2 / 3 — 16 product ids in `monkey.jungle` /
 `manifest.xml`. All support live cadence via `Sensor.getInfo().cadence`
 (needs no permission beyond `Sensor`) and Connect IQ phone messages.
 Round vs square layouts handled via `layouts.xml` per device family;
 keep text short (watch screens are small).
+
+- **Venu 2** (`venu2`): round 416x416 AMOLED canvas; CIQ 5.0.0 per
+  Garmin's device DB, so the ViewLoop 3-screen path applies
+  (CIQ >= 3.4.0); launcher icon 70x70.
 
 ## Build & install
 
