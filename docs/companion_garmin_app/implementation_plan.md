@@ -2,6 +2,76 @@
 
 Date: 2026-10-22
 
+## Status (2026-10-23)
+
+**The watch app is implemented and compiles for all 15 target devices
+with Connect IQ SDK 9.3.0 — 15/15, one `.prg` per device, zero
+warnings.** Device matrix: `fr245`, `fr255`, `fr265`, `fr955`, `fr965`,
+`fenix7`, `fenix7s`, `fenix7x`, `fenix8solar47mm`, `fenix8solar51mm`,
+`fenix843mm`, `fenix847mm`, `epix2`, `venu3`, `venu3s`.
+
+- **Product-id correction (commit `bbe20f2`):** the original
+  manifest/jungle used 12 ids, several of which do not exist as Garmin
+  products. Corrected mapping: `forerunner245` -> `fr245`,
+  `forerunner255` -> `fr255`, `forerunner265` -> `fr265`,
+  `forerunner955` -> `fr955`, `forerunner965` -> `fr965`, `fenix8` ->
+  `fenix8solar47mm` + `fenix8solar51mm` + `fenix843mm` + `fenix847mm`
+  (4 ids); `fenix7`, `fenix7s`, `fenix7x`, `epix2`, `venu3`, `venu3s`
+  were already correct. Total: 15.
+- **SDK 9.3.0 migration (commit `47f1ad3`):** APIs removed/changed by
+  SDK 9.x and their replacements — `using` -> `import`; `Toybox.App` ->
+  `Toybox.Application`; `Communications.PhoneAppMessage.payload` ->
+  `.data`; module-level `WatchUi.setLayout(...)` -> `onLayout(dc)` +
+  `setLayout(Rez.Layouts.X(dc))`; `new WatchUi.Menu(resId)` ->
+  `new Rez.Menus.X()`; `onMenuItem(item as MenuItem)` /
+  `MenuItem.getId()` -> `onMenuItem(item as Symbol)` + `switch (item)`;
+  1-arg `Dc.setColor(color)` -> 2-arg `Dc.setColor(fg, bg)`;
+  `SwitchableView` -> `WatchUi.ViewLoop` (3.4.0+, runtime-guarded with
+  a MainView fallback); `COLOR_LIGHT_GRAY`/`COLOR_DARK_GRAY` ->
+  `COLOR_LT_GRAY`/`COLOR_DK_GRAY`; `ActivityMonitor` is not a valid
+  permission id (monkeyc rejects it) — permission removed. The manifest
+  must be v3 (SDK 9.x requirement) with
+  `launcherIcon="@Drawables.LauncherIcon"` plus a `resources/drawables/`
+  PNG (commits `1d5ec06`, `2ff9ba0`).
+- **Build instructions:** SDK 9.3.0 is installed at
+  `C:/Users/guill/dev/tools/Garmin/ConnectIQ/Sdks/connectiq-sdk-win-9.3.0-2026-10-20-95888f262`;
+  Java 17; the `monkeyc` CLI needs `APPDATA=/c/Users/guill/dev/tools`.
+  Compile scripts live outside the repo at
+  `/c/Users/guill/dev/tools/garmin-build/` (`compile_one.sh <device>
+  [project] [out]`, and `compile_repo_all.sh [project] [out]`, which
+  loops the 15 devices and writes `results.txt`). Gotcha: the SDK
+  `bin/default.jungle` had to be regenerated for the `round-WxH`
+  deviceFamily syntax — do not hand-edit device entries there. A local
+  developer key exists at
+  `/c/Users/guill/dev/tools/garmin-build/developer_key.der` — it signs
+  sideloaded builds only and is NOT valid for the Connect IQ store.
+- **Verification scope caveat:** the local device data was assembled
+  locally; the compile matrix is LOCAL verification only. Running device
+  simulators and obtaining an official (store) developer key require a
+  Garmin developer account login; uploading to the Connect IQ store is
+  impossible without it.
+- **fr245 runtime note:** fr245 runs CIQ 3.3.1 < 3.4.0, so it takes the
+  MainView-only fallback at runtime (play control preserved; the cadence
+  and control pages are unreachable on that model).
+- **Review finding 4 (open verification item):**
+  `Sensor.getInfo().cadence` is read without enabling sensors; if a
+  device returns null while running, the app SILENTLY falls back to the
+  coarse step-delta cadence (quantized to multiples of 60 spm), which
+  could set a wrong target for "use current cadence". Action: verify
+  cadence accuracy on a real fr245 AND on a fenix/Venu device during
+  Phase 3 device testing; if null while running, either re-add sensor
+  enabling or surface "no cadence source".
+- **Review outcome:** independent review (Mistral Large 4) verdict
+  **merge-ready** — 0 blockers, 0 majors, 4 minors, 5 nits. Minors
+  1/2/5 were fixed in commit `69057c6`; minor 3 is the docs sync (this
+  change); minor 4 is the real-device verification item above. Nits: 6
+  (unused `import Toybox.Lang;` + dead `CadenceRingBuffer.size()` /
+  `reset()`) deliberately NOT applied (harmless); 8 (no `Toybox.Test`
+  watch test suite — future work: parser edge cases, ring-buffer math,
+  command JSON shapes); 9 (48px launcher icon upscaled on 60/70px
+  devices — accepted for a sideloaded personal app). Full report:
+  [review_watch_app.md](review_watch_app.md).
+
 ## Phases
 
 ### Phase 0 — Decisions (confirmed 2026-10-22)
@@ -52,14 +122,20 @@ Date: 2026-10-22
       dependency set unchanged; manager logs watch messages and routes them.
 
 ### Phase 3 — Watch app (3-4 weeks, can overlap Phase 2)
-- [ ] Set up `garmin-watch/` Monkey C project, SDK, developer key.
-- [ ] `CadenceRingBuffer` + `CadenceSampler` (1 Hz, live-cadence with
-      step-delta fallback); simulator tests.
-- [ ] `MessageHandler` + three views (transport / cadence / controls) per
+- [x] Set up `garmin-watch/` Monkey C project, SDK, developer key.
+- [x] `CadenceRingBuffer` + `CadenceSampler` (1 Hz, live-cadence with
+      step-delta fallback).
+- [x] `MessageHandler` + three views (transport / cadence / controls) per
       [watch_app_plan.md](watch_app_plan.md), incl. source label and
       RunBeat-only controls greyed out when `source != "RunBeat"`.
-- [ ] Sideload on a real device; verify cadence accuracy and message
-      round-trip.
+- [x] Compiles for all 15 target devices with Connect IQ SDK 9.3.0
+      (15/15, one `.prg` per device — see Status above).
+- [ ] Sideload on a real device; verify cadence accuracy (on a real
+      fr245 AND a fenix/Venu device — review finding 4, see Status) and
+      message round-trip.
+- [ ] Optional future work: `Toybox.Test` watch test suite (parser edge
+      cases, ring-buffer math, command JSON shapes) and per-device
+      simulator runs (both need a Garmin developer account login).
 - **Milestone:** all RunBeat features controllable from the watch.
 
 ### Phase 4 — External-app mode + end-to-end hardening (1-2 weeks)

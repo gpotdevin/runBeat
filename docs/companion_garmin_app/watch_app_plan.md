@@ -33,7 +33,6 @@ module design is shared between the two.
 |------------|-----|
 | `Communications` | Send/receive messages with the phone companion (required). |
 | `Sensor` | Accelerometer-based cadence sampling. |
-| `ActivityMonitor` | Step count / live cadence (`Toybox.ActivityMonitor`). |
 | `FitContributor` | **No** — not needed; we are not a data field. |
 | `Media` | **No** — music plays on the phone, not the watch. |
 
@@ -60,8 +59,9 @@ garmin-watch/
 
 ## Screens / interaction model
 
-**Three screens** (confirmed), navigable with up/down, actions with the
-select button (and/or per-page menus for devices with more buttons):
+**Three screens** (confirmed), paged with `WatchUi.ViewLoop` (swipe to
+change page; tap counts as select — the page's primary action; the menu
+button opens the per-page menu):
 
 1. **Main page** (transport — works for RunBeat and external apps)
    - Source label: "RunBeat" / external app name / "External app".
@@ -82,30 +82,41 @@ select button (and/or per-page menus for devices with more buttons):
      `mark_not_for_running`; show the ack as a transient confirmation —
      the phone flags the track in the library and skips to the next one).
 
-Connection handling: on `onMessage` absence / `onAppOOM`... — use
-`ConnectIQ.registerForAppEvents()` / listen for device status; when the
-phone app is unreachable, show "Phone not connected" and let button
-presses queue nothing (or show a toast). The Garmin Connect IQ
-`Communications` API (`PhoneAppMessage` via
-`Communications.registerForPhoneAppMessages()` +
-`Communications.transmitAckMessage()`...) is the exact API surface; see
+Fallback for devices without `WatchUi.ViewLoop` (API 3.4.0): a real
+fr245 runs CIQ 3.3.1, so at runtime the app checks
+`if (WatchUi has :ViewLoop)` in `RunBeatCompanionApp.mc` and otherwise
+ships the main page only, with a fallback delegate (select/tap =
+play/pause toggle, menu = next/previous). Play control stays usable on
+that one model; the cadence and control pages are unreachable there.
+
+Connection handling: when the phone app is unreachable, an outgoing
+send fails and the `Communications.ConnectionListener`'s `onError()`
+callback marks the phone unreachable; the watch then shows "Phone not
+connected" (header override plus a transient confirmation) until the
+next incoming message marks it reachable again. The Garmin Connect IQ
+`Communications` API is the exact API surface: incoming messages via
+`Communications.registerForPhoneAppMessages()` (`PhoneAppMessage.data`),
+outgoing via `Communications.transmit(content, options, listener)`; see
 Garmin docs "Communications — Phone Messages".
 
 ## Cadence sampling
 
 - Timer fires every 1000 ms (`Toybox.Timer`).
 - Primary source: `Toybox.Sensor` (accelerometer-based cadence; the
-  `Sensor` permission is declared in `manifest.xml`). Enable
-  `Sensor.SENSOR_ACCELEROMETER` with
-  `Sensor.setEnabledSensors([Sensor.SENSOR_ACCELEROMETER])`, read
-  `Sensor.getInfo().cadence` (`Sensor.Info.cadence`, spm) on each tick,
-  guard with `Toybox has :Sensor` checks. Sensors are disabled in
-  `onHide` and re-enabled in `onShow` (battery).
+  `Sensor` permission is declared in `manifest.xml`). Each tick just
+  reads `Sensor.getInfo().cadence` (`Sensor.Info.cadence`, spm), guarded
+  by a `Toybox has :Sensor` check — deliberately no
+  `Sensor.setEnabledSensors()` enable call and no onShow/onHide power
+  management (consistent with the SDK AccelMag sample, which reads
+  `Sensor.getInfo()` on a timer with only the `Sensor` permission).
 - Last-resort fallback: delta of `ActivityMonitor.getInfo().steps`
   between samples, converted to steps/minute. Coarse — with a 1 s tick
   this quantizes cadence to multiples of 60 spm (120/180/240 ...), so it
   is only used when `Toybox.Sensor` is unavailable or returns no
-  cadence.
+  cadence. The step baseline is only used while fresh (previous tick at
+  most 1.5 s old); a stale baseline just re-baselines and yields no
+  sample. `Toybox.ActivityMonitor` is not permission-gated, so the
+  fallback needs no permission beyond `Sensor`.
 - Feed each sample into `CadenceRingBuffer` (60 slots). `mean()` ignores
   samples older than 60 s and treats 0 as "not running" (excluded unless
   all are 0 — then report "—" and refuse to set target).
@@ -122,15 +133,21 @@ Implement the protocol from [architecture.md](architecture.md):
   view invalidates (`WatchUi.requestUpdate()`) on change.
 - Views read `WatchState.source` to grey out RunBeat-only controls
   (cadence actions, speed-correction toggle, mark not-for-running).
-- Send an ack expectation only for `mark_not_for_running` and
-  `cadence_use_current` (transient confirmation on the watch).
+- The phone sends an ack for the five state-changing RunBeat commands —
+  `cadence_set`, `cadence_delta`, `cadence_use_current`,
+  `speed_correction_toggle`, `mark_not_for_running`
+  (`GarminCompanionManager.needsAck()`). Transport and volume commands
+  get no ack; the pushed `state` message is their confirmation. The
+  watch shows the ack as a transient confirmation.
 
 ## Device matrix (`monkey.jungle`)
 
 Primary targets: Forerunner 245 / 255 / 265 / 955 / 965, fenix 7 / 8,
-epix (Gen 2), Venu 3. All support `ActivityMonitor` live cadence and
-Connect IQ phone messages. Round vs square layouts handled via
-`layouts.xml` per device family; keep text short (watch screens are small).
+epix (Gen 2), Venu 3 — 15 product ids in `monkey.jungle` /
+`manifest.xml`. All support live cadence via `Sensor.getInfo().cadence`
+(needs no permission beyond `Sensor`) and Connect IQ phone messages.
+Round vs square layouts handled via `layouts.xml` per device family;
+keep text short (watch screens are small).
 
 ## Build & install
 

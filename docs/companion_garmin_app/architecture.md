@@ -40,7 +40,10 @@ The watch sends the same commands regardless of which app is playing. The
 watch command
      │
      ▼
-GarminCompanionManager
+GarminCompanionManager (thin SDK shell: decode + delegate)
+     │
+     ▼
+GarminCommandRouter (decides RunBeat vs external app)
      │
      ├─ RunBeat active (AudioService foreground / player playing)?
      │     ├─ transport ─▶ PlayerRepository (togglePlayPause/playNext/...)
@@ -70,7 +73,9 @@ Notes:
 
 | Component | Type | Responsibility |
 |-----------|------|----------------|
-| `GarminCompanionManager` (new, `audio/garmin/`) | Hilt `@Singleton` | Wraps the Connect IQ Mobile SDK: initialize `ConnectIQ`, register the IQ app, receive watch messages, **route** them (RunBeat vs external app, see above), and push state updates to the watch. Exposes a `StateFlow<GarminConnectionState>` (DISCONNECTED / CONNECTING / CONNECTED). |
+| `GarminCompanionManager` (new, `audio/garmin/`) | Hilt `@Singleton` | Thin Connect IQ SDK shell (garmin flavor only): initialize `ConnectIQ`, register the IQ app, receive watch messages, decode them with `GarminMessageCodec` and delegate to `GarminCommandRouter`; pushes state updates and acks to the watch. Exposes the connection state via `GarminWatchConnection`. |
+| `GarminCommandRouter` (new, `audio/garmin/`) | Hilt `@Singleton` | Decides RunBeat vs media-key routing (see above) and builds the `state`/`ack` payloads (`currentState()`). Deliberately free of Garmin SDK imports, so it compiles and unit-tests in every flavor. |
+| `GarminWatchConnection` (new, `GarminConnectionState.kt`) | plain object | Process-wide `StateFlow<GarminConnectionState>` holder (DISCONNECTED / CONNECTING / CONNECTED): written by `GarminCompanionManager` (garmin flavor), read by the Settings screen. |
 | `MediaKeyDispatcher` (new, `audio/garmin/`) | plain class | Forwards transport commands to external apps via `AudioManager.dispatchMediaKeyEvent()` and adjusts STREAM_MUSIC volume. No permissions; unit-testable with a mocked `AudioManager`. |
 | `ExternalPlaybackMonitor` (new, optional, `audio/garmin/`) | `NotificationListenerService` | Reads MediaStyle notifications to expose external apps' now-playing metadata. Requires user-granted notification access; keep optional and document in PRIVACY.md. |
 | `GarminMessageCodec` (new, `audio/garmin/`) | plain object | (De)serializes the JSON message protocol below. Pure functions — unit-testable without the Garmin SDK. |
@@ -82,9 +87,10 @@ Notes:
 | `AudioService` (unchanged) | existing | Already an exported `MediaSessionService`; remains the fallback transport for basic controls. No change needed. |
 
 Dependency direction: `GarminCompanionManager` depends on
-`PlayerRepository` + `TrackRepository` + `MediaKeyDispatcher`. Neither
-existing class depends on the Garmin layer (the Garmin code lives behind
-the `garmin` product flavor — see
+`GarminCommandRouter` + `GarminMessageCodec`; `GarminCommandRouter`
+depends on `PlayerRepository` + `TrackRepository` + `MediaKeyDispatcher`.
+Neither existing class depends on the Garmin layer (the Garmin code
+lives behind the `garmin` product flavor — see
 [phone_app_changes.md](phone_app_changes.md)), so the core app stays
 SDK-free.
 
@@ -151,9 +157,9 @@ impact minimal.
 
 ### 1. Play control
 Watch button -> `toggle`/`next`/`prev` message -> `GarminCompanionManager`
--> routed per the routing table: `PlayerRepository` when RunBeat is active,
-media key event otherwise. Phone pushes updated `state` back; watch icon
-and source label refresh.
+-> `GarminCommandRouter`, routed per the routing table:
+`PlayerRepository` when RunBeat is active, media key event otherwise.
+Phone pushes updated `state` back; watch icon and source label refresh.
 
 ### 2a. Manual target cadence (watch UI)
 Watch +/- -> `cadence_delta` -> `PlayerRepository.increment/decrementTargetCadence()`
@@ -199,7 +205,7 @@ library and filtered from future sessions; it is not a quality rating.
 
 1. Watch button -> `mark_not_for_running` message (enabled only when
    `source == "RunBeat"`).
-2. `GarminCompanionManager` reads the current `trackId` from
+2. `GarminCommandRouter` reads the current `trackId` from
    `PlayerRepository.currentTrack` (extras key `"trackId"`, already set by
    `LibraryViewModel.getMediaItemForTrack()`).
 3. `TrackRepository.markTrackNotForRunning(trackId)` — new

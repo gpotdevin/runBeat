@@ -1,6 +1,6 @@
 # Garmin Companion App — Plans & Information
 
-**Status: decisions confirmed, plans updated, no code changes made yet.**
+**Status: decisions confirmed; watch app implemented and compiling for all 15 target devices; independent review verdict: merge-ready.**
 **Date: 2026-10-22 (updated after decision review)**
 
 This folder contains the feasibility evaluation and implementation plans for a
@@ -45,6 +45,7 @@ A Garmin watch app, usable as the default music app, exposing from the wrist:
 | [phone_app_changes.md](phone_app_changes.md) | Exact changes required in the existing RunBeat codebase (new classes, Room migration, repository/DAO/UI touch points, settings toggle) |
 | [watch_app_plan.md](watch_app_plan.md) | Plan for the Connect IQ (Monkey C) watch app: 3 screens, cadence sampling, message handling, default-music-app behavior |
 | [implementation_plan.md](implementation_plan.md) | Phased roadmap, effort estimates, risks, remaining open questions |
+| [review_watch_app.md](review_watch_app.md) | Independent review of the shipped watch app: verdict, findings, verification evidence |
 
 ## Headline conclusions
 
@@ -79,6 +80,16 @@ A Garmin watch app, usable as the default music app, exposing from the wrist:
   a Gradle product flavor (`garmin` vs `fdroid`) so the F-Droid build stays
   clean. See [feasibility.md](feasibility.md) and
   [implementation_plan.md](implementation_plan.md).
+
+## Status (2026-10-23)
+
+The watch app is implemented and **compiles for all 15 target devices
+with Connect IQ SDK 9.3.0 (15/15, one `.prg` per device)**. The
+independent review verdict is **merge-ready** (0 blockers, 0 majors, 4
+minors, 5 nits) with all actionable findings addressed — full report:
+[review_watch_app.md](review_watch_app.md). Build instructions and
+verification-scope caveats:
+[implementation_plan.md](implementation_plan.md) (Status section).
 
 ## Relationship to the existing `update_plans/garmin_app_plan.md`
 
