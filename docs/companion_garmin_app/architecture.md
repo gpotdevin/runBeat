@@ -135,9 +135,9 @@ strings via `org.json`, already on Android — no new dependency).
 - `source`: `"RunBeat"` when RunBeat is the active playback app,
   `"external"` (or the external app's name when the optional notification
   listener is granted), or `"none"`.
-- RunBeat-only fields (`trackId`, `bpm`, `targetCadence`, `speedCorrection`,
-  `playbackSpeed`) are omitted or null when `source != "RunBeat"`; the watch
-  greys out the corresponding controls.
+- RunBeat-only fields (`trackId`, `title`, `bpm`, `targetCadence`,
+  `speedCorrection`, `playbackSpeed`) are omitted or null when
+  `source != "RunBeat"`; the watch greys out the corresponding controls.
 - `volume`: current STREAM_MUSIC media volume (AudioManager index, not 0..1).
 
 Plus `{"type":"ack","command":"mark_not_for_running","ok":true}` style
