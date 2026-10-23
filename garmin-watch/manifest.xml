@@ -10,7 +10,8 @@
 <iq:application id="06c14376-0c60-4e4c-a977-e93364ace3eb"
                 type="watch-app"
                 name="@Strings.AppName"
-                entry="RunBeatCompanionApp">
+                entry="RunBeatCompanionApp"
+                launcherIcon="@Drawables.LauncherIcon">
 
     <iq:products>
         <!-- Forerunner 245 / 255 / 265 / 955 / 965 -->
@@ -36,8 +37,6 @@
         <iq:uses-permission id="Communications"/>
         <!-- Accelerometer-based cadence sampling. -->
         <iq:uses-permission id="Sensor"/>
-        <!-- Step count / live cadence (Toybox.ActivityMonitor). -->
-        <iq:uses-permission id="ActivityMonitor"/>
         <!-- NOTE: no Media permission — music always plays on the phone, the
              watch only sends messages. -->
         <!-- NOTE: no FitContributor — this app is not a data field. -->
