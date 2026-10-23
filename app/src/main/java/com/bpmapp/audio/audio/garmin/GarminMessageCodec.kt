@@ -66,8 +66,8 @@ data class GarminAck(val command: String, val ok: Boolean)
  * protocol. No Garmin SDK imports — compiles and tests in every flavor.
  *
  * Decoding is deliberately tolerant, mirroring the watch-side parser:
- * malformed JSON, unknown message types and unknown fields yield null
- * instead of throwing.
+ * malformed JSON, unknown message types, unknown fields and missing or
+ * non-finite numeric fields yield null instead of throwing.
  */
 object GarminMessageCodec {
 
@@ -100,6 +100,10 @@ object GarminMessageCodec {
     private const val TYPE_STATE = "state"
     private const val TYPE_ACK = "ack"
 
+    // Sanity bound for cadence_delta / volume_delta: the watch sends ±1 per
+    // button press, so anything beyond this is a corrupt or hostile message.
+    private const val MAX_DELTA = 100
+
     // ---------------------------------------------------------------
     // Watch -> phone (commands)
     // ---------------------------------------------------------------
@@ -113,11 +117,15 @@ object GarminMessageCodec {
             TYPE_TOGGLE -> GarminCommand.Toggle
             TYPE_NEXT -> GarminCommand.Next
             TYPE_PREV -> GarminCommand.Prev
-            TYPE_CADENCE_SET -> GarminCommand.CadenceSet(obj.optDouble(KEY_CADENCE).toFloat())
-            TYPE_CADENCE_DELTA -> GarminCommand.CadenceDelta(obj.optInt(KEY_DELTA))
-            TYPE_CADENCE_USE_CURRENT -> GarminCommand.CadenceUseCurrent(obj.optDouble(KEY_CADENCE).toFloat())
+            TYPE_CADENCE_SET -> obj.optFiniteFloatOrNull(KEY_CADENCE)
+                ?.let { GarminCommand.CadenceSet(it) }
+            TYPE_CADENCE_DELTA -> obj.optDeltaOrNull(KEY_DELTA)
+                ?.let { GarminCommand.CadenceDelta(it) }
+            TYPE_CADENCE_USE_CURRENT -> obj.optFiniteFloatOrNull(KEY_CADENCE)
+                ?.let { GarminCommand.CadenceUseCurrent(it) }
             TYPE_SPEED_CORRECTION_TOGGLE -> GarminCommand.SpeedCorrectionToggle
-            TYPE_VOLUME_DELTA -> GarminCommand.VolumeDelta(obj.optInt(KEY_DELTA))
+            TYPE_VOLUME_DELTA -> obj.optDeltaOrNull(KEY_DELTA)
+                ?.let { GarminCommand.VolumeDelta(it) }
             TYPE_MARK_NOT_FOR_RUNNING -> GarminCommand.MarkNotForRunning
             else -> null
         }
@@ -183,7 +191,8 @@ object GarminMessageCodec {
         state.bpm?.let { obj.putCadence(KEY_BPM, it) }
         state.targetCadence?.let { obj.putCadence(KEY_TARGET_CADENCE, it) }
         state.speedCorrection?.let { obj.put(KEY_SPEED_CORRECTION, it) }
-        state.playbackSpeed?.let { obj.put(KEY_PLAYBACK_SPEED, it.toDouble()) }
+        state.playbackSpeed?.takeIf { it.isFinite() }
+            ?.let { obj.put(KEY_PLAYBACK_SPEED, it.toDouble()) }
         obj.put(KEY_VOLUME, state.volume)
         return obj.toString()
     }
@@ -221,11 +230,38 @@ object GarminMessageCodec {
     private fun JSONObject.optFloatOrNull(key: String): Float? =
         if (has(key) && !isNull(key)) getDouble(key).toFloat() else null
 
+    // optDouble returns NaN for missing or non-numeric fields; only accept a
+    // present, finite value so a malformed command decodes to null instead of
+    // poisoning downstream state with NaN.
+    private fun JSONObject.optFiniteFloatOrNull(key: String): Float? {
+        if (!has(key) || isNull(key)) return null
+        val value = optDouble(key).toFloat()
+        return if (value.isFinite()) value else null
+    }
+
+    // Same treatment for integer deltas: the field must be present, numeric,
+    // integral and within a sane range.
+    private fun JSONObject.optDeltaOrNull(key: String): Int? {
+        if (!has(key) || isNull(key)) return null
+        val value = optDouble(key)
+        if (!value.isFinite() || value % 1.0 != 0.0) return null
+        val delta = value.toInt()
+        return if (delta in -MAX_DELTA..MAX_DELTA) delta else null
+    }
+
     private fun JSONObject.optNullableBoolean(key: String): Boolean? =
         if (has(key) && !isNull(key)) getBoolean(key) else null
 
     // The watch formats cadence as a whole number when possible; write whole
     // floats as integers so encoded messages match the watch's own format.
+    // Non-finite values (NaN/Infinity) are skipped: org.json rejects them on
+    // the wire, and they must never reach the watch.
     private fun JSONObject.putCadence(key: String, value: Float): JSONObject =
-        if (value % 1f == 0f) put(key, value.toInt()) else put(key, value.toDouble())
+        if (!value.isFinite()) {
+            this
+        } else if (value % 1f == 0f) {
+            put(key, value.toInt())
+        } else {
+            put(key, value.toDouble())
+        }
 }
