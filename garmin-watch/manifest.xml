@@ -2,10 +2,9 @@
 <!--
   RunBeat companion watch app (Connect IQ / Monkey C).
 
-  The id below is a PLACEHOLDER. Replace it with the UUID Garmin assigns when
-  registering this app at https://developer.garmin.com/connect-iq/ — the phone
-  side (GarminCompanionManager) registers the same id. Keep in sync with the
-  _appId constant in source/RunBeatCompanionApp.mc.
+  The id below is the final registered IQ app UUID. Keep in sync with
+  GarminCompanionManager.IQ_APP_ID on the phone side (it registers the same
+  id with the Connect IQ Mobile SDK).
 -->
 <iq:application xmlns:iq="http://www.garmin.com/xml/connectiq"
                 id="06c14376-0c60-4e4c-a977-e93364ace3eb"

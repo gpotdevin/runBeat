@@ -57,7 +57,7 @@ messaging; Connect IQ is Garmin's supported channel. Rejected.
 |---------|-------------|-----|
 | Play control (play/pause/next/prev) | High | Watch button -> Connect IQ message -> `PlayerRepository.togglePlayPause()/playNext()/playPrevious()` (all exist). Free fallback via MediaSession (Option A). |
 | Adjust target cadence manually (watch UI) | High | Watch +/- buttons -> message -> `PlayerRepository.setTargetCadence()` / `incrementTargetCadence()` / `decrementTargetCadence()` (exist; clamped to 150-195 in code). |
-| Target cadence = avg cadence of last minute | High | The **watch** measures cadence (wrist-worn, most accurate source). Sample once per second via `Toybox.ActivityMonitor` into a 60-sample ring buffer; the dedicated button sends the rolling mean to the phone, which calls `setTargetCadence(mean)`. Phone-side step counting was considered and rejected (see below). |
+| Target cadence = avg cadence of last minute | High | The **watch** measures cadence (wrist-worn, most accurate source). Sample once per second (primary source: `Toybox.Sensor` `Sensor.getInfo().cadence`, accelerometer-based; last-resort fallback: step-delta from `ActivityMonitor.getInfo().steps`) into a 60-sample ring buffer; the dedicated button sends the rolling mean to the phone, which calls `setTargetCadence(mean)`. Phone-side step counting was considered and rejected (see below). |
 | Toggle speed correction | High | Message -> `PlayerRepository.toggleSpeedCorrection()` (exists; enable re-applies cadence-matched speed, disable restores 1.0x). |
 | Volume up/down | High | Message -> `exoPlayer.volume` +/- step (0.1), clamped [0, 1]. Small addition to `PlayerRepository`. Edge case: interaction with the mode-beep ducking (`volumeBeforeDuck` in `PlayerRepository`) — see [phone_app_changes.md](phone_app_changes.md). |
 | Mark current track as "not for running" | High | Message with current `trackId` (already in `MediaItem` extras) -> new `Track.notForRunning` Room column (migration 6->7) + `TrackDao` update + `PlayerRepository.removeTrackFromUpcoming()` + `playNext()` to **skip immediately** + filter flagged tracks when the play queue is built (settings toggle, default on). Wording in the app must make clear it means "does not feel right to run on", not "bad track". |
@@ -71,8 +71,9 @@ messaging; Connect IQ is Garmin's supported channel. Rejected.
 - A phone step counter would need `ACTIVITY_RECOGNITION` (Android 10+) plus
   a foreground service to count reliably with the screen off, and a phone in
   a pocket/bag underestimates cadence. The watch is on the wrist and exposes
-  cadence directly via `Toybox.ActivityMonitor` (`getLiveCadence()` on recent
-  API levels; per-second sampling of step deltas is the portable fallback).
+  cadence directly via `Toybox.Sensor` (`Sensor.getInfo().cadence`,
+  accelerometer-based; per-second sampling of step deltas from
+  `ActivityMonitor.getInfo().steps` is the coarse last-resort fallback).
 - This also keeps the project's privacy posture intact: no new phone
   permissions, no health-data collection on the phone
   (see `docs/PRIVACY.md`).
@@ -136,7 +137,8 @@ role Garmin's built-in music app plays.
    review).
 5. **Device API coverage.** Cadence APIs differ across devices/API levels;
    the watch app must declare a sensible `minSdk` (Connect IQ API level) and
-   fall back to step-delta sampling where `getLiveCadence()` is unavailable.
+   fall back to step-delta sampling from `ActivityMonitor.getInfo().steps`
+   when `Toybox.Sensor` is unavailable or returns no cadence.
    Target primary devices: Forerunner 245/255/265/955/965, fenix 7/8,
    epix, Venu 3 (all have accelerometer-based cadence and Connect IQ support).
 6. **Battery.** Sampling cadence at 1 Hz from the watch app is cheap; avoid
