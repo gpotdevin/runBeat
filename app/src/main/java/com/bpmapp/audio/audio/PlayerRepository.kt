@@ -111,6 +111,11 @@ class PlayerRepository @Inject constructor(
     // cannot mistake an already-ducked volume for the original one.
     private var volumeBeforeDuck: Float? = null
 
+    // Volume actually applied by the current mode-beep ducking (null = not
+    // ducked). The restore only fires while the player still holds this
+    // value, so a volume change made during the beeps is left untouched.
+    private var duckedVolumeApplied: Float? = null
+
     // Throttle for the periodic playback-state diagnostic log in the position
     // poller (at most one log every 5 seconds).
     private var lastPlaybackStateLogMs = 0L
@@ -510,14 +515,21 @@ class PlayerRepository @Inject constructor(
                     if (volumeBeforeDuck == null) volumeBeforeDuck = exoPlayer.volume
                     val duckedVolume = (volumeBeforeDuck!! * 0.3f).coerceIn(0f, 1f)
                     Log.d("PlayerRepository", "Mode beep duck: before=${volumeBeforeDuck}, ducked=$duckedVolume")
+                    duckedVolumeApplied = duckedVolume
                     exoPlayer.volume = duckedVolume
                 },
                 onFinish = {
-                    volumeBeforeDuck?.let {
-                        exoPlayer.volume = it
-                        Log.d("PlayerRepository", "Mode beep restore: volume=$it")
+                    val before = volumeBeforeDuck
+                    val ducked = duckedVolumeApplied
+                    // Restore only while the player still holds the ducked
+                    // volume; if the volume changed during the beeps, that
+                    // change wins and is left untouched.
+                    if (before != null && ducked != null && exoPlayer.volume == ducked) {
+                        exoPlayer.volume = before
+                        Log.d("PlayerRepository", "Mode beep restore: volume=$before")
                     }
                     volumeBeforeDuck = null
+                    duckedVolumeApplied = null
                 }
             )
         }
