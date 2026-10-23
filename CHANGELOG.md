@@ -36,6 +36,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   pushes playback state and acks back to the watch and reports the watch
   connection state, shown in Settings (garmin flavor only). The fdroid flavor
   is unchanged and stays free of Garmin SDK references.
+- **Garmin watch companion (robustness)**: the companion is now process-scoped
+  (started from the Application and the audio service, no longer tied to the
+  activity lifecycle, with no explicit shutdown); transient device-registration
+  failures retry with backoff; single-track "Add to Upcoming" honors the
+  "not for running" filter like the batch path; the watch only receives acks
+  for state-changing commands (cadence, speed correction, mark).
 
 ## [1.8] - 2026-10-17
 

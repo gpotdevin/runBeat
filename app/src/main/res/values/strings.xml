@@ -153,6 +153,7 @@
     <!-- Library snackbar messages -->
     <string name="library_bpm_analysis_complete">BPM analysis complete! Updated %1$d tracks</string>
     <string name="library_sync_complete">Successfully synced BPM to %1$d files</string>
+    <string name="library_add_filtered_not_for_running">Not added to Upcoming — track is marked \'Not for running\'</string>
 
     <!-- Library dialogs — Clear Library -->
     <string name="dialog_clear_library_title">Clear Library</string>

@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -100,7 +101,6 @@ import androidx.navigation.compose.rememberNavController
 import com.bpmapp.audio.R
 import com.bpmapp.audio.audio.CadenceMatcher
 import com.bpmapp.audio.audio.PlayerRepository
-import com.bpmapp.audio.audio.garmin.CompanionInitializer
 import com.bpmapp.audio.data.Track
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.ReorderableItemScope
@@ -133,9 +133,6 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var playerRepository: PlayerRepository
 
-    @Inject
-    lateinit var companionInitializer: CompanionInitializer
-
     private val notificationPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
     private val mediaPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
@@ -144,9 +141,6 @@ class MainActivity : ComponentActivity() {
 
         // The AudioService is started lazily by PlayerRepository when playback
         // actually begins, so the app does not run in the background when idle.
-
-        // Start the watch companion link (no-op in the fdroid flavor).
-        companionInitializer.initialize(this)
 
         requestNotificationPermissionIfNeeded()
         requestMediaPermissionIfNeeded()
@@ -264,13 +258,6 @@ class MainActivity : ComponentActivity() {
         if (PermissionUtils.hasReadMediaAudioPermission(this)) return
         mediaPermissionLauncher.launch(PermissionUtils.requiredReadMediaAudioPermission())
     }
-
-    override fun onDestroy() {
-        // Release the companion SDK listeners on termination (the Connect IQ SDK
-        // requires unregistering them); no-op in the fdroid flavor.
-        companionInitializer.shutdown()
-        super.onDestroy()
-    }
 }
 
 
@@ -285,6 +272,8 @@ fun PlayerScreenWrapper(
     playerViewModel: PlayerViewModel,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+
     var showLibrary by remember { mutableStateOf(false) }
     var selectedTrackForPlayback: Track? by remember { mutableStateOf(null) }
     var selectedTrackBpm: Int? by remember { mutableStateOf(null) }
@@ -307,11 +296,21 @@ fun PlayerScreenWrapper(
                 },
                 onBack = { showLibrary = false },
                 onAddToUpcoming = { track ->
-                    val mediaItem = libraryViewModel.getMediaItemForTrack(track)
-                    playerRepository.addToPlaylist(mediaItem)
-                    libraryViewModel.resolveBpmForTrackIfNeeded(track) { bpm ->
-                        if (bpm != null && bpm > 0) {
-                            playerViewModel.updateMusicBpm(bpm.roundToInt())
+                    // Same filter as the batch path: tracks marked "not for
+                    // running" are left out when the exclusion setting is on.
+                    val mediaItems = libraryViewModel.getPlayableMediaItems(listOf(track))
+                    if (mediaItems.isEmpty()) {
+                        Toast.makeText(
+                            context,
+                            R.string.library_add_filtered_not_for_running,
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    } else {
+                        playerRepository.addToPlaylist(mediaItems.first())
+                        libraryViewModel.resolveBpmForTrackIfNeeded(track) { bpm ->
+                            if (bpm != null && bpm > 0) {
+                                playerViewModel.updateMusicBpm(bpm.roundToInt())
+                            }
                         }
                     }
                 },
@@ -369,6 +368,7 @@ fun LibraryScreenWrapper(
     navController: NavHostController,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val playerViewModel: PlayerViewModel = hiltViewModel()
     val targetCadence = playerViewModel.targetCadence
 
@@ -384,11 +384,21 @@ fun LibraryScreenWrapper(
             },
             onBack = { navController.popBackStack() },
             onAddToUpcoming = { track ->
-                val mediaItem = libraryViewModel.getMediaItemForTrack(track)
-                playerRepository.addToPlaylist(mediaItem)
-                libraryViewModel.resolveBpmForTrackIfNeeded(track) { bpm ->
-                    if (bpm != null && bpm > 0) {
-                        playerViewModel.updateMusicBpm(bpm.roundToInt())
+                // Same filter as the batch path: tracks marked "not for
+                // running" are left out when the exclusion setting is on.
+                val mediaItems = libraryViewModel.getPlayableMediaItems(listOf(track))
+                if (mediaItems.isEmpty()) {
+                    Toast.makeText(
+                        context,
+                        R.string.library_add_filtered_not_for_running,
+                        Toast.LENGTH_SHORT
+                    ).show()
+                } else {
+                    playerRepository.addToPlaylist(mediaItems.first())
+                    libraryViewModel.resolveBpmForTrackIfNeeded(track) { bpm ->
+                        if (bpm != null && bpm > 0) {
+                            playerViewModel.updateMusicBpm(bpm.roundToInt())
+                        }
                     }
                 }
             },

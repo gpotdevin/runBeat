@@ -153,6 +153,7 @@
     <!-- Library snackbar messages -->
     <string name="library_bpm_analysis_complete">Analyse BPM terminée ! %1$d pistes mises à jour</string>
     <string name="library_sync_complete">Synchronisation BPM réussie vers %1$d fichiers</string>
+    <string name="library_add_filtered_not_for_running">Non ajouté à la file — piste marquée \'Pas pour courir\'</string>
 
     <!-- Library dialogs — Clear Library -->
     <string name="dialog_clear_library_title">Effacer la bibliothèque</string>

@@ -20,6 +20,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.bpmapp.audio.R
+import com.bpmapp.audio.audio.garmin.CompanionInitializer
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -57,6 +58,7 @@ class AudioService : MediaSessionService() {
 
     @Inject lateinit var playerRepository: PlayerRepository
     @Inject lateinit var exoPlayer: ExoPlayer
+    @Inject lateinit var companionInitializer: CompanionInitializer
 
     private lateinit var notificationManager: NotificationManager
     private lateinit var mediaSession: MediaSession
@@ -69,7 +71,12 @@ class AudioService : MediaSessionService() {
     override fun onCreate() {
         super.onCreate()
         Log.d("AudioService", "onCreate called")
-        
+
+        // Bring the watch companion up in service-started processes too; a
+        // no-op when the Application already initialized it (no-op in the
+        // fdroid flavor, which has no companion SDK).
+        companionInitializer.initialize(this)
+
         // Initialize notification manager
         notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         createNotificationChannel()
