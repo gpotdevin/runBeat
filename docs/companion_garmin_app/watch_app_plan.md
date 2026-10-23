@@ -70,7 +70,8 @@ select button (and/or per-page menus for devices with more buttons):
 2. **Cadence page** (RunBeat only — greyed out when `source != "RunBeat"`)
    - Big number: live 60-second average cadence (spm).
    - Target cadence display (from phone state).
-   - Select: nothing / menu entries:
+   - Select: use current as target (send `cadence_use_current` with the
+     ring buffer mean). Menu entries:
      - `+` / `-`: send `cadence_delta` (+1 / -1).
      - `Use current as target`: send `cadence_use_current` with the ring
        buffer mean.
