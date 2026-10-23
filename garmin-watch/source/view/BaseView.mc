@@ -1,38 +1,27 @@
-using Toybox.Graphics;
-using Toybox.System;
-using Toybox.WatchUi;
+import Toybox.Graphics;
+import Toybox.Lang;
+import Toybox.System;
+import Toybox.WatchUi;
 
-// Common behavior for the three pages: layout selection (square/round),
-// header label (with "Phone not connected" state), transient ack line,
-// page indicator, text truncation.
+// Common behavior for the three pages: header label (with "Phone not
+// connected" state), transient ack line, page indicator, text truncation.
+// Each subclass picks its square/round layout in onLayout().
 class BaseView extends WatchUi.View {
 
     var _state;                 // WatchState
     var _messages;              // MessageHandler
-    private var _layoutSquare;  // Rez.Layouts symbol
-    private var _layoutRound;   // Rez.Layouts symbol
 
-    function initialize(state, messages, layoutSquare, layoutRound) {
+    function initialize(state, messages) {
         View.initialize();
         _state = state;
         _messages = messages;
-        _layoutSquare = layoutSquare;
-        _layoutRound = layoutRound;
-    }
-
-    function onShow() as Void {
-        if (System.getDeviceSettings().screenShape == System.SCREEN_SHAPE_ROUND) {
-            WatchUi.setLayout(_layoutRound);
-        } else {
-            WatchUi.setLayout(_layoutSquare);
-        }
     }
 
     // Header label: shows "Phone not connected" while the phone is
     // unreachable, otherwise the given text/color.
     function updateHeader(normalText as String, normalColor as Number) as Void {
         if (!_state.phoneReachable) {
-            setHeaderLabel(Rez.Strings.PhoneNotConnected, Graphics.COLOR_YELLOW);
+            setHeaderLabel(WatchUi.loadResource(Rez.Strings.PhoneNotConnected) as String, Graphics.COLOR_YELLOW);
         } else {
             setHeaderLabel(normalText, normalColor);
         }
@@ -44,20 +33,20 @@ class BaseView extends WatchUi.View {
         if (_state.ackText.length() == 0) {
             return;
         }
-        dc.setColor(_state.ackIsError ? Graphics.COLOR_RED : Graphics.COLOR_GREEN);
+        dc.setColor(_state.ackIsError ? Graphics.COLOR_RED : Graphics.COLOR_GREEN, Graphics.COLOR_BLACK);
         dc.drawText(dc.getWidth() / 2, dc.getHeight() - 44, Graphics.FONT_SMALL,
             truncateToWidth(dc, _state.ackText, Graphics.FONT_SMALL, dc.getWidth() * 0.9),
             Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
     }
 
     function drawPageIndicator(dc as Dc, page as Number, total as Number) as Void {
-        dc.setColor(Graphics.COLOR_LIGHT_GRAY);
+        dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
         dc.drawText(dc.getWidth() / 2, dc.getHeight() - 22, Graphics.FONT_TINY,
             page.format("%d") + "/" + total.format("%d"),
             Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
     }
 
-    function truncateToWidth(dc as Dc, text as String, font, maxWidth as Number) as String {
+    function truncateToWidth(dc as Dc, text as String, font, maxWidth as Numeric) as String {
         if (dc.getTextWidthInPixels(text, font) <= maxWidth) {
             return text;
         }

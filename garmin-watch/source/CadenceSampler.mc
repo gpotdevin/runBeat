@@ -1,14 +1,16 @@
-using Toybox.ActivityMonitor;
-using Toybox.Sensor;
-using Toybox.System;
-using Toybox.Timer;
+import Toybox.ActivityMonitor;
+import Toybox.Lang;
+import Toybox.Sensor;
+import Toybox.System;
+import Toybox.Timer;
 
 // Samples cadence once per second into a CadenceRingBuffer.
 //
 // Primary source: Toybox.Sensor (accelerometer-based cadence; the Sensor
-// permission is declared in manifest.xml). Sensor.SENSOR_ACCELEROMETER is
-// enabled while the app is visible and disabled when it is hidden
-// (battery); each 1 Hz tick reads Sensor.getInfo().cadence (spm).
+// permission is declared in manifest.xml). The onboard accelerometer needs
+// NO enable call: each 1 Hz tick just reads Sensor.getInfo().cadence (spm;
+// Sensor.Info.cadence exists since API 1.0.0 — see the AccelMag sample,
+// which reads Sensor.getInfo() on a timer with only the Sensor permission).
 //
 // Last-resort fallback: steps-per-minute from the step-counter delta
 // between two ticks (ActivityMonitor.getInfo().steps). Coarse — with a
@@ -25,7 +27,6 @@ class CadenceSampler {
     private var _timer as Timer.Timer? = null;
     private var _lastSteps as Number = -1;
     private var _lastStepsAt as Number = 0;
-    private var _sensorsEnabled as Boolean = false;
 
     function initialize(buffer, onSample) {
         _buffer = buffer;
@@ -39,47 +40,16 @@ class CadenceSampler {
         }
         _lastSteps = -1;
         _lastStepsAt = 0;
-        onShow();
         var timer = new Timer.Timer();
         timer.start(method(:onTick), 1000, true);
         _timer = timer;
     }
 
     function stop() as Void {
-        onHide();
         var t = _timer;
         if (t != null) {
             (t as Timer.Timer).stop();
             _timer = null;
-        }
-    }
-
-    // Visibility hooks (battery): the accelerometer is powered only while
-    // the app is visible. start()/stop() route through these; the app or
-    // the views can also call them directly when visibility changes.
-    function onShow() as Void {
-        if (_sensorsEnabled || !(Toybox has :Sensor)) {
-            return;
-        }
-        try {
-            Sensor.setEnabledSensors([Sensor.SENSOR_ACCELEROMETER]);
-            _sensorsEnabled = true;
-        } catch (ex as Lang.Exception) {
-            // Enabling failed — the step-delta fallback still provides
-            // (coarse) cadence samples.
-        }
-    }
-
-    function onHide() as Void {
-        if (!_sensorsEnabled) {
-            return;
-        }
-        _sensorsEnabled = false;
-        try {
-            Sensor.setEnabledSensors([]);
-        } catch (ex as Lang.Exception) {
-            // Best effort — sensors are also released when the app
-            // process exits.
         }
     }
 
@@ -98,7 +68,7 @@ class CadenceSampler {
     // Current cadence in spm from the best available source, or null when
     // no source produced a value this tick.
     private function readCadence(now as Number) {
-        if (_sensorsEnabled) {
+        if (Toybox has :Sensor) {
             var cadence = sensorCadence();
             if (cadence != null) {
                 return cadence;
@@ -108,16 +78,12 @@ class CadenceSampler {
     }
 
     // Accelerometer-based cadence in spm (Toybox.Sensor), or null when
-    // there is no cadence data (e.g. standing still, or sensors off).
+    // there is no cadence data (e.g. standing still).
     private function sensorCadence() {
-        try {
-            var info = Sensor.getInfo();
-            if (info != null) {
-                var i = info as Sensor.Info;
-                return i.cadence;
-            }
-        } catch (ex as Lang.Exception) {
-            // Fall through — the step-delta fallback runs instead.
+        var info = Sensor.getInfo();
+        if (info != null) {
+            var i = info as Sensor.Info;
+            return i.cadence;
         }
         return null;
     }

@@ -1,7 +1,9 @@
-using Toybox.App;
-using Toybox.Communications;
-using Toybox.System;
-using Toybox.WatchUi;
+import Toybox.Application;
+import Toybox.Communications;
+import Toybox.Graphics;
+import Toybox.Lang;
+import Toybox.System;
+import Toybox.WatchUi;
 
 // RunBeat companion watch app (Connect IQ / Monkey C).
 //
@@ -9,7 +11,7 @@ using Toybox.WatchUi;
 // routing, any other music app on the phone). The watch never plays audio
 // itself; it only exchanges messages with the phone companion
 // (GarminCompanionManager, see docs/companion_garmin_app/architecture.md).
-class RunBeatCompanionApp extends Toybox.App.AppBase {
+class RunBeatCompanionApp extends Application.AppBase {
 
     private var _state;           // WatchState
     private var _cadenceBuffer;   // CadenceRingBuffer
@@ -17,7 +19,7 @@ class RunBeatCompanionApp extends Toybox.App.AppBase {
     private var _messages;        // MessageHandler
 
     function initialize() {
-        Toybox.App.AppBase.initialize();
+        Application.AppBase.initialize();
         _state = new WatchState();
         _cadenceBuffer = new CadenceRingBuffer();
         _cadenceSampler = new CadenceSampler(_cadenceBuffer, method(:onCadenceTick));
@@ -37,12 +39,15 @@ class RunBeatCompanionApp extends Toybox.App.AppBase {
     }
 
     function getInitialView() {
-        var pager = new WatchUi.SwitchableView([
-            new MainView(_state, _messages),
-            new CadenceView(_state, _messages, _cadenceBuffer),
-            new ControlView(_state, _messages),
-        ]);
-        return [pager, new RunBeatDelegate(pager, _state, _messages)];
+        // ViewLoop (API 3.4.0) replaces SwitchableView. Only a real fr245
+        // running CIQ 3.3.1 (< 3.4.0) takes the fallback: main page only.
+        if (WatchUi has :ViewLoop) {
+            var factory = new RunBeatViewLoopFactory(_state, _messages, _cadenceBuffer);
+            var viewLoop = new WatchUi.ViewLoop(factory,
+                {:page => 0, :wrap => true, :color => Graphics.COLOR_GREEN});
+            return [viewLoop, new RunBeatViewLoopDelegate(viewLoop)];
+        }
+        return [new MainView(_state, _messages), new RunBeatFallbackDelegate(_messages)];
     }
 
     function onCadenceTick() as Void {
@@ -51,72 +56,112 @@ class RunBeatCompanionApp extends Toybox.App.AppBase {
     }
 }
 
-// App-level input delegate: up/down switch pages, select or tap triggers the
-// current page's primary action, menu opens the current page's menu.
-class RunBeatDelegate extends WatchUi.InputDelegate {
+// ViewLoop factory: one view/delegate pair per page
+// (0 = MainView, 1 = CadenceView, 2 = ControlView).
+class RunBeatViewLoopFactory extends WatchUi.ViewLoopFactory {
 
-    private var _pager;      // WatchUi.SwitchableView
-    private var _state;      // WatchState
+    private var _state;           // WatchState
+    private var _messages;        // MessageHandler
+    private var _cadenceBuffer;   // CadenceRingBuffer
+
+    function initialize(state, messages, cadenceBuffer) {
+        ViewLoopFactory.initialize();
+        _state = state;
+        _messages = messages;
+        _cadenceBuffer = cadenceBuffer;
+    }
+
+    function getView(page as Number) as [ViewLoopFactory.Views] or [ViewLoopFactory.Views, ViewLoopFactory.Delegates] {
+        if (page == 1) {
+            var view = new CadenceView(_state, _messages, _cadenceBuffer);
+            return [view, new RunBeatPageDelegate(view,
+                new Rez.Menus.CadenceViewMenu(),
+                new CadenceViewMenuDelegate(view, _messages, _state))];
+        } else if (page == 2) {
+            var view = new ControlView(_state, _messages);
+            return [view, new RunBeatPageDelegate(view,
+                new Rez.Menus.ControlViewMenu(),
+                new ControlViewMenuDelegate(_messages, _state))];
+        }
+        var view = new MainView(_state, _messages);
+        return [view, new RunBeatPageDelegate(view,
+            new Rez.Menus.MainViewMenu(),
+            new MainViewMenuDelegate(_messages))];
+    }
+
+    function getSize() {
+        return 3;
+    }
+}
+
+// Per-page input delegate: select triggers the page's primary action, menu
+// pushes the page's menu (with its existing MenuInputDelegate).
+class RunBeatPageDelegate extends WatchUi.BehaviorDelegate {
+
+    private var _view;          // MainView | CadenceView | ControlView
+    private var _menu;          // WatchUi.Menu
+    private var _menuDelegate;  // WatchUi.MenuInputDelegate
+
+    function initialize(view, menu, menuDelegate) {
+        BehaviorDelegate.initialize();
+        _view = view;
+        _menu = menu;
+        _menuDelegate = menuDelegate;
+    }
+
+    function onSelect() as Boolean {
+        _view.onSelectPressed();
+        return true;
+    }
+
+    function onMenu() as Boolean {
+        WatchUi.pushView(_menu, _menuDelegate, WatchUi.SLIDE_IMMEDIATE);
+        return true;
+    }
+}
+
+// ViewLoop delegate: up/down (or swipe) cycle through the pages.
+class RunBeatViewLoopDelegate extends WatchUi.ViewLoopDelegate {
+
+    private var _viewLoop;   // WatchUi.ViewLoop
+
+    function initialize(viewLoop) {
+        ViewLoopDelegate.initialize(viewLoop);
+        _viewLoop = viewLoop;
+    }
+
+    function onNextView() as Boolean {
+        _viewLoop.changeView(WatchUi.ViewLoop.DIRECTION_NEXT);
+        return true;
+    }
+
+    function onPreviousView() as Boolean {
+        _viewLoop.changeView(WatchUi.ViewLoop.DIRECTION_PREVIOUS);
+        return true;
+    }
+}
+
+// Fallback input delegate for devices without ViewLoop support (a real
+// fr245 running CIQ 3.3.1 < 3.4.0): the main page only — select toggles
+// play/pause, menu opens the transport menu. Play control stays usable;
+// the cadence and control pages are unreachable on that one model.
+class RunBeatFallbackDelegate extends WatchUi.BehaviorDelegate {
+
     private var _messages;   // MessageHandler
 
-    function initialize(pager, state, messages) {
-        InputDelegate.initialize();
-        _pager = pager;
-        _state = state;
+    function initialize(messages) {
+        BehaviorDelegate.initialize();
         _messages = messages;
     }
 
-    function onKey(evt as WatchUi.KeyEvent) as Boolean {
-        var key = evt.getKey();
-        if (key == WatchUi.KEY_ENTER) {
-            return onSelect();
-        } else if (key == WatchUi.KEY_MENU) {
-            showMenu();
-            return true;
-        } else if (key == WatchUi.KEY_UP) {
-            _pager.previousView();
-            return true;
-        } else if (key == WatchUi.KEY_DOWN) {
-            _pager.nextView();
-            return true;
-        }
-        // BACK and everything else: default behavior (exit the app).
-        return false;
+    function onSelect() as Boolean {
+        _messages.sendToggle();
+        return true;
     }
 
-    function onTap(evt as WatchUi.TapEvent) as Boolean {
-        // Touch-first devices have no ENTER key: a tap triggers the same
-        // per-page primary action as select.
-        return onSelect();
-    }
-
-    private function onSelect() as Boolean {
-        var current = _pager.getCurrentView();
-        if (current instanceof MainView) {
-            (current as MainView).onSelectPressed();
-            return true;
-        } else if (current instanceof CadenceView) {
-            (current as CadenceView).onSelectPressed();
-            return true;
-        } else if (current instanceof ControlView) {
-            (current as ControlView).onSelectPressed();
-            return true;
-        }
-        return false;
-    }
-
-    private function showMenu() as Void {
-        var current = _pager.getCurrentView();
-        if (current instanceof MainView) {
-            WatchUi.pushView(new WatchUi.Menu(Rez.Menus.MainViewMenu),
-                new MainViewMenuDelegate(_messages), WatchUi.SLIDE_IMMEDIATE);
-        } else if (current instanceof CadenceView) {
-            WatchUi.pushView(new WatchUi.Menu(Rez.Menus.CadenceViewMenu),
-                new CadenceViewMenuDelegate(current as CadenceView, _messages, _state),
-                WatchUi.SLIDE_IMMEDIATE);
-        } else if (current instanceof ControlView) {
-            WatchUi.pushView(new WatchUi.Menu(Rez.Menus.ControlViewMenu),
-                new ControlViewMenuDelegate(_messages, _state), WatchUi.SLIDE_IMMEDIATE);
-        }
+    function onMenu() as Boolean {
+        WatchUi.pushView(new Rez.Menus.MainViewMenu(),
+            new MainViewMenuDelegate(_messages), WatchUi.SLIDE_IMMEDIATE);
+        return true;
     }
 }

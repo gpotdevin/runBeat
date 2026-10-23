@@ -1,5 +1,6 @@
-using Toybox.Graphics;
-using Toybox.WatchUi;
+import Toybox.Graphics;
+import Toybox.Lang;
+import Toybox.WatchUi;
 
 // Screen 1 — transport. Works for RunBeat AND external apps:
 // source label, track title (truncated), play/pause icon from state.
@@ -7,14 +8,22 @@ using Toybox.WatchUi;
 class MainView extends BaseView {
 
     function initialize(state, messages) {
-        BaseView.initialize(state, messages, Rez.Layouts.MainLayout, Rez.Layouts.MainLayoutRound);
+        BaseView.initialize(state, messages);
+    }
+
+    function onLayout(dc as Dc) as Void {
+        if (isRound()) {
+            setLayout(Rez.Layouts.MainLayoutRound(dc));
+        } else {
+            setLayout(Rez.Layouts.MainLayout(dc));
+        }
     }
 
     function onUpdate(dc as Dc) as Void {
         var w = dc.getWidth();
         var h = dc.getHeight();
 
-        dc.setColor(Graphics.COLOR_BLACK);
+        dc.setColor(Graphics.COLOR_BLACK, Graphics.COLOR_BLACK);
         dc.clear();
 
         // Header: where the audio is coming from (or "Phone not connected").
@@ -22,8 +31,8 @@ class MainView extends BaseView {
 
         // Play/pause icon.
         var iconH = isRound() ? 26 : 34;
-        var iconCenterY = h * 0.40;
-        dc.setColor(_state.isPlaying ? Graphics.COLOR_GREEN : Graphics.COLOR_WHITE);
+        var iconCenterY = (h * 0.40).toNumber();
+        dc.setColor(_state.isPlaying ? Graphics.COLOR_GREEN : Graphics.COLOR_WHITE, Graphics.COLOR_BLACK);
         if (_state.isPlaying) {
             drawPauseIcon(dc, w / 2, iconCenterY, iconH);
         } else {
@@ -31,8 +40,8 @@ class MainView extends BaseView {
         }
 
         // Track title (truncated to fit).
-        var title = _state.title.length() > 0 ? _state.title : Rez.Strings.NoValue;
-        dc.setColor(Graphics.COLOR_WHITE);
+        var title = _state.title.length() > 0 ? _state.title : WatchUi.loadResource(Rez.Strings.NoValue) as String;
+        dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_BLACK);
         dc.drawText(w / 2, h * 0.62, Graphics.FONT_MEDIUM,
             truncateToWidth(dc, title, Graphics.FONT_MEDIUM, w * 0.84),
             Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
@@ -40,7 +49,7 @@ class MainView extends BaseView {
         // RunBeat metadata: BPM and playback speed.
         var meta = metaText();
         if (meta.length() > 0) {
-            dc.setColor(Graphics.COLOR_LIGHT_GRAY);
+            dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
             dc.drawText(w / 2, h * 0.71, Graphics.FONT_TINY, meta,
                 Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
         }
@@ -56,13 +65,13 @@ class MainView extends BaseView {
 
     private function sourceLabelText() as String {
         if (_state.source == "RunBeat") {
-            return Rez.Strings.AppName;
+            return WatchUi.loadResource(Rez.Strings.AppName) as String;
         }
         if (_state.source.length() == 0 || _state.source == "none") {
-            return Rez.Strings.NoPlayback;
+            return WatchUi.loadResource(Rez.Strings.NoPlayback) as String;
         }
         if (_state.source == "external") {
-            return Rez.Strings.ExternalApp;
+            return WatchUi.loadResource(Rez.Strings.ExternalApp) as String;
         }
         // External app name pushed by the phone (optional notification access).
         return _state.source;
@@ -72,7 +81,7 @@ class MainView extends BaseView {
         if (_state.source == "RunBeat") {
             return Graphics.COLOR_GREEN;
         }
-        return Graphics.COLOR_LIGHT_GRAY;
+        return Graphics.COLOR_LT_GRAY;
     }
 
     private function metaText() as String {
@@ -82,14 +91,14 @@ class MainView extends BaseView {
         var parts = "";
         var bpm = _state.bpmText();
         if (bpm.length() > 0) {
-            parts = bpm + Rez.Strings.BpmSuffix;
+            parts = bpm + WatchUi.loadResource(Rez.Strings.BpmSuffix) as String;
         }
         var speed = _state.playbackSpeedText();
         if (speed.length() > 0) {
             if (parts.length() > 0) {
                 parts += "  ";
             }
-            parts += speed + Rez.Strings.SpeedSuffix;
+            parts += speed + WatchUi.loadResource(Rez.Strings.SpeedSuffix) as String;
         }
         return parts;
     }
@@ -133,8 +142,8 @@ class MainViewMenuDelegate extends WatchUi.MenuInputDelegate {
         _messages = messages;
     }
 
-    function onMenuItem(item as WatchUi.MenuItem) as Void {
-        switch (item.getId()) {
+    function onMenuItem(item as Symbol) as Void {
+        switch (item) {
             case :menu_next:
                 _messages.sendNext();
                 break;

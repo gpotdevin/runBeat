@@ -1,5 +1,6 @@
-using Toybox.Communications;
-using Toybox.WatchUi;
+import Toybox.Communications;
+import Toybox.Lang;
+import Toybox.WatchUi;
 
 // Message protocol (normative): docs/companion_garmin_app/architecture.md.
 //
@@ -71,12 +72,13 @@ class MessageHandler {
     // ---------------------------------------------------------------
 
     // Callback registered with Communications.registerForPhoneAppMessages().
-    function onPhoneMessage(msg as Communications.Message) as Void {
-        var payload = msg.payload;
-        if (!(payload instanceof String)) {
+    function onPhoneMessage(msg as Communications.PhoneAppMessage) as Void {
+        var data = msg.data;
+        if (!(data instanceof String)) {
             return;
         }
-        var dict = parseFlatObject(payload as String);
+        var payload = data as String;
+        var dict = parseFlatObject(payload);
         if (dict == null) {
             return;
         }
@@ -145,21 +147,21 @@ class MessageHandler {
             ok = okValue as Boolean;
         }
 
-        var text as String = "";
+        var text = "";
         var command = dict["command"];
         if (command instanceof String) {
             var cmd = command as String;
             if (cmd == "mark_not_for_running") {
-                text = ok ? Rez.Strings.AckMarked : Rez.Strings.AckMarkFailed;
+                text = ok ? WatchUi.loadResource(Rez.Strings.AckMarked) as String : WatchUi.loadResource(Rez.Strings.AckMarkFailed) as String;
             } else if (cmd == "cadence_use_current" || cmd == "cadence_set" || cmd == "cadence_delta") {
-                text = ok ? Rez.Strings.AckCadenceApplied : Rez.Strings.AckCadenceFailed;
+                text = ok ? WatchUi.loadResource(Rez.Strings.AckCadenceApplied) as String : WatchUi.loadResource(Rez.Strings.AckCadenceFailed) as String;
             } else if (cmd == "speed_correction_toggle") {
-                text = ok ? Rez.Strings.AckSpeedCorrection : Rez.Strings.AckFailed;
+                text = ok ? WatchUi.loadResource(Rez.Strings.AckSpeedCorrection) as String : WatchUi.loadResource(Rez.Strings.AckFailed) as String;
             } else {
-                text = ok ? Rez.Strings.AckOk : Rez.Strings.AckFailed;
+                text = ok ? WatchUi.loadResource(Rez.Strings.AckOk) as String : WatchUi.loadResource(Rez.Strings.AckFailed) as String;
             }
         } else {
-            text = ok ? Rez.Strings.AckOk : Rez.Strings.AckFailed;
+            text = ok ? WatchUi.loadResource(Rez.Strings.AckOk) as String : WatchUi.loadResource(Rez.Strings.AckFailed) as String;
         }
 
         _state.setAck(text, !ok);
@@ -168,16 +170,9 @@ class MessageHandler {
     }
 
     private function sendJson(json as String) as Void {
-        try {
-            Communications.transmit(json);
-        } catch (ex as Lang.Exception) {
-            // Phone unreachable (no Garmin Connect Mobile link, companion not
-            // running, ...). Surfaced as "Phone not connected"; the next
-            // incoming message marks the phone reachable again.
-            _state.markPhoneUnreachable();
-            _state.setAck(Rez.Strings.PhoneNotConnected, true);
-            WatchUi.requestUpdate();
-        }
+        // transmit() reports failure through the ConnectionListener's
+        // onError() (Monkey C has no try/catch).
+        Communications.transmit(json, null, new RunBeatConnectionListener(_state));
     }
 
     private function optionalFloat(dict as Dictionary, key as String) as Float? {
@@ -389,5 +384,28 @@ class MessageHandler {
             i++;
         }
         return -1;
+    }
+}
+
+// Transmit result listener (reference: samples/Comm CommListener). A failed
+// send means the phone is unreachable (no Garmin Connect Mobile link,
+// companion not running, ...). Surfaced as "Phone not connected"; the next
+// incoming message marks the phone reachable again.
+class RunBeatConnectionListener extends Communications.ConnectionListener {
+
+    private var _state;   // WatchState
+
+    function initialize(state) {
+        Communications.ConnectionListener.initialize();
+        _state = state;
+    }
+
+    function onComplete() as Void {
+    }
+
+    function onError() as Void {
+        _state.markPhoneUnreachable();
+        _state.setAck(WatchUi.loadResource(Rez.Strings.PhoneNotConnected) as String, true);
+        WatchUi.requestUpdate();
     }
 }

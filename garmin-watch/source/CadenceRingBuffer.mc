@@ -2,6 +2,8 @@
 // Each sample is { "value" => spm, "timestamp" => System.getTimer() ms }.
 // One sample per second, so 60 slots cover a rolling 60-second window.
 
+import Toybox.Lang;
+
 class CadenceRingBuffer {
 
     private var _slots as Array = new [60];

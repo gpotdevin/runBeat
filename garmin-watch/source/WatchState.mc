@@ -1,4 +1,5 @@
-using Toybox.System;
+import Toybox.Lang;
+import Toybox.System;
 
 // Plain data holder for the latest phone state plus transient UI feedback.
 // Updated by MessageHandler from incoming "state"/"ack" messages
