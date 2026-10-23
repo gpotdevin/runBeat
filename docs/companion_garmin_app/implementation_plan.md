@@ -99,7 +99,7 @@ Date: 2026-10-22
 | Garmin Connect Mobile not installed / logged out | Medium | High (companion dead; basic MediaSession control still works) | Clear in-app status; document requirement; graceful watch UX |
 | Proprietary SDK breaks F-Droid reproducible build | Medium | High | `garmin`/`fdroid` flavors; F-Droid build never resolves the SDK |
 | Phone doze delays message delivery | Medium | Medium | Document; state push on change (no polling); acceptable for a run remote |
-| `getLiveCadence()` unavailable on some devices | Medium | Low | Step-delta fallback in `CadenceSampler`; simulator + real-device tests |
+| `Toybox.Sensor` unavailable on some devices | Medium | Low | Step-delta fallback (`ActivityMonitor.getInfo().steps`) in `CadenceSampler`; simulator + real-device tests |
 | Mode-beep volume restore clobbers user volume change | Low | Low | Multiplier-based ducking fix in Phase 1 |
 | IQ Store review delays (if pursued) | Medium | Low (sideload path unaffected) | Submit early; keep sideload instructions in docs |
 | Watch battery drain | Low | Medium | 1 Hz sampling only; no continuous phone traffic |

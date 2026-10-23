@@ -92,7 +92,7 @@ SDK-free.
 
 | Component | Responsibility |
 |-----------|----------------|
-| `CadenceSampler` | Once per second, read cadence (`Toybox.ActivityMonitor.getLiveCadence()`, fallback: step-delta from `ActivityMonitor.getInfo()`), push into ring buffer. |
+| `CadenceSampler` | Once per second, read cadence (primary source: `Toybox.Sensor` `Sensor.getInfo().cadence`, accelerometer-based, `Sensor` permission; last-resort fallback: step-delta from `ActivityMonitor.getInfo().steps`), push into ring buffer. |
 | `CadenceRingBuffer` | Fixed-size (60) circular buffer; `mean()` over samples not older than 60 s. |
 | `MessageHandler` | Parse phone->watch state messages; send watch->phone commands. |
 | Views (pages) | Main control page, cadence page, settings/toggles page — see [watch_app_plan.md](watch_app_plan.md). |
