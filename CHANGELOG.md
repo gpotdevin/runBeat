@@ -25,6 +25,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   dispatcher for controlling other music apps, and a no-op companion
   initializer — lives in the main source set and is unit-tested in every
   flavor.
+- **Garmin watch companion (manager)**: the `garmin` flavor now links the watch
+  to the player through Garmin Connect Mobile. Watch commands (transport,
+  cadence target, speed correction, volume, mark "not for running") are routed
+  by the new SDK-free `GarminCommandRouter` (main source set, unit-tested in
+  every flavor): to RunBeat while it is playing or buffering, to the phone's
+  current music app via media key events otherwise; volume always adjusts the
+  global media stream. Only the thin Connect IQ SDK shell
+  (`GarminCompanionManager`, garmin source set) imports `com.garmin.*`; it
+  pushes playback state and acks back to the watch and reports the watch
+  connection state, shown in Settings (garmin flavor only). The fdroid flavor
+  is unchanged and stays free of Garmin SDK references.
 
 ## [1.8] - 2026-10-17
 

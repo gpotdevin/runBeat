@@ -303,12 +303,17 @@
     <string name="settings_section_help">HELP</string>
     <string name="settings_section_about">ABOUT</string>
     <string name="settings_section_language">LANGUAGE</string>
+    <string name="settings_section_garmin">GARMIN</string>
     <string name="settings_auto_apply_title">Auto-Apply Cadence Match</string>
     <string name="settings_auto_apply_desc">Automatically apply cadence matching when track changes</string>
     <string name="settings_auto_scan_title">Auto-Scan on Startup</string>
     <string name="settings_auto_scan_desc">Automatically scan for new tracks when app starts</string>
     <string name="settings_exclude_not_for_running_title">Exclude tracks marked \'not for running\' from playback</string>
     <string name="settings_exclude_not_for_running_desc">Tracks marked \'Not for running\' stay in your library but are left out of the play queue</string>
+    <string name="settings_garmin_watch_title">Garmin watch</string>
+    <string name="settings_garmin_watch_connected">Connected</string>
+    <string name="settings_garmin_watch_connecting">Connecting…</string>
+    <string name="settings_garmin_watch_disconnected">Not connected</string>
     <string name="settings_dynamic_colors_title">Dynamic Colors</string>
     <string name="settings_dynamic_colors_desc">Use system dynamic colors (Android 12+)</string>
     <string name="settings_import_csv_title">Import CSV</string>

@@ -9,10 +9,18 @@ import android.content.Context
  *
  * The main source set ships [NoopCompanionInitializer] (used by the fdroid
  * flavor, which has no companion SDK). The garmin flavor provides the real
- * implementation backed by the Connect IQ Mobile SDK (added in a later phase).
+ * implementation backed by the Connect IQ Mobile SDK.
  */
 interface CompanionInitializer {
     fun initialize(context: Context)
+
+    /**
+     * Releases companion resources (the Connect IQ SDK requires unregistering
+     * its listeners on app termination). No-op by default.
+     */
+    fun shutdown() {
+        // Nothing to release by default.
+    }
 }
 
 /**

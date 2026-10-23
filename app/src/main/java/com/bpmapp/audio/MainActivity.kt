@@ -100,6 +100,7 @@ import androidx.navigation.compose.rememberNavController
 import com.bpmapp.audio.R
 import com.bpmapp.audio.audio.CadenceMatcher
 import com.bpmapp.audio.audio.PlayerRepository
+import com.bpmapp.audio.audio.garmin.CompanionInitializer
 import com.bpmapp.audio.data.Track
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.ReorderableItemScope
@@ -132,15 +133,21 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var playerRepository: PlayerRepository
 
+    @Inject
+    lateinit var companionInitializer: CompanionInitializer
+
     private val notificationPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
     private val mediaPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
+
         // The AudioService is started lazily by PlayerRepository when playback
         // actually begins, so the app does not run in the background when idle.
-        
+
+        // Start the watch companion link (no-op in the fdroid flavor).
+        companionInitializer.initialize(this)
+
         requestNotificationPermissionIfNeeded()
         requestMediaPermissionIfNeeded()
         
@@ -256,6 +263,13 @@ class MainActivity : ComponentActivity() {
     private fun requestMediaPermissionIfNeeded() {
         if (PermissionUtils.hasReadMediaAudioPermission(this)) return
         mediaPermissionLauncher.launch(PermissionUtils.requiredReadMediaAudioPermission())
+    }
+
+    override fun onDestroy() {
+        // Release the companion SDK listeners on termination (the Connect IQ SDK
+        // requires unregistering them); no-op in the fdroid flavor.
+        companionInitializer.shutdown()
+        super.onDestroy()
     }
 }
 

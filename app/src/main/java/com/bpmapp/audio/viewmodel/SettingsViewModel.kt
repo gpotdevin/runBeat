@@ -7,7 +7,10 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.bpmapp.audio.BuildConfig
 import com.bpmapp.audio.audio.PlayerRepository
+import com.bpmapp.audio.audio.garmin.GarminConnectionState
+import com.bpmapp.audio.audio.garmin.GarminWatchConnection
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -68,6 +71,11 @@ class SettingsViewModel @Inject constructor(
     // Appearance settings
     private val _dynamicColors = MutableStateFlow(getDynamicColors())
     val dynamicColors: StateFlow<Boolean> = _dynamicColors.asStateFlow()
+
+    // Garmin watch companion (garmin flavor only; the fdroid flavor has no
+    // companion SDK and must not show the section).
+    val isGarminFlavor: Boolean = BuildConfig.FLAVOR == "garmin"
+    val garminConnectionState: StateFlow<GarminConnectionState> = GarminWatchConnection.state
 
     // Playback: rhythm-mode beep signal at track start (delegated to the repository,
     // which is the single source of truth at playback time).
