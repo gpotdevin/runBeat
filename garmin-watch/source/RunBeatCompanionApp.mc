@@ -11,11 +11,6 @@ using Toybox.WatchUi;
 // (GarminCompanionManager, see docs/companion_garmin_app/architecture.md).
 class RunBeatCompanionApp extends Toybox.App.AppBase {
 
-    // PLACEHOLDER — replace with the UUID Garmin assigns when registering this
-    // app (https://developer.garmin.com/connect-iq/). The phone side registers
-    // the same id. Must match the id in manifest.xml.
-    private var _appId as String = "00000000-0000-0000-0000-000000000000";
-
     private var _state;           // WatchState
     private var _cadenceBuffer;   // CadenceRingBuffer
     private var _cadenceSampler;  // CadenceSampler
@@ -34,7 +29,7 @@ class RunBeatCompanionApp extends Toybox.App.AppBase {
         Communications.registerForPhoneAppMessages(_messages.method(:onPhoneMessage));
         // 1 Hz cadence sampling (also drives the 1 Hz screen refresh).
         _cadenceSampler.start();
-        System.println("RunBeat companion started (IQ app id: " + _appId + ")");
+        System.println("RunBeat companion started");
     }
 
     function onStop(state as Dictionary?) as Void {
@@ -56,8 +51,8 @@ class RunBeatCompanionApp extends Toybox.App.AppBase {
     }
 }
 
-// App-level input delegate: up/down switch pages, select triggers the current
-// page's primary action, menu opens the current page's menu.
+// App-level input delegate: up/down switch pages, select or tap triggers the
+// current page's primary action, menu opens the current page's menu.
 class RunBeatDelegate extends WatchUi.InputDelegate {
 
     private var _pager;      // WatchUi.SwitchableView
@@ -87,6 +82,12 @@ class RunBeatDelegate extends WatchUi.InputDelegate {
         }
         // BACK and everything else: default behavior (exit the app).
         return false;
+    }
+
+    function onTap(evt as WatchUi.TapEvent) as Boolean {
+        // Touch-first devices have no ENTER key: a tap triggers the same
+        // per-page primary action as select.
+        return onSelect();
     }
 
     private function onSelect() as Boolean {
