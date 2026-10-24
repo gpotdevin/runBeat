@@ -5,6 +5,7 @@ package com.bpmapp.audio.viewmodel
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.bpmapp.audio.audio.PlayerRepository
+import com.bpmapp.audio.audio.garmin.NoopCompanionInitializer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -48,7 +49,8 @@ class SettingsViewModelNotForRunningTest {
         Dispatchers.resetMain()
     }
 
-    private fun newViewModel(): SettingsViewModel = SettingsViewModel(context, playerRepository)
+    private fun newViewModel(): SettingsViewModel =
+        SettingsViewModel(context, playerRepository, NoopCompanionInitializer)
 
     @Test
     fun excludeNotForRunningTracks_defaultsToTrueWhenUnset() {

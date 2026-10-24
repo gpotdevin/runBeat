@@ -28,6 +28,46 @@ reuse it for any other target device.
   contains the Connect IQ Mobile SDK; the `fdroid` flavor cannot talk
   to the watch.
 
+## Simulator testing (PC)
+
+The watch app can also be tested on a PC with the **Connect IQ
+simulator**, without a real watch and without Garmin Connect Mobile.
+This path uses the IQ Mobile SDK's BLE-simulation-over-ADB transport
+(the `TETHERED` connect type — the SDK has no separate "simulator"
+connect type; its `AdbConnection` talks to local port 7381).
+
+Setup:
+
+1. Install the Connect IQ SDK (the SDK whose Mobile SDK the garmin
+   flavor depends on) and launch `<ConnectIQ SDK>/bin/simulator.exe`.
+2. Select the **venu2** device profile (the primary target device of
+   `garmin-watch/`).
+3. Load the watch app: drag `venu2.prg` onto the simulator's watch
+   window, or run `monkeydo venu2.prg venu2` from the SDK's `bin/`
+   directory.
+
+Standalone testing (no phone attached): the app comes up and the UI
+can be exercised — the 3-screen swipe navigation, the menus, and the
+"Phone not connected" state shown while nothing answers on the ADB
+port.
+
+End-to-end testing (simulated watch <-> phone):
+
+1. Connect the phone over USB and enable USB debugging.
+2. Install the **garmin-flavor debug APK** (`:app:assembleGarminDebug`).
+   The fdroid flavor cannot talk to the simulator (it has no Connect IQ
+   SDK).
+3. In RunBeat, open Settings > GARMIN and turn ON **"Use Connect IQ
+   simulator (ADB)"** (debug builds only — keep it OFF for a real
+   watch).
+4. Forward the simulator port: `adb forward tcp:7381 tcp:7381`.
+5. In the simulator, use the **Connection** menu > **Start** (shortcut
+   CTRL-F1) to begin the BLE simulation.
+
+No Garmin Connect Mobile is needed on this path — the phone talks to
+the simulator directly over ADB. Most of the test checklist below also
+applies to a simulator run.
+
 ## Prerequisites
 
 - Garmin Connect Mobile (GCM) installed and logged in on the phone —

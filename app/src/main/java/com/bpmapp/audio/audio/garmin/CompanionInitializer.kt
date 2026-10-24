@@ -22,6 +22,16 @@ interface CompanionInitializer {
     fun shutdown() {
         // Nothing to release by default.
     }
+
+    /**
+     * Called when the developer-only "Connect IQ simulator (ADB)" setting
+     * changes (debug builds only). The default no-op covers builds without
+     * the companion SDK; the garmin flavor recreates the ConnectIQ instance
+     * with the new connect type.
+     */
+    fun onSimulatorAdbModeChanged(enabled: Boolean) {
+        // Nothing to do by default.
+    }
 }
 
 /**

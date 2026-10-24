@@ -315,6 +315,8 @@
     <string name="settings_garmin_watch_connected">Connected</string>
     <string name="settings_garmin_watch_connecting">Connecting…</string>
     <string name="settings_garmin_watch_disconnected">Not connected</string>
+    <string name="settings_garmin_simulator_adb_title">Use Connect IQ simulator (ADB)</string>
+    <string name="settings_garmin_simulator_adb_desc">Test with the Connect IQ simulator on a PC (needs USB debugging and \"adb forward tcp:7381 tcp:7381\"). Keep OFF for a real watch.</string>
     <string name="settings_dynamic_colors_title">Dynamic Colors</string>
     <string name="settings_dynamic_colors_desc">Use system dynamic colors (Android 12+)</string>
     <string name="settings_import_csv_title">Import CSV</string>

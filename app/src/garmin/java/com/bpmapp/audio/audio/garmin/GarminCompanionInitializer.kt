@@ -21,10 +21,17 @@ class GarminCompanionInitializer @Inject constructor(
 ) : GarminCompanionStarter {
 
     override fun initialize(context: Context) {
+        // Apply the persisted developer setting before the first initialize:
+        // the manager creates its ConnectIQ instance lazily with this type.
+        manager.setSimulatorAdbMode(SimulatorAdbMode.isEnabled(context))
         manager.initialize()
     }
 
     override fun shutdown() {
         manager.shutdown()
+    }
+
+    override fun onSimulatorAdbModeChanged(enabled: Boolean) {
+        manager.setSimulatorAdbMode(enabled)
     }
 }

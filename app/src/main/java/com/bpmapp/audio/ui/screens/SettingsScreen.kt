@@ -45,6 +45,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.bpmapp.audio.BuildConfig
 import com.bpmapp.audio.R
 import com.bpmapp.audio.audio.garmin.GarminConnectionState
 import com.bpmapp.audio.ui.theme.AppSpacing
@@ -73,6 +74,7 @@ fun SettingsScreen(
     val excludeNotForRunningTracks by viewModel.excludeNotForRunningTracks.collectAsState()
     val dynamicColors by viewModel.dynamicColors.collectAsState()
     val garminConnectionState by viewModel.garminConnectionState.collectAsState()
+    val simulatorAdbMode by viewModel.simulatorAdbMode.collectAsState()
     val garminStatusText = when (garminConnectionState) {
         GarminConnectionState.CONNECTED -> stringResource(R.string.settings_garmin_watch_connected)
         GarminConnectionState.CONNECTING -> stringResource(R.string.settings_garmin_watch_connecting)
@@ -211,6 +213,19 @@ fun SettingsScreen(
                         description = garminStatusText
                     ) {
                         // Display only - no interactive element
+                    }
+                    // Developer toggle (debug builds only): Connect IQ simulator over ADB.
+                    if (BuildConfig.DEBUG) {
+                        SettingItem(
+                            title = stringResource(R.string.settings_garmin_simulator_adb_title),
+                            description = stringResource(R.string.settings_garmin_simulator_adb_desc)
+                        ) {
+                            Switch(
+                                checked = simulatorAdbMode,
+                                onCheckedChange = { viewModel.setSimulatorAdbMode(it) },
+                                modifier = Modifier.padding(end = AppSpacing.sm)
+                            )
+                        }
                     }
                 }
             }

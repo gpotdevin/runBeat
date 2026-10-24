@@ -315,6 +315,8 @@
     <string name="settings_garmin_watch_connected">Connectée</string>
     <string name="settings_garmin_watch_connecting">Connexion…</string>
     <string name="settings_garmin_watch_disconnected">Non connectée</string>
+    <string name="settings_garmin_simulator_adb_title">Utiliser le simulateur Connect IQ (ADB)</string>
+    <string name="settings_garmin_simulator_adb_desc">Tester avec le simulateur Connect IQ sur PC (débogage USB requis et \"adb forward tcp:7381 tcp:7381\"). Laisser désactivé pour une vraie montre.</string>
     <string name="settings_dynamic_colors_title">Couleurs dynamiques</string>
     <string name="settings_dynamic_colors_desc">Utiliser les couleurs dynamiques du système (Android 12+)</string>
     <string name="settings_import_csv_title">Importer un CSV</string>

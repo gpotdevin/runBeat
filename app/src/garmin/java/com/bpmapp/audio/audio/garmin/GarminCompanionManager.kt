@@ -58,6 +58,10 @@ import javax.inject.Singleton
  * callback: the OS reclaims the SDK's receivers and service bindings when the
  * process dies. [shutdown] remains as the release path (it also cancels
  * pending device-refresh retries) but nothing invokes it.
+ *
+ * Debug builds only: [setSimulatorAdbMode] switches the ConnectIQ instance
+ * between WIRELESS (real watch via Garmin Connect Mobile) and TETHERED (the
+ * SDK's BLE simulation over ADB, for the Connect IQ simulator on a PC).
  */
 @Singleton
 class GarminCompanionManager @Inject constructor(
@@ -71,9 +75,21 @@ class GarminCompanionManager @Inject constructor(
     /** Watch connection state, mirrored to the main source set for the UI. */
     val connectionState: StateFlow<GarminConnectionState> = GarminWatchConnection.state
 
-    private val connectIQ: ConnectIQ by lazy {
-        ConnectIQ.getInstance(context, ConnectIQ.IQConnectType.WIRELESS)
-    }
+    // Debug-only developer setting: talk to the Connect IQ simulator on a PC
+    // over ADB instead of to a real watch via Garmin Connect Mobile.
+    private var simulatorAdbMode = false
+    private var connectIQInstance: ConnectIQ? = null
+
+    private val connectIQ: ConnectIQ
+        get() = connectIQInstance ?: createConnectIQ().also { connectIQInstance = it }
+
+    private fun createConnectIQ(): ConnectIQ = ConnectIQ.getInstance(
+        context,
+        // TETHERED is the SDK's BLE-simulation-over-ADB strategy (AdbConnection,
+        // default port 7381) used to talk to the Connect IQ simulator on a PC;
+        // WIRELESS talks to a real watch through Garmin Connect Mobile.
+        if (simulatorAdbMode) ConnectIQ.IQConnectType.TETHERED else ConnectIQ.IQConnectType.WIRELESS,
+    )
     private val iqApp: IQApp by lazy { IQApp(IQ_APP_ID) }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -148,6 +164,26 @@ class GarminCompanionManager @Inject constructor(
         devices.clear()
         deviceStatuses.clear()
         GarminWatchConnection.update(GarminConnectionState.DISCONNECTED)
+    }
+
+    /**
+     * Switches the Connect IQ connection between a real watch (WIRELESS, via
+     * Garmin Connect Mobile) and the Connect IQ simulator on a PC (TETHERED —
+     * the SDK's BLE simulation over ADB; needs USB debugging and
+     * `adb forward tcp:7381 tcp:7381`, no GCM). Debug builds only.
+     *
+     * Re-creates the ConnectIQ instance with the new connect type and
+     * re-initializes it when the companion was running; the SDK's
+     * getInstance shuts the previous instance down when the type changes.
+     */
+    fun setSimulatorAdbMode(enabled: Boolean) {
+        if (simulatorAdbMode == enabled) return
+        simulatorAdbMode = enabled
+        Log.i(TAG, "Connect IQ simulator (ADB) mode ${if (enabled) "enabled" else "disabled"}; re-creating ConnectIQ instance")
+        val wasInitialized = initializeCalled
+        if (wasInitialized) shutdown()
+        connectIQInstance = null
+        if (wasInitialized) initialize()
     }
 
     // ---------------------------------------------------------------

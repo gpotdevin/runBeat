@@ -9,8 +9,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bpmapp.audio.BuildConfig
 import com.bpmapp.audio.audio.PlayerRepository
+import com.bpmapp.audio.audio.garmin.CompanionInitializer
 import com.bpmapp.audio.audio.garmin.GarminConnectionState
 import com.bpmapp.audio.audio.garmin.GarminWatchConnection
+import com.bpmapp.audio.audio.garmin.SimulatorAdbMode
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,7 +29,8 @@ import javax.inject.Inject
 @SuppressLint("StaticFieldLeak") // @ApplicationContext field is application-scoped
 class SettingsViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val playerRepository: PlayerRepository
+    private val playerRepository: PlayerRepository,
+    private val companionInitializer: CompanionInitializer,
 ) : ViewModel() {
     
     companion object {
@@ -76,6 +79,11 @@ class SettingsViewModel @Inject constructor(
     // companion SDK and must not show the section).
     val isGarminFlavor: Boolean = BuildConfig.FLAVOR == "garmin"
     val garminConnectionState: StateFlow<GarminConnectionState> = GarminWatchConnection.state
+
+    // Developer setting (debug builds, garmin flavor): talk to the Connect IQ
+    // simulator on a PC over ADB instead of to a real watch via GCM.
+    private val _simulatorAdbMode = MutableStateFlow(SimulatorAdbMode.isEnabled(context))
+    val simulatorAdbMode: StateFlow<Boolean> = _simulatorAdbMode.asStateFlow()
 
     // Playback: rhythm-mode beep signal at track start (delegated to the repository,
     // which is the single source of truth at playback time).
@@ -126,6 +134,14 @@ class SettingsViewModel @Inject constructor(
 
     fun setModeBeepSignal(value: Boolean) {
         playerRepository.setModeBeepSignal(value)
+    }
+
+    fun setSimulatorAdbMode(enabled: Boolean) {
+        viewModelScope.launch {
+            _simulatorAdbMode.value = enabled
+            SimulatorAdbMode.setEnabled(context, enabled)
+            companionInitializer.onSimulatorAdbModeChanged(enabled)
+        }
     }
     
     // Get version info
