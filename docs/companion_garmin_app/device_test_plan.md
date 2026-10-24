@@ -20,8 +20,13 @@ reuse it for any other target device.
   never valid for the Connect IQ store.
 - **Phone app:** the **garmin** flavor APK — Gradle task
   `:app:assembleGarminDebug`, applicationId
-  `com.RunBeat.run.audio.garmin`. Only this flavor contains the Connect
-  IQ Mobile SDK; the `fdroid` flavor cannot talk to the watch.
+  `com.RunBeat.run.audio` (same applicationId as the fdroid flavor: the
+  garmin build is the same app WITH the Connect IQ integration, so the
+  two flavors are not co-installable — installing the garmin APK
+  replaces the fdroid build, and if the signatures differ Android
+  requires uninstalling the other build first). Only this flavor
+  contains the Connect IQ Mobile SDK; the `fdroid` flavor cannot talk
+  to the watch.
 
 ## Prerequisites
 

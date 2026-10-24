@@ -156,7 +156,11 @@ testing.
 - [ ] Connect IQ Store submission (screenshots, privacy/data disclosure,
       review loop) — only if public distribution is wanted.
 - [ ] Release APKs: `garmin` flavor on GitHub releases; F-Droid keeps the
-      `fdroid` flavor.
+      `fdroid` flavor. Both flavors share the applicationId
+      `com.RunBeat.run.audio` (the garmin build is the same app WITH the
+      Connect IQ integration), so they are not co-installable: a GitHub
+      release must be installed after uninstalling the F-Droid build if
+      the signatures differ.
 
 ## Effort estimate
 

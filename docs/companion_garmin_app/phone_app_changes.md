@@ -246,10 +246,7 @@ android {
     flavorDimensions += 'companion'
     productFlavors {
         fdroid { dimension 'companion' }   // default, no Garmin SDK
-        garmin {
-            dimension 'companion'
-            // applicationIdSuffix '.garmin' (optional)
-        }
+        garmin { dimension 'companion' }   // adds the Connect IQ Mobile SDK
     }
 }
 
@@ -257,6 +254,14 @@ dependencies {
     garminImplementation 'com.garmin.connectiq:ciq-companion-app-sdk:<latest>'
 }
 ```
+
+Both flavors share the applicationId `com.RunBeat.run.audio` (no
+`applicationIdSuffix`): the garmin flavor is the same app WITH the Connect
+IQ integration under the main name, and the fdroid flavor is the same app
+WITHOUT it (what F-Droid ships). The two flavors are therefore not
+co-installable side by side — a garmin build replaces the fdroid build
+(and if the signatures differ, Android requires uninstalling the other
+build first).
 
 The SDK (`com.garmin.connectiq:ciq-companion-app-sdk`) is published on Maven
 Central, which the module already declares — no additional repository is
