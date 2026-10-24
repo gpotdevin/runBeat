@@ -97,15 +97,19 @@ role Garmin's built-in music app plays.
   `NotificationListenerService` reading MediaStyle notifications, which
   needs the user to grant notification access in system settings. Garmin
   Connect Mobile does exactly this for the built-in music app.
-  **Decision: make metadata optional.** Without it the watch shows a generic
-  "External app" label; with it, title/source app. This is a privacy-
-  relevant permission, so it must stay opt-in and be documented in
+  **Decision (2026-10-24): make metadata optional — do not ship it.**
+  Ship without `ExternalPlaybackMonitor`: without it the watch shows
+  "Nothing playing" while transport and volume still control the
+  external app; with the optional monitor it would show an "External
+  app" label with title/source app. This is a privacy-relevant
+  permission, so it must stay opt-in and be documented in
   `docs/PRIVACY.md`.
 - **Routing rule (phone side):** if RunBeat's playback service is active /
   its player is playing, commands go to `PlayerRepository`; otherwise they
   are forwarded as media keys. The watch stays dumb — it always sends the
   same commands and displays the `source` field pushed by the phone
-  (`RunBeat` / external app name / none).
+  (`RunBeat` / none in the shipped build; the optional monitor would
+  add the external app name).
 - **Custom commands** (cadence target, speed correction, mark
   not-for-running) only make sense for RunBeat; the watch disables them
   when `source != RunBeat`.
