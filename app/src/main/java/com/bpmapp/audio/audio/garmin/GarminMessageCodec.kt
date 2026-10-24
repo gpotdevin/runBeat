@@ -37,8 +37,10 @@ sealed class GarminCommand {
  *   {"type":"state","source":"RunBeat","isPlaying":true,"trackId":"...","title":"...",
  *    "bpm":140.0,"targetCadence":172,"speedCorrection":true,"playbackSpeed":1.03,"volume":12}
  *
- * [source] is "RunBeat" when RunBeat is the active playback app, "external"
- * (or the external app's name) otherwise, or "none". The RunBeat-only fields
+ * [source] is "RunBeat" when RunBeat is the active playback app, otherwise
+ * "none". "external" (or the external app's name) is a reserved protocol
+ * value, not currently emitted: the phone ships without the optional
+ * ExternalPlaybackMonitor notification listener. The RunBeat-only fields
  * ([trackId], [bpm], [targetCadence], [speedCorrection], [playbackSpeed]) are
  * null when unknown / not applicable and are omitted from the wire message.
  * [volume] is the current STREAM_MUSIC media volume (AudioManager index).

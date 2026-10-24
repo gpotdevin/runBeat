@@ -42,9 +42,12 @@ reuse it for any other target device.
 
 ## Pairing / first run
 
-The watch app should come up connected — it shows the current source
-("RunBeat" / external app / "Nothing playing"). If it shows "Phone not
-connected", check GCM/Bluetooth and reopen RunBeat on the phone.
+The watch app should come up connected — it shows the current source.
+Shipped display states are "RunBeat" and "Nothing playing" (the phone
+pushes source "RunBeat" or "none"); the "External app" label is reserved
+for the optional, not-implemented ExternalPlaybackMonitor. If it shows
+"Phone not connected", check GCM/Bluetooth and reopen RunBeat on the
+phone.
 
 ## Test checklist
 
@@ -57,7 +60,7 @@ connected", check GCM/Bluetooth and reopen RunBeat on the phone.
 | 4 | Speed-correction toggle | The watch shows the state; RunBeat applies it |
 | 5 | Volume up/down | Control page: the current volume value is displayed and the phone's media volume changes |
 | 6 | Mark current track not-for-running | The track is skipped immediately; the flag is stored in the RunBeat library; the not-for-running filter toggle is ON by default, so the track is excluded from the next session |
-| 7 | External-app mode | With Spotify/Qobuz/an audiobook app playing: the watch shows the external source; watch play/pause/skip controls the external app; volume works |
+| 7 | External-app mode | With Spotify/Qobuz/an audiobook app playing: the watch shows "Nothing playing" (the optional ExternalPlaybackMonitor is not shipped, so the phone reports source "none"); watch play/pause/skip/previous still controls the external app via media keys; volume up/down works. The "External app" label would require the optional notification listener, which is not implemented |
 | 8 | Phone-unreachable handling | Disable Bluetooth or force-stop RunBeat: the watch shows "Phone not connected"; restore — it recovers on its own |
 | 9 | Navigation | 3 screens via swipe (ViewLoop); tap = select; the menu button opens the per-screen menu. On Venu 2 all three screens must be reachable (CIQ 5.0 >= 3.4.0); the MainView-only fallback is fr245-specific at CIQ 3.3.1 |
 | 10 | Ack behavior | `cadence_set`, `cadence_delta`, `cadence_use_current`, `speed_correction_toggle` and `mark_not_for_running` produce acks on the watch; play and volume commands do not. Note: `cadence_set` and `play` are protocol-level commands not reachable from the current watch UI — the watch sends `cadence_delta` and `cadence_use_current` (no `cadence_set`) and a play/pause toggle (no separate `play`); a failed ack (ok=false) surfaces the failure string on the watch |

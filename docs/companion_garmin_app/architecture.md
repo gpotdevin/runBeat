@@ -63,8 +63,10 @@ Notes:
   the two compose without conflict.
 - **Now-playing metadata from external apps** is optional: a
   `NotificationListenerService` reading MediaStyle notifications (requires
-  the user to grant notification access). Without it the phone pushes
-  `"source": "external"` and the watch shows a generic label. See
+  the user to grant notification access). It is not implemented in the
+  shipped build: the phone pushes `"source": "RunBeat"` when RunBeat is
+  the active player and `"none"` otherwise; the optional monitor would
+  push `"external"` (or the external app's name). See
   [feasibility.md](feasibility.md).
 - The watch disables RunBeat-only commands (cadence, speed correction,
   mark not-for-running) when the pushed state says `source != "RunBeat"`.
@@ -139,8 +141,9 @@ strings via `org.json`, already on Android — no new dependency).
 ```
 
 - `source`: `"RunBeat"` when RunBeat is the active playback app,
-  `"external"` (or the external app's name when the optional notification
-  listener is granted), or `"none"`.
+  otherwise `"none"`. `"external"` (or the external app's name) is a
+  reserved protocol value, not currently emitted: the optional
+  `ExternalPlaybackMonitor` notification listener is not implemented.
 - RunBeat-only fields (`trackId`, `title`, `bpm`, `targetCadence`,
   `speedCorrection`, `playbackSpeed`) are omitted or null when
   `source != "RunBeat"`; the watch greys out the corresponding controls.
@@ -226,14 +229,16 @@ content URI string), so it survives across sessions and playlists.
 
 ### 6. Control external apps (default music app)
 1. Phone pushes `source` in every `state` message: `"RunBeat"` while
-   RunBeat's playback is active, otherwise `"external"` (or the external
-   app's name if the optional `ExternalPlaybackMonitor` notification
-   listener is granted), or `"none"`.
+   RunBeat's playback is active, otherwise `"none"`. The shipped build
+   has no `ExternalPlaybackMonitor`, so `"external"` (or the external
+   app's name) is never emitted — it remains a reserved protocol value
+   for the optional notification listener (future work).
 2. Watch transport buttons always send the same commands; the phone routes
    them per the routing table above (media key events when RunBeat is not
    active).
 3. Watch volume buttons always adjust STREAM_MUSIC.
 4. RunBeat-only controls (cadence page actions, speed-correction toggle,
    mark not-for-running) are shown disabled when `source != "RunBeat"`.
-5. Main watch screen shows the current source label and, when known, the
-   external track title (via `ExternalPlaybackMonitor`).
+5. Main watch screen shows the current source label ("RunBeat" or
+   "Nothing playing" in the shipped build); the external track title
+   would require the optional `ExternalPlaybackMonitor`.

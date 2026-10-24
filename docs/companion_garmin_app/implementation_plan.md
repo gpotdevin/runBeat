@@ -184,11 +184,14 @@ testing.
 
 ## Remaining open questions (non-blocking)
 
-1. **External now-playing metadata:** implement the optional
-   `ExternalPlaybackMonitor` (notification listener) in Phase 4, or ship
-   without it (watch shows "External app")? It needs user-granted
-   notification access — a privacy-relevant permission. Recommendation:
-   implement, but keep it opt-in.
+1. **External now-playing metadata:** RESOLVED (2026-10-24) — ship
+   without the optional `ExternalPlaybackMonitor` (notification
+   listener). The watch shows "Nothing playing" during external
+   playback while transport and volume still control the external app
+   (the earlier parenthetical "watch shows 'External app'" was wrong:
+   the phone pushes source "none", so that label is unreachable). The
+   monitor remains documented as possible future work; it needs
+   user-granted notification access — a privacy-relevant permission.
 2. **IQ Store submission:** later, only if you want public distribution.
    Affects the IQ app UUID/branding only.
 3. **Unmark path:** flagged tracks stay visible with a badge and are
