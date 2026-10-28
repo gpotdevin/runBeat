@@ -121,6 +121,28 @@ class WatchState {
         return v == null ? "" : (v as Float).format("%.0f");
     }
 
+    // Optimistic bump of the displayed target cadence (adjust screen):
+    // applied on each +/- tap so the number moves immediately instead
+    // of waiting for the phone's next state push. The push stays the
+    // source of truth - the next "state" message overwrites this field
+    // with the authoritative value. Clamped to the same 150..195 spm
+    // bounds the phone applies (PlayerRepository coerceIn/coerceAtMost/
+    // coerceAtLeast); at a boundary the number settles on reconcile.
+    function bumpTargetCadence(delta as Number) as Void {
+        var v = targetCadence;
+        if (v == null) {
+            return;
+        }
+        var next = (v as Float) + delta;
+        if (next < 150.0) {
+            next = 150.0;
+        }
+        if (next > 195.0) {
+            next = 195.0;
+        }
+        targetCadence = next;
+    }
+
     function playbackSpeedText() as String {
         var v = playbackSpeed;
         return v == null ? "" : (v as Float).format("%.2f");
