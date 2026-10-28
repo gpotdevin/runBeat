@@ -3,9 +3,10 @@ import Toybox.Lang;
 import Toybox.System;
 import Toybox.WatchUi;
 
-// Common behavior for the three pages: header label (with "Phone not
-// connected" state), transient ack line, page indicator, text truncation.
-// Each subclass picks its square/round layout in onLayout().
+// Common behavior for the three pages: header label (three connection
+// states), transient ack line, page indicator, text truncation, drawn-
+// button hit-testing, the pushed volume adjuster. Each subclass picks
+// its square/round layout in onLayout().
 class BaseView extends WatchUi.View {
 
     var _state;                 // WatchState
@@ -17,10 +18,41 @@ class BaseView extends WatchUi.View {
         _messages = messages;
     }
 
-    // Header label: shows "Phone not connected" while the phone is
-    // unreachable, otherwise the given text/color.
+    // Opens the pushed volume adjuster: upper half of the screen raises
+    // the volume, the lower half lowers it, the center displays the
+    // current value; it auto-returns 3 s after the last tap (driven by
+    // the app's 1 Hz tick through WatchState.adjustScreen). Volume is
+    // the global STREAM_MUSIC volume: it works for RunBeat and external
+    // apps alike, so no source gating here.
+    function pushVolumeAdjustScreen() as Void {
+        var view = new VolumeSetView(_state);
+        view.arm();
+        _state.adjustScreen = view;
+        WatchUi.pushView(view, new VolumeSetDelegate(view, _messages), WatchUi.SLIDE_IMMEDIATE);
+    }
+
+    // Hit-tests one drawn button rect [x, y, w, h] from the last onUpdate.
+    function hitTest(rect, x as Number, y as Number) as Boolean {
+        if (rect == null) {
+            return false;
+        }
+        var r = rect as Array;
+        var rx = r[0] as Number;
+        var ry = r[1] as Number;
+        var rw = r[2] as Number;
+        var rh = r[3] as Number;
+        return x >= rx && x < rx + rw && y >= ry && y < ry + rh;
+    }
+
+    // Header label, one of three connection states (from WatchState):
+    //   - no message ever received  -> "Connecting..." (yellow)
+    //   - last message older than 10 s -> "Phone not connected" (yellow)
+    //   - otherwise the given text/color.
+    // All three pages inherit this.
     function updateHeader(normalText as String, normalColor as Number) as Void {
-        if (!_state.phoneReachable) {
+        if (!_state.hasConnected()) {
+            setHeaderLabel(WatchUi.loadResource(Rez.Strings.Connecting) as String, Graphics.COLOR_YELLOW);
+        } else if (_state.isStale(System.getTimer())) {
             setHeaderLabel(WatchUi.loadResource(Rez.Strings.PhoneNotConnected) as String, Graphics.COLOR_YELLOW);
         } else {
             setHeaderLabel(normalText, normalColor);

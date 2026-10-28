@@ -1,6 +1,14 @@
 # Architecture — Garmin Companion for RunBeat
 
-Date: 2026-10-22
+Date: 2026-10-22 (revised 2026-10-24 — see [requirements_update_2026-10-24.md](requirements_update_2026-10-24.md))
+
+> **2026-10-24 revision:** the watch app is the phone's music-control source
+> (first screen = track artist/album/title + play/pause + next/prev + volume).
+> It stays a `watch-app` remote, **not** an audio-content-provider — the only
+> Connect IQ "music source in the native Music app" mechanism forces watch-side
+> playback ("leave your phone behind"), which is the standalone app that is
+> rejected. The native Music app surfaces RunBeat via its built-in "Phone" source
+> (RunBeat's MediaSession must expose title/artist/album + play state).
 
 ## System overview
 
@@ -108,7 +116,9 @@ SDK-free.
 ## Message protocol
 
 Transport: Connect IQ phone messages (small payloads, JSON-encoded UTF-8
-strings via `org.json`, already on Android — no new dependency).
+strings via `org.json`, already on Android — no new dependency). Decoding
+is tolerant on both sides: unknown fields are skipped, and unknown commands
+decode to `null` and are logged + ignored by the phone.
 
 ### Watch -> phone (commands)
 
@@ -121,9 +131,11 @@ strings via `org.json`, already on Android — no new dependency).
 | `cadence_use_current` | `{"cadence": <60s mean computed on watch>}` | same as `cadence_set` — the watch computes the average and sends the result; the phone just applies it. RunBeat only. |
 | `speed_correction_toggle` | — | `PlayerRepository.toggleSpeedCorrection()`. RunBeat only. |
 | `volume_delta` | `{"delta": 1}` or `{"delta": -1}` | `AudioManager.adjustStreamVolume(STREAM_MUSIC, ...)` — works for RunBeat and external apps alike |
+| `seek` (optional, 2026-10-24) | `{"positionMs": 42000}` | RunBeat active: `PlayerRepository.seekTo(positionMs)`; otherwise ignored. No ack — the following state push confirms. Phone sanity bound: 0 ≤ N ≤ 86 400 000 |
+| `request_state` (2026-10-24) | — | no ack; the phone answers the **sender** with one `state` push (`pushStateTo(device)`). The watch sends it on app start and every ~5 s while no message has arrived for ~10 s — this is what makes a watch launched after the link was already up still get recognized |
 | `mark_not_for_running` | — | flag current `trackId` + skip immediately (see below). RunBeat only. |
 
-### Phone -> watch (state, pushed on change)
+### Phone -> watch (state, pushed on change, on connect, and in answer to `request_state`)
 
 ```json
 {
@@ -132,6 +144,10 @@ strings via `org.json`, already on Android — no new dependency).
   "isPlaying": true,
   "trackId": "content://media/...",
   "title": "Song name",
+  "artist": "Artist name",
+  "album": "Album name",
+  "durationMs": 213000,
+  "positionMs": 42000,
   "bpm": 140.0,
   "targetCadence": 172,
   "speedCorrection": true,
@@ -144,13 +160,23 @@ strings via `org.json`, already on Android — no new dependency).
   otherwise `"none"`. `"external"` (or the external app's name) is a
   reserved protocol value, not currently emitted: the optional
   `ExternalPlaybackMonitor` notification listener is not implemented.
-- RunBeat-only fields (`trackId`, `title`, `bpm`, `targetCadence`,
+- RunBeat-only fields (`trackId`, `title`, `artist`, `album`,
+  `durationMs`, `positionMs`, `bpm`, `targetCadence`,
   `speedCorrection`, `playbackSpeed`) are omitted or null when
   `source != "RunBeat"`; the watch greys out the corresponding controls.
+- `artist` / `album` (from `MediaMetadata.artist` / `albumTitle`) are
+  required when `source == "RunBeat"`.
+- `durationMs` is the track duration: the track's `extras.durationMs`,
+  falling back to `PlayerState.duration`; omitted when unknown.
+- `positionMs` is the current playback position **rounded down to whole
+  seconds by the phone** (`currentPosition / 1000 * 1000`), so while
+  playing the state changes — and is pushed — about once per second.
 - `volume`: current STREAM_MUSIC media volume (AudioManager index, not 0..1).
 
 Plus `{"type":"ack","command":"mark_not_for_running","ok":true}` style
 confirmations for commands that need feedback (e.g. mark, cadence applied).
+`request_state` and `seek` are **not** acked: the answering / following
+state push confirms them.
 
 Cadence samples are **not** streamed continuously; only the 60-second mean
 is sent, on button press. This keeps BLE traffic near zero and battery
@@ -242,3 +268,40 @@ content URI string), so it survives across sessions and playlists.
 5. Main watch screen shows the current source label ("RunBeat" or
    "Nothing playing" in the shipped build); the external track title
    would require the optional `ExternalPlaybackMonitor`.
+
+## Connect IQ SDK simulator (ADB tether) notes — verified 2026-10-26
+
+For simulator testing only (Settings > GARMIN > "Use Connect IQ
+simulator (ADB)", debug builds). Details and evidence:
+[e2e_connection_test_report.md](e2e_connection_test_report.md), rev. 3.
+
+1. **Watch -> phone (works, with a workaround).** The companion SDK
+   2.4.0 re-broadcasts every tethered packet with an **empty app UUID**
+   (`IQApp("")`) instead of the real one, so a listener registered under
+   the real UUID never matches and the message is dropped silently.
+   `GarminCompanionManager` therefore registers a **second** app-events
+   listener under `IQApp("")` when `simulatorAdbMode` is on. WIRELESS
+   (real watch) mode is unaffected.
+2. **Phone -> watch (works — an earlier "broken in the simulator"
+   conclusion was a watch-app bug, since fixed).** State pushes and
+   acks ARE delivered to the watch app, in the simulator and on real
+   BLE hardware alike. They were silently dropped 2026-10-26 and
+   earlier because the watch's hand-rolled JSON parser compared
+   strings with `==`/`!=` — which in Monkey C compares object
+   references, not content — so every message failed at the first
+   character check. All string comparisons in the watch app now use
+   `.equals()` (see the rev. 4 section of
+   [e2e_connection_test_report.md](e2e_connection_test_report.md)).
+   Corollary: a watch app that fails to PARSE messages looks
+   identical to one that does not RECEIVE them (its
+   `request_state` re-ask timer never stops), so "the app is deaf"
+   evidence must distinguish parse failure from delivery failure.
+3. **Simulator input model.** `M` on the keyboard opens the
+   per-screen menu (all commands reachable), mouse swipes navigate
+   menus and cycle the ViewLoop pages, click/Enter confirms, and a
+   click on the watch face acts as SELECT (the page's primary action).
+   Clicks on the watch face ARE delivered as positional taps — but
+   note (open item, 2026-10-26) that the app currently turns every tap
+   into `onSelect` instead of the drawn buttons' `onTap` zones on BOTH
+   the simulator and the real watch; see the rev. 4 section of
+   [e2e_connection_test_report.md](e2e_connection_test_report.md).

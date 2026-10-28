@@ -259,6 +259,7 @@ class AudioService : MediaSessionService() {
         
         val trackTitle = currentTrack?.mediaMetadata?.title ?: getString(R.string.now_playing)
         val trackArtist = currentTrack?.mediaMetadata?.artist ?: ""
+        val trackAlbum = currentTrack?.mediaMetadata?.albumTitle ?: ""
         val contentText = if (trackArtist.isNotEmpty()) {
             "$trackTitle - $trackArtist"
         } else {
@@ -267,7 +268,7 @@ class AudioService : MediaSessionService() {
         
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(contentText)
-            .setContentText(getString(R.string.app_name))
+            .setContentText(trackAlbum)
             .setSubText(getString(R.string.app_name))
             .setSmallIcon(R.drawable.ic_music_note)
             .setContentIntent(contentPendingIntent)

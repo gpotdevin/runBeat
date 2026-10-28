@@ -3,5 +3,7 @@
     <menu id="MainViewMenu" title="@Strings.MainMenuTitle">
         <menu-item id="menu_next" label="@Strings.MenuNext"/>
         <menu-item id="menu_prev" label="@Strings.MenuPrev"/>
+        <menu-item id="menu_volume_up" label="@Strings.MenuVolumeUp"/>
+        <menu-item id="menu_volume_down" label="@Strings.MenuVolumeDown"/>
     </menu>
 </menus>

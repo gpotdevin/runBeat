@@ -10,7 +10,9 @@ import com.bpmapp.audio.audio.PlayerRepository
 import com.garmin.android.connectiq.ConnectIQ
 import com.garmin.android.connectiq.IQApp
 import com.garmin.android.connectiq.IQDevice
+import com.garmin.android.connectiq.adb.AdbConnection
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -20,10 +22,12 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.net.ServerSocket
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -43,6 +47,10 @@ import javax.inject.Singleton
  *    changes (playerState, currentTrack, targetCadence, speedCorrectionEnabled,
  *    playbackSpeed), plus a ~1 Hz tick that picks up volume changes (volume is
  *    not a repository flow), and right after volume commands;
+ *  - answer a watch's request_state with one state push to that device (the
+ *    watch sends it on app start and every ~5 s while it has heard nothing
+ *    for ~10 s, so a watch launched after the connect-time push still gets
+ *    recognized);
  *  - expose the connection state via [connectionState].
  *
  * Threading: the Connect IQ SDK delivers its callbacks (onSdkReady,
@@ -68,6 +76,7 @@ class GarminCompanionManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val playerRepository: PlayerRepository,
     private val router: GarminCommandRouter,
+    sendDispatcher: CoroutineDispatcher,
 ) : ConnectIQ.ConnectIQListener,
     ConnectIQ.IQDeviceEventListener,
     ConnectIQ.IQApplicationEventListener {
@@ -88,10 +97,47 @@ class GarminCompanionManager @Inject constructor(
         // TETHERED is the SDK's BLE-simulation-over-ADB strategy (AdbConnection,
         // default port 7381) used to talk to the Connect IQ simulator on a PC;
         // WIRELESS talks to a real watch through Garmin Connect Mobile.
-        if (simulatorAdbMode) ConnectIQ.IQConnectType.TETHERED else ConnectIQ.IQConnectType.WIRELESS,
+        if (simulatorAdbMode && tetherPortBindable()) ConnectIQ.IQConnectType.TETHERED else ConnectIQ.IQConnectType.WIRELESS,
     )
+
+    /**
+     * Pre-flight check for simulator (TETHERED) mode: the SDK AdbConnection
+     * opens its server socket (AdbConnection.DEFAULT_PORT) on a background
+     * thread and, when the bind fails, its cleanup path throws an NPE that
+     * kills the whole process. Probe the bind ourselves first and fall back
+     * to WIRELESS when the tether port cannot be bound (for example when the
+     * OS firewall denies this app the network), so a broken tether
+     * environment can never take playback down with it.
+     */
+    private fun tetherPortBindable(): Boolean = try {
+        ServerSocket(AdbConnection.DEFAULT_PORT).use { true }
+    } catch (e: Exception) {
+        Log.w(TAG, "Simulator tether port ${AdbConnection.DEFAULT_PORT} not bindable: ${e.message}; staying WIRELESS")
+        false
+    }
+
     private val iqApp: IQApp by lazy { IQApp(IQ_APP_ID) }
+
+    /**
+     * Incoming tether messages carry a hardcoded empty app UUID: the SDK's
+     * AdbDataHandler re-broadcasts every simulator message as
+     * IQApp("", "Simulator App"), and IQMessageReceiver dispatches by app id,
+     * so a listener registered under [IQ_APP_ID] never matches and every
+     * watch command is silently dropped. In simulator (ADB) mode the same
+     * [onMessageReceived] is therefore also registered under the empty id.
+     */
+    private val simulatorIqApp: IQApp by lazy { IQApp("") }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    /**
+     * Serializes SDK sends and keeps them off the main thread:
+     * ConnectIQ.sendMessage performs a blocking socket write, and the SDK's
+     * StrictMode policy throws NetworkOnMainThreadException when it runs on
+     * the main thread, where this manager's scope and the SDK callbacks run.
+     * A single-threaded dispatcher also preserves message order (a stale
+     * state push must not overtake a newer one).
+     */
+    private val sendScope = CoroutineScope(SupervisorJob() + sendDispatcher)
 
     /**
      * Serializes watch-command handling. The mark-not-for-running path
@@ -200,6 +246,9 @@ class GarminCompanionManager @Inject constructor(
 
     override fun onInitializeError(status: ConnectIQ.IQSdkErrorStatus) {
         Log.w(TAG, "ConnectIQ init error: $status (Garmin Connect Mobile missing or outdated)")
+        if (simulatorAdbMode) {
+            Log.i(TAG, "Simulator (ADB) mode: init error — in the simulator use Connection > Start (CTRL-F1); on the phone run 'adb forward tcp:7381 tcp:7381'")
+        }
         GarminWatchConnection.update(GarminConnectionState.DISCONNECTED)
     }
 
@@ -236,6 +285,17 @@ class GarminCompanionManager @Inject constructor(
                 Log.w(TAG, "Ignoring undecodable watch message: $json")
                 continue
             }
+            // Link-layer request, not a playback command: answer the sender
+            // with one state push. No ack and no command mutex — it only
+            // reads flows and sends, so it must not be serialized behind an
+            // unrelated command's Room write.
+            if (command is GarminCommand.RequestState) {
+                scope.launch {
+                    recomputeConnection()
+                    pushStateTo(device)
+                }
+                continue
+            }
             Log.d(TAG, "Watch command from ${device.friendlyName}: $json")
             scope.launch {
                 try {
@@ -270,6 +330,9 @@ class GarminCompanionManager @Inject constructor(
             if (known.isEmpty()) {
                 // GCM is reachable but lists no paired devices (yet).
                 Log.i(TAG, "No known Garmin devices; will retry")
+                if (simulatorAdbMode) {
+                    Log.i(TAG, "Simulator (ADB) mode: no known devices — in the simulator use Connection > Start (CTRL-F1); on the phone run 'adb forward tcp:7381 tcp:7381'")
+                }
                 scheduleDeviceRefreshRetry()
                 return
             }
@@ -299,6 +362,12 @@ class GarminCompanionManager @Inject constructor(
         try {
             // Device status events + messages from our IQ app on this device.
             connectIQ.registerForEvents(device, this, iqApp, this)
+            if (simulatorAdbMode) {
+                // Simulator (ADB) mode: incoming messages are re-broadcast
+                // with an empty app UUID (see [simulatorIqApp]); without this
+                // second registration the SDK drops every watch command.
+                connectIQ.registerForAppEvents(device, simulatorIqApp, this)
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to register for events on ${device.friendlyName}", e)
             return false
@@ -378,11 +447,19 @@ class GarminCompanionManager @Inject constructor(
     /**
      * Re-evaluates the watch state whenever any source flow emits, plus a ~1 Hz
      * tick that picks up volume changes. [distinctUntilChanged] keeps the BLE
-     * traffic to actual changes (playerState emits ~10x/s with the position).
+     * traffic to actual changes: playerState emits ~10x/s with the position,
+     * but the position is rounded to whole seconds first, so while playing the
+     * state (and the push) changes about once per second — a heartbeat that
+     * also proves to the watch that the link is alive.
      */
     private fun watchStateFlow(): Flow<GarminWatchState> =
         combine(
-            playerRepository.playerState,
+            // Rounded before combining (the router rounds it too, for direct
+            // consumers of currentState): without the rounding the per-second
+            // position changes would dedupe to nothing and starve the push.
+            playerRepository.playerState
+                .map { it.copy(currentPosition = it.currentPosition / 1000L) }
+                .distinctUntilChanged(),
             playerRepository.currentTrack,
             playerRepository.targetCadence,
             playerRepository.speedCorrectionEnabled,
@@ -405,12 +482,39 @@ class GarminCompanionManager @Inject constructor(
         sendToWatch(GarminMessageCodec.encodeState(router.currentState()))
     }
 
+    /**
+     * Answers a watch's request_state: pushes the current state to that one
+     * device when it is connected. Independent of the aggregate
+     * [connectionState] gate used by [pushState] — a watch that just (re-)sent
+     * the request must get an answer even if the aggregate state has not
+     * caught up yet.
+     */
+    private fun pushStateTo(device: IQDevice) {
+        if (deviceStatuses[device.deviceIdentifier] != IQDevice.IQDeviceStatus.CONNECTED) {
+            Log.i(TAG, "request_state from ${device.friendlyName}: device not connected, not answering")
+            return
+        }
+        sendTo(device, GarminMessageCodec.encodeState(router.currentState()))
+    }
+
     /** Sends a JSON message to every connected, registered watch. */
     private fun sendToWatch(json: String) {
         val targets = devices.values.filter {
             deviceStatuses[it.deviceIdentifier] == IQDevice.IQDeviceStatus.CONNECTED
         }
         for (device in targets) {
+            sendTo(device, json)
+        }
+    }
+
+    /**
+     * Performs one SDK send on [sendScope]. ConnectIQ.sendMessage blocks on a
+     * socket write, so it must never run on the main thread (see [sendScope]);
+     * failures are logged, never thrown, so a dead link cannot take the
+     * caller (playback, a watch command) down with it.
+     */
+    private fun sendTo(device: IQDevice, json: String) {
+        sendScope.launch {
             try {
                 connectIQ.sendMessage(device, iqApp, json, sendMessageListener)
             } catch (e: Exception) {

@@ -11,18 +11,20 @@
     <string id="ExternalApp">External app</string>
     <string id="NoPlayback">Nothing playing</string>
     <string id="PhoneNotConnected">Phone not connected</string>
+    <string id="Connecting">Connecting...</string>
+    <string id="PhonePlaybackOnly">Music plays on the phone</string>
     <string id="NoValue">--</string>
     <string id="BpmSuffix"> BPM</string>
     <string id="SpeedSuffix">x</string>
+    <string id="VolumeShort">VOL</string>
 
     <!-- Cadence page. -->
     <string id="AvgCaption">AVG / 60 S</string>
     <string id="TargetPrefix">TARGET</string>
 
-    <!-- Control page. -->
-    <string id="SpeedCorrLabel">SPEED CORRECTION</string>
+    <!-- Cadence page buttons / volume screen. -->
+    <string id="TempoLabel">TEMPO</string>
     <string id="VolumeLabel">VOLUME</string>
-    <string id="MarkLabel">NOT FOR RUNNING</string>
     <string id="On">ON</string>
     <string id="Off">OFF</string>
 
@@ -38,7 +40,6 @@
     <string id="MenuSpeedCorrection">Speed correction</string>
     <string id="MenuVolumeDown">Volume -</string>
     <string id="MenuVolumeUp">Volume +</string>
-    <string id="MenuMarkNotForRunning">Not for running</string>
 
     <!-- Transient hints and ack confirmations. -->
     <string id="RunBeatOnlyHint">RunBeat only</string>

@@ -2,12 +2,15 @@ import Toybox.Graphics;
 import Toybox.Lang;
 import Toybox.WatchUi;
 
-// Screen 3 — controls.
-// Speed-correction toggle (RunBeat only, shows on/off), volume -/+ (always
-// enabled, sends volume_delta), "mark as not for running" (RunBeat only;
-// the ack shows as a transient confirmation). RunBeat-only controls are
-// greyed out when source != "RunBeat".
+// Controls page: the volume entry. One big drawn button shows the
+// current volume and opens the pushed volume adjuster (upper half +,
+// lower half -, auto-return). Volume is the global STREAM_MUSIC volume —
+// it works for RunBeat and external apps alike, so nothing here is
+// source-gated. Select does the same as the button (tap = select).
 class ControlView extends BaseView {
+
+    // Drawn button rect [x, y, w, h] from the last onUpdate (tap hit-testing).
+    private var _btnVolume;   // Array? or null
 
     function initialize(state, messages) {
         BaseView.initialize(state, messages);
@@ -24,54 +27,66 @@ class ControlView extends BaseView {
     function onUpdate(dc as Dc) as Void {
         var w = dc.getWidth();
         var h = dc.getHeight();
-        var runBeat = _state.isRunBeatActive();
-        var active = Graphics.COLOR_WHITE;
-        var dim = Graphics.COLOR_DK_GRAY;
-        var label = Graphics.COLOR_LT_GRAY;
+        var fhTiny = dc.getFontHeight(Graphics.FONT_TINY);
 
         dc.setColor(Graphics.COLOR_BLACK, Graphics.COLOR_BLACK);
         dc.clear();
 
-        updateHeader(WatchUi.loadResource(Rez.Strings.HeaderControls) as String, runBeat ? label : dim);
+        updateHeader(WatchUi.loadResource(Rez.Strings.HeaderControls) as String, Graphics.COLOR_LT_GRAY);
 
-        // Row 1: speed correction (RunBeat only).
-        dc.setColor(runBeat ? label : dim, Graphics.COLOR_BLACK);
-        dc.drawText(w * 0.12, h * 0.32, Graphics.FONT_TINY, WatchUi.loadResource(Rez.Strings.SpeedCorrLabel) as String,
-            Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER);
-        var speedText = runBeat ? (_state.speedCorrection ? WatchUi.loadResource(Rez.Strings.On) as String : WatchUi.loadResource(Rez.Strings.Off) as String) : WatchUi.loadResource(Rez.Strings.NoValue) as String;
-        dc.setColor(runBeat ? active : dim, Graphics.COLOR_BLACK);
-        dc.drawText(w * 0.88, h * 0.32, Graphics.FONT_MEDIUM, speedText,
-            Graphics.TEXT_JUSTIFY_RIGHT | Graphics.TEXT_JUSTIFY_VCENTER);
+        // Volume entry: caption above, one big button with the value,
+        // "+ / -" hint below (tapping the button — or anywhere — opens
+        // the pushed adjuster).
+        var bW = minNum(w * 0.72, 300).toNumber();
+        var bH = maxNum(40, minNum(80, h * 0.19)).toNumber();
+        var bLeft = (w - bW) / 2;
+        var bTop = (h * 0.40).toNumber();
+        var bCenterY = bTop + bH / 2;
+        _btnVolume = [bLeft, bTop, bW, bH];
 
-        // Row 2: volume (always enabled — STREAM_MUSIC on the phone).
-        dc.setColor(label, Graphics.COLOR_BLACK);
-        dc.drawText(w * 0.12, h * 0.48, Graphics.FONT_TINY, WatchUi.loadResource(Rez.Strings.VolumeLabel) as String,
-            Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER);
         var volText = _state.volumeText();
         if (volText.length() == 0) {
             volText = WatchUi.loadResource(Rez.Strings.NoValue) as String;
         }
-        dc.setColor(active, Graphics.COLOR_BLACK);
-        dc.drawText(w * 0.88, h * 0.48, Graphics.FONT_MEDIUM, volText,
-            Graphics.TEXT_JUSTIFY_RIGHT | Graphics.TEXT_JUSTIFY_VCENTER);
 
-        // Row 3: mark the current track "not for running" (RunBeat only).
-        dc.setColor(runBeat ? active : dim, Graphics.COLOR_BLACK);
-        dc.drawText(w / 2, h * 0.64, Graphics.FONT_TINY, WatchUi.loadResource(Rez.Strings.MarkLabel) as String,
+        dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
+        dc.drawText(w / 2, bTop - fhTiny / 2 - 6, Graphics.FONT_TINY, WatchUi.loadResource(Rez.Strings.VolumeLabel) as String,
+            Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
+        dc.setColor(Graphics.COLOR_DK_GRAY, Graphics.COLOR_BLACK);
+        dc.fillRoundedRectangle(bLeft, bTop, bW, bH, 16);
+        dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_BLACK);
+        dc.drawText(w / 2, bCenterY, Graphics.FONT_LARGE, volText,
+            Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
+        // The button opens the pushed adjuster — hint at the tap zones.
+        dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
+        dc.drawText(w / 2, bTop + bH + fhTiny / 2 + 6, Graphics.FONT_TINY, "+ / -",
             Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
 
         drawAck(dc);
-        drawPageIndicator(dc, 3, 3);
+        drawPageIndicator(dc, 2, 3);
     }
 
-    // Select: toggle speed correction (RunBeat only).
+    // Select opens the volume adjuster, same as tapping the button.
     function onSelectPressed() as Void {
-        if (!_state.isRunBeatActive()) {
-            _state.setAck(WatchUi.loadResource(Rez.Strings.RunBeatOnlyHint) as String, true);
-            WatchUi.requestUpdate();
-            return;
+        pushVolumeAdjustScreen();
+    }
+
+    // Tap handler for RunBeatPageDelegate: the volume button opens the
+    // pushed volume adjuster. Returns true when handled.
+    function onTap(x as Number, y as Number) as Boolean {
+        if (hitTest(_btnVolume, x, y)) {
+            pushVolumeAdjustScreen();
+            return true;
         }
-        _messages.sendSpeedCorrectionToggle();
+        return false;
+    }
+
+    private function maxNum(a, b) {
+        return a > b ? a : b;
+    }
+
+    private function minNum(a, b) {
+        return a < b ? a : b;
     }
 }
 
@@ -88,34 +103,15 @@ class ControlViewMenuDelegate extends WatchUi.MenuInputDelegate {
 
     function onMenuItem(item as Symbol) as Void {
         switch (item) {
-            case :speed_correction:
-                if (!requireRunBeat()) {
-                    return;
-                }
-                _messages.sendSpeedCorrectionToggle();
-                break;
+            // Volume always works: STREAM_MUSIC applies to RunBeat and
+            // external apps alike. For non-touch devices without access
+            // to the pushed adjuster.
             case :volume_down:
-                // Always enabled: STREAM_MUSIC works for RunBeat and external apps.
                 _messages.sendVolumeDelta(-1);
                 break;
             case :volume_up:
                 _messages.sendVolumeDelta(1);
                 break;
-            case :mark_not_for_running:
-                if (!requireRunBeat()) {
-                    return;
-                }
-                _messages.sendMarkNotForRunning();
-                break;
         }
-    }
-
-    private function requireRunBeat() as Boolean {
-        if (_state.isRunBeatActive()) {
-            return true;
-        }
-        _state.setAck(WatchUi.loadResource(Rez.Strings.RunBeatOnlyHint) as String, true);
-        WatchUi.requestUpdate();
-        return false;
     }
 }

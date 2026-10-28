@@ -4,8 +4,12 @@ package com.bpmapp.audio.audio.garmin
 
 import dagger.Binds
 import dagger.Module
+import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import javax.inject.Singleton
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 
 /**
  * Garmin-flavor companion wiring: binds the real, SDK-backed
@@ -23,4 +27,18 @@ abstract class GarminCompanionModule {
 
     @Binds
     abstract fun bindGarminCompanionStarter(impl: GarminCompanionInitializer): GarminCompanionStarter
+
+    companion object {
+
+        /**
+         * Serializes the companion manager's SDK sends on a single background
+         * thread: ConnectIQ.sendMessage blocks on a socket write and must not
+         * run on the main thread, and a stale state push must not overtake a
+         * newer one.
+         */
+        @Provides
+        @Singleton
+        fun provideGarminSendDispatcher(): CoroutineDispatcher =
+            Dispatchers.IO.limitedParallelism(1)
+    }
 }

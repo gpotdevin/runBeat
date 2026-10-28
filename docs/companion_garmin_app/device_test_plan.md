@@ -28,6 +28,57 @@ reuse it for any other target device.
   contains the Connect IQ Mobile SDK; the `fdroid` flavor cannot talk
   to the watch.
 
+## Verification status (agent C, 2026-10-25)
+
+Automated verification of the plan-v2 artifacts (details in
+[implementation_plan_v2_2026-10-24.md](implementation_plan_v2_2026-10-24.md),
+section 9):
+
+- **Watch artifacts:** 16/16 signed `.prg` in `$GB/out-v2/` — the
+  device list matches `garmin-watch/manifest.xml` `<iq:products>`
+  exactly (`fr245 fr255 fr265 fr955 fr965 fenix7 fenix7s fenix7x
+  fenix8solar47mm fenix8solar51mm fenix843mm fenix847mm epix2 venu2
+  venu3 venu3s`), every build log ends with `BUILD SUCCESSFUL`, all
+  `.prg` files are >100 KB (signed), and a venu2 rebuild is
+  byte-identical (reproducible).
+- **Phone tests:** `:app:testGarminDebugUnitTest` green — 214 tests,
+  0 failures, 0 errors (forced re-run 2026-10-25 07:47 local),
+  including the wire-format contract tests
+  (`encodeCommandMatchesWatchWireFormat`,
+  `decodesWatchExampleStateMessage`,
+  `requestState_isAnsweredWithOneStatePushToThatDevice`,
+  `currentState_includesArtistAlbumDurationPositionWhenActive`,
+  `seek_routesToPlayerRepositorySeekToWhenActive`).
+- **Phone APK:** `app/build/outputs/apk/garmin/debug/app-garmin-debug.apk`
+  built 2026-10-25 07:33 (24,490,380 bytes) and current with the sources
+  (`:app:assembleGarminDebug` UP-TO-DATE).
+- **Wire-format contract:** PASS — watch `MessageHandler.mc` and phone
+  `GarminMessageCodec.kt` / `GarminCommandRouter.kt` /
+  `GarminCompanionManager.kt` match plan v2 section 3 exactly.
+
+**Simulator-run readiness:** the simulator e2e (plan v2 section 6.3) is
+the remaining verification step — **pending the user and a connected
+phone**. At verification time the tether could NOT be staged: the
+Fairphone 6 (adb serial `fe113fb3`) was not connected (`adb devices`
+empty; all of the phone's USB devices — the Google VID_18D1 ADB
+interfaces and the Fairphone MTP entries, serial `fe113fb3` — show
+*Disconnected* in the Windows PnP enumeration), so `adb install -r` and
+`adb forward tcp:7381 tcp:7381` were NOT run (both fail with "no
+devices/emulators found"). Before the simulator session: connect the
+phone over USB (USB debugging on), then run
+
+    adb install -r app/build/outputs/apk/garmin/debug/app-garmin-debug.apk
+    adb forward tcp:7381 tcp:7381
+
+and continue with the "End-to-end testing" steps in the next section
+(do not forget Settings > GARMIN > "Use Connect IQ simulator (ADB)" ON
+on the phone).
+
+Note: checklist rows 1 and 5 below were written for the pre-v2 UI; in
+plan v2 the transport row (prev / play-pause / next) and the volume row
+live on the first screen (with artist/album/title), so interpret row 1's
+tap-to-toggle and row 5's volume display against the v2 first screen.
+
 ## Simulator testing (PC)
 
 The watch app can also be tested on a PC with the **Connect IQ
@@ -60,8 +111,18 @@ End-to-end testing (simulated watch <-> phone):
 3. In RunBeat, open Settings > GARMIN and turn ON **"Use Connect IQ
    simulator (ADB)"** (debug builds only — keep it OFF for a real
    watch).
-4. Forward the simulator port: `adb forward tcp:7381 tcp:7381`.
-5. In the simulator, use the **Connection** menu > **Start** (shortcut
+4. On the phone, allow RunBeat to use the network: Android Settings >
+   Apps > RunBeat > Mobile data & Wi-Fi (data usage) > **Network
+   access** ON. On LineageOS this per-app firewall toggle maps to a
+   netpolicy REJECT_ALL for the app UID; while it is OFF the Connect
+   IQ SDK's AdbConnection cannot create its server socket on port
+   7381 (bind fails with ECONNREFUSED) and — before the pre-flight
+   guard in GarminCompanionManager — the SDK cleanup path crashed the
+   whole app process, which is what made the simulator report "no data
+   connection". The app now probes the bind first and stays WIRELESS
+   instead of crashing, but the simulator path needs the toggle ON.
+5. Forward the simulator port: `adb forward tcp:7381 tcp:7381`.
+6. In the simulator, use the **Connection** menu > **Start** (shortcut
    CTRL-F1) to begin the BLE simulation.
 
 No Garmin Connect Mobile is needed on this path — the phone talks to
@@ -75,6 +136,10 @@ applies to a simulator run.
 - Watch paired and connected to the phone via GCM; Bluetooth on.
 - RunBeat (garmin flavor) installed and **opened at least once** — this
   initializes the Connect IQ SDK on the phone.
+- LineageOS only: RunBeat needs **Network access** enabled (Settings >
+  Apps > RunBeat > Mobile data & Wi-Fi > Network access) — without it
+  the per-app firewall blocks the Connect IQ SDK's simulator socket
+  (see "Simulator testing (PC)" above).
 - Watch in Developer Mode for sideloading: on Venu 2 (single physical
   button) enable Settings > System > Developer; the hold-the-LAP/back
   button method applies to button devices, not to Venu 2.

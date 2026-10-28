@@ -17,8 +17,11 @@ import javax.inject.Singleton
  *    (media key events reach the app currently holding media focus);
  *  - volume always goes to [MediaKeyDispatcher] (STREAM_MUSIC works for RunBeat
  *    and external apps alike);
- *  - cadence / speed-correction / mark-not-for-running are RunBeat-only and
- *    are rejected (ack ok=false) when RunBeat is not active.
+ *  - cadence / speed-correction / mark-not-for-running / seek are
+ *    RunBeat-only and are rejected (ack ok=false) when RunBeat is not
+ *    active;
+ *  - request_state is not routed at all: the manager intercepts it as a
+ *    link-layer request and answers it with a state push.
  *
  * This class is deliberately free of Garmin SDK imports so it compiles and is
  * unit-tested in every flavor; the garmin flavor's GarminCompanionManager is
@@ -39,9 +42,12 @@ class GarminCommandRouter @Inject constructor(
 ) {
 
     /**
-     * True when RunBeat is the active playback app: playing, or buffering a
-     * track (buffering counts so a watch "next" during a gap still lands in
-     * RunBeat rather than in another app).
+     * True when RunBeat is the app holding the phone's media stream right
+     * now: playing, or buffering a track (buffering counts so a watch
+     * "next" during a gap still lands in RunBeat rather than in another
+     * app). Transport commands route to [PlayerRepository] only in this
+     * state — a loaded-but-PAUSED track must NOT capture them, or the
+     * watch could no longer control other players (Spotify, podcasts, ...).
      */
     fun isRunBeatActive(): Boolean {
         val state = playerRepository.playerState.value
@@ -49,10 +55,23 @@ class GarminCommandRouter @Inject constructor(
     }
 
     /**
+     * True when RunBeat owns the "current track" context: playing,
+     * buffering, or paused with a track loaded. In this state the watch
+     * keeps displaying the current track (source "RunBeat", isPlaying
+     * false — exactly as the phone app shows it while paused), and the
+     * RunBeat-only commands are accepted: the target cadence and the
+     * speed-correction toggle are settings, adjustable while paused.
+     */
+    private fun isRunBeatOwned(): Boolean {
+        return isRunBeatActive() || playerRepository.currentTrack.value != null
+    }
+
+    /**
      * Routes one watch command and returns the ack to push back to the watch.
      */
     suspend fun handleCommand(cmd: GarminCommand): GarminAck {
         val active = isRunBeatActive()
+        val owned = isRunBeatOwned()
         return when (cmd) {
             is GarminCommand.Toggle -> {
                 if (active) playerRepository.togglePlayPause() else mediaKeyDispatcher.toggle()
@@ -85,7 +104,7 @@ class GarminCommandRouter @Inject constructor(
                 // forward NaN/Infinity to PlayerRepository.
                 if (!cmd.cadence.isFinite()) {
                     GarminAck(cmd.wireType(), ok = false)
-                } else if (active) {
+                } else if (owned) {
                     playerRepository.setTargetCadence(cmd.cadence)
                     GarminAck(cmd.wireType(), ok = true)
                 } else {
@@ -96,7 +115,7 @@ class GarminCommandRouter @Inject constructor(
             is GarminCommand.CadenceUseCurrent -> {
                 if (!cmd.cadence.isFinite()) {
                     GarminAck(cmd.wireType(), ok = false)
-                } else if (active) {
+                } else if (owned) {
                     playerRepository.setTargetCadence(cmd.cadence)
                     GarminAck(cmd.wireType(), ok = true)
                 } else {
@@ -104,7 +123,7 @@ class GarminCommandRouter @Inject constructor(
                 }
             }
             is GarminCommand.CadenceDelta -> {
-                if (active) {
+                if (owned) {
                     when {
                         cmd.delta > 0 -> playerRepository.incrementTargetCadence()
                         cmd.delta < 0 -> playerRepository.decrementTargetCadence()
@@ -115,40 +134,77 @@ class GarminCommandRouter @Inject constructor(
                 }
             }
             is GarminCommand.SpeedCorrectionToggle -> {
-                if (active) {
+                if (owned) {
                     playerRepository.toggleSpeedCorrection()
                     GarminAck(cmd.wireType(), ok = true)
                 } else {
                     GarminAck(cmd.wireType(), ok = false)
                 }
             }
-            is GarminCommand.MarkNotForRunning -> markCurrentTrackNotForRunning(active, cmd)
+            is GarminCommand.MarkNotForRunning -> markCurrentTrackNotForRunning(owned, cmd)
+            // Absolute seek is RunBeat-only: there is no media-key
+            // equivalent for an absolute position. The ack is returned for
+            // symmetry, but the manager does not send it — the following
+            // state push (with the new positionMs) confirms the seek.
+            is GarminCommand.Seek -> {
+                if (owned) {
+                    playerRepository.seekTo(cmd.positionMs)
+                    GarminAck(cmd.wireType(), ok = true)
+                } else {
+                    GarminAck(cmd.wireType(), ok = false)
+                }
+            }
+            // Never reached: the manager intercepts RequestState as a
+            // link-layer request before routing (see GarminCompanionManager).
+            is GarminCommand.RequestState -> GarminAck(cmd.wireType(), ok = true)
         }
     }
 
     /**
      * Builds the state message pushed to the watch. [GarminWatchState.source]
-     * is "RunBeat" while RunBeat is the active playback app, "none" otherwise
+     * is "RunBeat" while RunBeat owns the current-track context (playing,
+     * buffering, or paused with a track loaded — the watch keeps showing
+     * the track while paused, exactly as the app does), "none" otherwise
      * (external now-playing metadata is out of scope: no notification listener).
-     * The RunBeat-only fields (trackId, title, bpm, targetCadence,
-     * speedCorrection, playbackSpeed) are null unless RunBeat is active; the
-     * codec omits null fields from the wire message. In particular the title
-     * is omitted when RunBeat is not active so the watch does not show a
-     * stale RunBeat title with source "none".
+     * The RunBeat-only fields (trackId, title, artist, album, durationMs,
+     * positionMs, bpm, targetCadence, speedCorrection, playbackSpeed) are
+     * null unless RunBeat owns the context; the codec omits null fields from
+     * the wire message. In particular the title is omitted otherwise so the
+     * watch does not show a stale RunBeat title with source "none".
+     * [GarminWatchState.durationMs] is the track's
+     * `extras.durationMs`, falling back to
+     * [PlayerRepository.PlayerState.duration];
+     * [GarminWatchState.positionMs] is the current position rounded down to
+     * whole seconds so the state push stays at ~1/s while playing.
      */
     fun currentState(): GarminWatchState {
-        val active = isRunBeatActive()
+        val owned = isRunBeatOwned()
         val track = playerRepository.currentTrack.value
         val extras = track?.mediaMetadata?.extras
         return GarminWatchState(
-            source = if (active) SOURCE_RUNBEAT else SOURCE_NONE,
+            source = if (owned) SOURCE_RUNBEAT else SOURCE_NONE,
             isPlaying = playerRepository.playerState.value.isPlaying,
-            trackId = if (active) extras?.getString("trackId") else null,
-            title = if (active) track?.mediaMetadata?.title?.toString() else null,
-            bpm = if (active) extras?.getString("bpm")?.toFloatOrNull() else null,
-            targetCadence = if (active) playerRepository.targetCadence.value else null,
-            speedCorrection = if (active) playerRepository.speedCorrectionEnabled.value else null,
-            playbackSpeed = if (active) playerRepository.playbackSpeed.value else null,
+            trackId = if (owned) extras?.getString("trackId") else null,
+            title = if (owned) track?.mediaMetadata?.title?.toString() else null,
+            artist = if (owned) track?.mediaMetadata?.artist?.toString() else null,
+            album = if (owned) track?.mediaMetadata?.albumTitle?.toString() else null,
+            durationMs = if (owned) {
+                extras?.getLong("durationMs")?.takeIf { it > 0 }
+                    ?: playerRepository.playerState.value.duration.takeIf { it > 0 }
+            } else {
+                null
+            },
+            // Rounded down to whole seconds so the manager's
+            // distinctUntilChanged emits ~1/s while playing.
+            positionMs = if (owned) {
+                playerRepository.playerState.value.currentPosition / 1000L * 1000L
+            } else {
+                null
+            },
+            bpm = if (owned) extras?.getString("bpm")?.toFloatOrNull() else null,
+            targetCadence = if (owned) playerRepository.targetCadence.value else null,
+            speedCorrection = if (owned) playerRepository.speedCorrectionEnabled.value else null,
+            playbackSpeed = if (owned) playerRepository.playbackSpeed.value else null,
             volume = mediaKeyDispatcher.currentVolume(),
         )
     }
@@ -185,6 +241,10 @@ class GarminCommandRouter @Inject constructor(
         GarminCommand.SpeedCorrectionToggle -> "speed_correction_toggle"
         is GarminCommand.VolumeDelta -> "volume_delta"
         GarminCommand.MarkNotForRunning -> "mark_not_for_running"
+        // RequestState never reaches the router (the manager intercepts it);
+        // the mapping exists to keep this when exhaustive.
+        GarminCommand.RequestState -> "request_state"
+        is GarminCommand.Seek -> "seek"
     }
 
     private companion object {

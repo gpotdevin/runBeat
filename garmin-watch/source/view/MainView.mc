@@ -1,10 +1,22 @@
 import Toybox.Graphics;
+
 import Toybox.Lang;
+
+import Toybox.Math;
+
 import Toybox.WatchUi;
 
-// Screen 1 — transport. Works for RunBeat AND external apps:
-// source label, track title (truncated), play/pause icon from state.
-// Select = toggle; menu = next/previous.
+// Screen 1 — music-control remote. Works for RunBeat AND external apps:
+// a big play/pause state icon at the top, header (source label /
+// connection status), the live track block (artist / album / title in a
+// large font), and a progress bar with an m:ss caption.
+//
+// Input (wired in RunBeatCompanionApp.mc): a tap anywhere (or
+// select/ENTER) = play/pause, MENU = flat transport menu (button
+// devices), horizontal swipe = previous / next track (touch devices).
+// Volume lives on the Controls page. Everything is drawn relative to the
+// screen size, so it adapts from 218 px (fr245) to 454 px (venu3), round
+// and square; layouts.xml only provides the header label.
 class MainView extends BaseView {
 
     function initialize(state, messages) {
@@ -26,31 +38,102 @@ class MainView extends BaseView {
         dc.setColor(Graphics.COLOR_BLACK, Graphics.COLOR_BLACK);
         dc.clear();
 
-        // Header: where the audio is coming from (or "Phone not connected").
+        // Header: where the audio is coming from (or the connection status).
         updateHeader(sourceLabelText(), sourceLabelColor());
 
-        // Play/pause icon.
-        var iconH = isRound() ? 26 : 34;
-        var iconCenterY = (h * 0.40).toNumber();
-        dc.setColor(_state.isPlaying ? Graphics.COLOR_GREEN : Graphics.COLOR_WHITE, Graphics.COLOR_BLACK);
-        if (_state.isPlaying) {
-            drawPauseIcon(dc, w / 2, iconCenterY, iconH);
-        } else {
-            drawPlayIcon(dc, w / 2, iconCenterY, iconH);
+        var fhTiny = dc.getFontHeight(Graphics.FONT_TINY);
+        var fhSmall = dc.getFontHeight(Graphics.FONT_SMALL);
+        var fhLarge = dc.getFontHeight(Graphics.FONT_LARGE);
+        var runBeat = _state.isRunBeatActive();
+
+        // --- Row geometry -------------------------------------------------
+        // Design targets are fractions of h (state icon ~0.16, track
+        // block ~0.30/0.39/0.51, progress ~0.65). Each row is pushed down
+        // past the previous row's bottom, from 218 px (fr245) to 454 px
+        // (venu3), round and square.
+        var headerBottom = (isRound() ? 34 : 18) + fhTiny / 2;
+
+        // Big play/pause state icon at the top: a tap anywhere toggles;
+        // the icon shows which action the next tap will do.
+        var iconH = maxNum(18, minNum(40, h * 0.10)).toNumber();
+        var iconCY = maxNum(h * 0.16, headerBottom + iconH / 2 + 4).toNumber();
+        var iconBottom = iconCY + iconH / 2;
+
+        var yArtist = maxNum(h * 0.30, iconBottom + 8).toNumber();
+        var yAlbum = maxNum(h * 0.39, yArtist + fhSmall / 2 + 2 + fhTiny / 2).toNumber();
+        var yTitle = maxNum(h * 0.51, yAlbum + fhTiny / 2 + 2 + fhLarge / 2).toNumber();
+
+        // Progress row (only when the duration is known).
+        var durationMs = _state.durationMs;
+        var positionMs = _state.positionMs;
+        var showProgress = runBeat && durationMs != null && (durationMs as Number) > 0;
+        var barH = maxNum(3, minNum(8, h * 0.02)).toNumber();
+        var yCaption = 0;
+        var barTop = 0;
+        if (showProgress) {
+            yCaption = maxNum(h * 0.65, yTitle + fhLarge / 2 + 3 + barH + 2 + fhTiny / 2).toNumber();
+            barTop = yCaption - fhTiny / 2 - 2 - barH;
         }
 
-        // Track title (truncated to fit).
-        var title = _state.title.length() > 0 ? _state.title : WatchUi.loadResource(Rez.Strings.NoValue) as String;
-        dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_BLACK);
-        dc.drawText(w / 2, h * 0.62, Graphics.FONT_MEDIUM,
-            truncateToWidth(dc, title, Graphics.FONT_MEDIUM, w * 0.84),
-            Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
+        // --- Play/pause state icon (top of the screen) ---------------------
+        if (_state.isPlaying) {
+            dc.setColor(Graphics.COLOR_GREEN, Graphics.COLOR_BLACK);
+            drawPauseIcon(dc, w / 2, iconCY, iconH);
+        } else {
+            dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_BLACK);
+            drawPlayIcon(dc, w / 2, iconCY, iconH);
+        }
 
-        // RunBeat metadata: BPM and playback speed.
-        var meta = metaText();
-        if (meta.length() > 0) {
+        // --- Track block ---------------------------------------------------
+        if (runBeat) {
+            var noValue = WatchUi.loadResource(Rez.Strings.NoValue) as String;
+            var artist = _state.artist.length() > 0 ? _state.artist : noValue;
+            var album = _state.album.length() > 0 ? _state.album : noValue;
+            var title = _state.title.length() > 0 ? _state.title : noValue;
+            dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_BLACK);
+            dc.drawText(w / 2, yArtist, Graphics.FONT_SMALL,
+                truncateToWidth(dc, artist, Graphics.FONT_SMALL, textWidthAt(dc, yArtist, 0.84)),
+                Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
             dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
-            dc.drawText(w / 2, h * 0.71, Graphics.FONT_TINY, meta,
+            dc.drawText(w / 2, yAlbum, Graphics.FONT_TINY,
+                truncateToWidth(dc, album, Graphics.FONT_TINY, textWidthAt(dc, yAlbum, 0.84)),
+                Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
+            dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_BLACK);
+            dc.drawText(w / 2, yTitle, Graphics.FONT_LARGE,
+                truncateToWidth(dc, title, Graphics.FONT_LARGE, textWidthAt(dc, yTitle, 0.80)),
+                Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
+        } else {
+            // No RunBeat track: the source label only (as before).
+            dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
+            dc.drawText(w / 2, yTitle, Graphics.FONT_LARGE,
+                truncateToWidth(dc, sourceLabelText(), Graphics.FONT_LARGE, textWidthAt(dc, yTitle, 0.80)),
+                Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
+        }
+
+        // --- Progress (only when the duration is known) --------------------
+        if (showProgress) {
+            var dur = durationMs as Number;
+            var pos = 0;
+            if (positionMs != null) {
+                pos = positionMs as Number;
+            }
+            if (pos < 0) {
+                pos = 0;
+            }
+            if (pos > dur) {
+                pos = dur;
+            }
+            var barW = w * 0.7;
+            var barX = (w - barW) / 2;
+            dc.setColor(Graphics.COLOR_DK_GRAY, Graphics.COLOR_BLACK);
+            dc.fillRectangle(barX, barTop, barW, barH);
+            var fillW = barW * pos / dur;
+            if (fillW > 0) {
+                dc.setColor(Graphics.COLOR_GREEN, Graphics.COLOR_BLACK);
+                dc.fillRectangle(barX, barTop, fillW, barH);
+            }
+            dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
+            dc.drawText(w / 2, yCaption, Graphics.FONT_TINY, _state.progressText(),
                 Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
         }
 
@@ -58,19 +141,30 @@ class MainView extends BaseView {
         drawPageIndicator(dc, 1, 3);
     }
 
-    // Select: toggle play/pause (works for RunBeat and external apps).
+    // Select/ENTER = play/pause (works for RunBeat and external apps).
     function onSelectPressed() as Void {
         _messages.sendToggle();
     }
 
+    // Horizontal-swipe handler for RunBeatPageDelegate (touch devices):
+    // :swipe_left goes to the previous track, :swipe_right to the next
+    // (the transport buttons were replaced by this gesture).
+    function onHorizontalSwipe(direction as Symbol) as Void {
+        if (direction == :swipe_left) {
+            _messages.sendPrev();
+        } else if (direction == :swipe_right) {
+            _messages.sendNext();
+        }
+    }
+
     private function sourceLabelText() as String {
-        if (_state.source == "RunBeat") {
+        if (_state.source.equals("RunBeat")) {
             return WatchUi.loadResource(Rez.Strings.AppName) as String;
         }
-        if (_state.source.length() == 0 || _state.source == "none") {
+        if (_state.source.length() == 0 || _state.source.equals("none")) {
             return WatchUi.loadResource(Rez.Strings.NoPlayback) as String;
         }
-        if (_state.source == "external") {
+        if (_state.source.equals("external")) {
             return WatchUi.loadResource(Rez.Strings.ExternalApp) as String;
         }
         // External app name pushed by the phone (optional notification access).
@@ -78,29 +172,45 @@ class MainView extends BaseView {
     }
 
     private function sourceLabelColor() as Number {
-        if (_state.source == "RunBeat") {
+        if (_state.source.equals("RunBeat")) {
             return Graphics.COLOR_GREEN;
         }
         return Graphics.COLOR_LT_GRAY;
     }
 
-    private function metaText() as String {
-        if (!_state.isRunBeatActive()) {
-            return "";
-        }
-        var parts = "";
-        var bpm = _state.bpmText();
-        if (bpm.length() > 0) {
-            parts = bpm + WatchUi.loadResource(Rez.Strings.BpmSuffix) as String;
-        }
-        var speed = _state.playbackSpeedText();
-        if (speed.length() > 0) {
-            if (parts.length() > 0) {
-                parts += "  ";
+    // Numeric max/min with untyped operands (Number or Float); the result
+    // is normalized with toNumber() where a Number is required.
+    private function maxNum(a, b) {
+        return a > b ? a : b;
+    }
+
+    private function minNum(a, b) {
+        return a < b ? a : b;
+    }
+
+    // Max text width at height y: the full width times maxFraction on
+    // square screens; on round screens the chord of the circle at y, so
+    // truncated text stays inside the bezel.
+    private function textWidthAt(dc as Dc, y as Number, maxFraction as Float) as Number {
+        var w = dc.getWidth();
+        var h = dc.getHeight();
+        var maxW = w * maxFraction;
+        if (isRound()) {
+            var r = w / 2;
+            var dy = y - h / 2;
+            if (dy < 0) {
+                dy = -dy;
             }
-            parts += speed + WatchUi.loadResource(Rez.Strings.SpeedSuffix) as String;
+            if (dy < r) {
+                var chord = 2 * Math.sqrt(r * r - dy * dy);
+                if (chord < maxW) {
+                    maxW = chord;
+                }
+            } else {
+                maxW = 0.0;
+            }
         }
-        return parts;
+        return maxW.toNumber();
     }
 
     // Right-pointing triangle (scanline-filled; sticks to fillRectangle,
@@ -133,6 +243,8 @@ class MainView extends BaseView {
     }
 }
 
+// Main page menu (button devices): flat transport items — one press, no
+// sub-menus. Touch devices use the gestures instead.
 class MainViewMenuDelegate extends WatchUi.MenuInputDelegate {
 
     private var _messages;
@@ -149,6 +261,12 @@ class MainViewMenuDelegate extends WatchUi.MenuInputDelegate {
                 break;
             case :menu_prev:
                 _messages.sendPrev();
+                break;
+            case :menu_volume_up:
+                _messages.sendVolumeDelta(1);
+                break;
+            case :menu_volume_down:
+                _messages.sendVolumeDelta(-1);
                 break;
         }
     }

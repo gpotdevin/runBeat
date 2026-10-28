@@ -17,6 +17,8 @@ import org.json.JSONObject
  *   {"type":"speed_correction_toggle"}
  *   {"type":"volume_delta","delta":1}
  *   {"type":"mark_not_for_running"}
+ *   {"type":"request_state"}
+ *   {"type":"seek","positionMs":42000}
  */
 sealed class GarminCommand {
     data object Play : GarminCommand()
@@ -30,26 +32,45 @@ sealed class GarminCommand {
     data object SpeedCorrectionToggle : GarminCommand()
     data class VolumeDelta(val delta: Int) : GarminCommand()
     data object MarkNotForRunning : GarminCommand()
+
+    /**
+     * Link-layer request, not a playback command: the companion manager
+     * intercepts it before routing and answers the sender with one state
+     * push (no ack).
+     */
+    data object RequestState : GarminCommand()
+
+    /** Absolute seek position in ms; RunBeat-only (no media-key equivalent). */
+    data class Seek(val positionMs: Long) : GarminCommand()
 }
 
 /**
  * Playback state pushed from the phone to the watch:
  *   {"type":"state","source":"RunBeat","isPlaying":true,"trackId":"...","title":"...",
+ *    "artist":"...","album":"...","durationMs":213000,"positionMs":42000,
  *    "bpm":140.0,"targetCadence":172,"speedCorrection":true,"playbackSpeed":1.03,"volume":12}
  *
  * [source] is "RunBeat" when RunBeat is the active playback app, otherwise
  * "none". "external" (or the external app's name) is a reserved protocol
  * value, not currently emitted: the phone ships without the optional
  * ExternalPlaybackMonitor notification listener. The RunBeat-only fields
- * ([trackId], [bpm], [targetCadence], [speedCorrection], [playbackSpeed]) are
+ * ([trackId], [title], [artist], [album], [durationMs], [positionMs],
+ * [bpm], [targetCadence], [speedCorrection], [playbackSpeed]) are
  * null when unknown / not applicable and are omitted from the wire message.
- * [volume] is the current STREAM_MUSIC media volume (AudioManager index).
+ * [positionMs] is rounded down to whole seconds by the phone
+ * (currentPosition / 1000 * 1000) so the push rate stays at ~1/s while
+ * playing. [volume] is the current STREAM_MUSIC media volume (AudioManager
+ * index).
  */
 data class GarminWatchState(
     val source: String,
     val isPlaying: Boolean,
     val trackId: String? = null,
     val title: String? = null,
+    val artist: String? = null,
+    val album: String? = null,
+    val durationMs: Long? = null,
+    val positionMs: Long? = null,
     val bpm: Float? = null,
     val targetCadence: Float? = null,
     val speedCorrection: Boolean? = null,
@@ -82,6 +103,10 @@ object GarminMessageCodec {
     private const val KEY_IS_PLAYING = "isPlaying"
     private const val KEY_TRACK_ID = "trackId"
     private const val KEY_TITLE = "title"
+    private const val KEY_ARTIST = "artist"
+    private const val KEY_ALBUM = "album"
+    private const val KEY_DURATION_MS = "durationMs"
+    private const val KEY_POSITION_MS = "positionMs"
     private const val KEY_BPM = "bpm"
     private const val KEY_TARGET_CADENCE = "targetCadence"
     private const val KEY_SPEED_CORRECTION = "speedCorrection"
@@ -99,12 +124,17 @@ object GarminMessageCodec {
     private const val TYPE_SPEED_CORRECTION_TOGGLE = "speed_correction_toggle"
     private const val TYPE_VOLUME_DELTA = "volume_delta"
     private const val TYPE_MARK_NOT_FOR_RUNNING = "mark_not_for_running"
+    private const val TYPE_REQUEST_STATE = "request_state"
+    private const val TYPE_SEEK = "seek"
     private const val TYPE_STATE = "state"
     private const val TYPE_ACK = "ack"
 
     // Sanity bound for cadence_delta / volume_delta: the watch sends ±1 per
     // button press, so anything beyond this is a corrupt or hostile message.
     private const val MAX_DELTA = 100
+
+    // Sanity bound for seek: 24 h of audio is far beyond any track length.
+    private const val MAX_SEEK_POSITION_MS = 86_400_000.0
 
     // ---------------------------------------------------------------
     // Watch -> phone (commands)
@@ -129,6 +159,9 @@ object GarminMessageCodec {
             TYPE_VOLUME_DELTA -> obj.optDeltaOrNull(KEY_DELTA)
                 ?.let { GarminCommand.VolumeDelta(it) }
             TYPE_MARK_NOT_FOR_RUNNING -> GarminCommand.MarkNotForRunning
+            TYPE_REQUEST_STATE -> GarminCommand.RequestState
+            TYPE_SEEK -> obj.optPositionMsOrNull(KEY_POSITION_MS)
+                ?.let { GarminCommand.Seek(it) }
             else -> null
         }
     }
@@ -159,6 +192,11 @@ object GarminMessageCodec {
             .put(KEY_DELTA, command.delta)
             .toString()
         is GarminCommand.MarkNotForRunning -> typed(TYPE_MARK_NOT_FOR_RUNNING)
+        is GarminCommand.RequestState -> typed(TYPE_REQUEST_STATE)
+        is GarminCommand.Seek -> JSONObject()
+            .put(KEY_TYPE, TYPE_SEEK)
+            .put(KEY_POSITION_MS, command.positionMs)
+            .toString()
     }
 
     // ---------------------------------------------------------------
@@ -174,6 +212,10 @@ object GarminMessageCodec {
             isPlaying = obj.optBoolean(KEY_IS_PLAYING, false),
             trackId = obj.optStringOrNull(KEY_TRACK_ID),
             title = obj.optStringOrNull(KEY_TITLE),
+            artist = obj.optStringOrNull(KEY_ARTIST),
+            album = obj.optStringOrNull(KEY_ALBUM),
+            durationMs = obj.optLongOrNull(KEY_DURATION_MS),
+            positionMs = obj.optLongOrNull(KEY_POSITION_MS),
             bpm = obj.optFloatOrNull(KEY_BPM),
             targetCadence = obj.optFloatOrNull(KEY_TARGET_CADENCE),
             speedCorrection = obj.optNullableBoolean(KEY_SPEED_CORRECTION),
@@ -190,6 +232,10 @@ object GarminMessageCodec {
             .put(KEY_IS_PLAYING, state.isPlaying)
         state.trackId?.let { obj.put(KEY_TRACK_ID, it) }
         state.title?.let { obj.put(KEY_TITLE, it) }
+        state.artist?.let { obj.put(KEY_ARTIST, it) }
+        state.album?.let { obj.put(KEY_ALBUM, it) }
+        state.durationMs?.let { obj.put(KEY_DURATION_MS, it) }
+        state.positionMs?.let { obj.put(KEY_POSITION_MS, it) }
         state.bpm?.let { obj.putCadence(KEY_BPM, it) }
         state.targetCadence?.let { obj.putCadence(KEY_TARGET_CADENCE, it) }
         state.speedCorrection?.let { obj.put(KEY_SPEED_CORRECTION, it) }
@@ -232,6 +278,9 @@ object GarminMessageCodec {
     private fun JSONObject.optFloatOrNull(key: String): Float? =
         if (has(key) && !isNull(key)) getDouble(key).toFloat() else null
 
+    private fun JSONObject.optLongOrNull(key: String): Long? =
+        if (has(key) && !isNull(key)) getLong(key) else null
+
     // optDouble returns NaN for missing or non-numeric fields; only accept a
     // present, finite value so a malformed command decodes to null instead of
     // poisoning downstream state with NaN.
@@ -249,6 +298,16 @@ object GarminMessageCodec {
         if (!value.isFinite() || value % 1.0 != 0.0) return null
         val delta = value.toInt()
         return if (delta in -MAX_DELTA..MAX_DELTA) delta else null
+    }
+
+    // Same treatment for the seek position: the field must be present,
+    // numeric, integral and within the 24 h sanity bound.
+    private fun JSONObject.optPositionMsOrNull(key: String): Long? {
+        if (!has(key) || isNull(key)) return null
+        val value = optDouble(key)
+        if (!value.isFinite() || value % 1.0 != 0.0) return null
+        if (value < 0.0 || value > MAX_SEEK_POSITION_MS) return null
+        return value.toLong()
     }
 
     private fun JSONObject.optNullableBoolean(key: String): Boolean? =

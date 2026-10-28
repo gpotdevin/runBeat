@@ -2,7 +2,8 @@ import Toybox.Communications;
 import Toybox.Lang;
 import Toybox.WatchUi;
 
-// Message protocol (normative): docs/companion_garmin_app/architecture.md.
+// Message protocol (normative): docs/companion_garmin_app/architecture.md
+// and docs/companion_garmin_app/implementation_plan_v2_2026-10-24.md (section 3).
 //
 // Watch -> phone commands are small JSON strings:
 //   {"type":"play"} {"type":"pause"} {"type":"toggle"} {"type":"next"} {"type":"prev"}
@@ -12,10 +13,18 @@ import Toybox.WatchUi;
 //   {"type":"speed_correction_toggle"}
 //   {"type":"volume_delta","delta":1} or {"delta":-1}
 //   {"type":"mark_not_for_running"}
+//   {"type":"request_state"}            (no payload, no ack; the phone answers
+//                                       the sender with one state push)
+//   {"type":"seek","positionMs":42000}  (no ack; positionMs is an integer)
 //
 // Phone -> watch:
 //   {"type":"state","source":"RunBeat","isPlaying":true,"trackId":"...","title":"...",
+//    "artist":"...","album":"...","durationMs":213000,"positionMs":42000,
 //    "bpm":140.0,"targetCadence":172,"speedCorrection":true,"playbackSpeed":1.03,"volume":12}
+//     - artist/album: track metadata (required when source == "RunBeat");
+//     - durationMs/positionMs: track length and playback position in ms
+//       (positionMs rounded down to whole seconds by the phone);
+//     - both are null/omitted when source != "RunBeat" or unknown.
 //   {"type":"ack","command":"mark_not_for_running","ok":true}
 //
 // Monkey C has no org.json, so the flat JSON objects are built/parsed by hand.
@@ -63,8 +72,11 @@ class MessageHandler {
         sendJson("{\"type\":\"volume_delta\",\"delta\":" + delta.format("%d") + "}");
     }
 
-    function sendMarkNotForRunning() as Void {
-        sendJson("{\"type\":\"mark_not_for_running\"}");
+    // Handshake: ask the phone for one state push. Sent on app start and
+    // re-sent every 5 s while the state is stale. No ack — the answer is
+    // the state push itself.
+    function sendRequestState() as Void {
+        sendJson("{\"type\":\"request_state\"}");
     }
 
     // ---------------------------------------------------------------
@@ -91,9 +103,9 @@ class MessageHandler {
             return;
         }
         var t = type as String;
-        if (t == "state") {
+        if (t.equals("state")) {
             applyState(dict);
-        } else if (t == "ack") {
+        } else if (t.equals("ack")) {
             applyAck(dict);
         }
         // Unknown message types are ignored (forward compatibility).
@@ -117,6 +129,16 @@ class MessageHandler {
         if (title instanceof String) {
             s.title = title as String;
         }
+        var artist = dict["artist"];
+        if (artist instanceof String) {
+            s.artist = artist as String;
+        }
+        var album = dict["album"];
+        if (album instanceof String) {
+            s.album = album as String;
+        }
+        s.durationMs = optionalNumber(dict, "durationMs");
+        s.positionMs = optionalNumber(dict, "positionMs");
         s.bpm = optionalFloat(dict, "bpm");
         s.targetCadence = optionalFloat(dict, "targetCadence");
         var speedCorrection = dict["speedCorrection"];
@@ -126,11 +148,15 @@ class MessageHandler {
         s.playbackSpeed = optionalFloat(dict, "playbackSpeed");
         s.volume = optionalFloat(dict, "volume");
 
-        if (s.source != "RunBeat") {
+        if (!s.source.equals("RunBeat")) {
             // RunBeat-only fields are omitted or null for other sources; drop
             // stale values so nothing RunBeat-specific lingers on screen.
             s.trackId = "";
             s.title = "";
+            s.artist = "";
+            s.album = "";
+            s.durationMs = null;
+            s.positionMs = null;
             s.bpm = null;
             s.targetCadence = null;
             s.speedCorrection = false;
@@ -152,11 +178,11 @@ class MessageHandler {
         var command = dict["command"];
         if (command instanceof String) {
             var cmd = command as String;
-            if (cmd == "mark_not_for_running") {
+            if (cmd.equals("mark_not_for_running")) {
                 text = ok ? WatchUi.loadResource(Rez.Strings.AckMarked) as String : WatchUi.loadResource(Rez.Strings.AckMarkFailed) as String;
-            } else if (cmd == "cadence_use_current" || cmd == "cadence_set" || cmd == "cadence_delta") {
+            } else if (cmd.equals("cadence_use_current") || cmd.equals("cadence_set") || cmd.equals("cadence_delta")) {
                 text = ok ? WatchUi.loadResource(Rez.Strings.AckCadenceApplied) as String : WatchUi.loadResource(Rez.Strings.AckCadenceFailed) as String;
-            } else if (cmd == "speed_correction_toggle") {
+            } else if (cmd.equals("speed_correction_toggle")) {
                 text = ok ? WatchUi.loadResource(Rez.Strings.AckSpeedCorrection) as String : WatchUi.loadResource(Rez.Strings.AckFailed) as String;
             } else {
                 text = ok ? WatchUi.loadResource(Rez.Strings.AckOk) as String : WatchUi.loadResource(Rez.Strings.AckFailed) as String;
@@ -187,6 +213,19 @@ class MessageHandler {
         return null;
     }
 
+    // Integer-valued field (durations/positions in ms). The flat parser
+    // yields a Number for numeric literals; a Float is tolerated too.
+    private function optionalNumber(dict as Dictionary, key as String) as Number? {
+        var v = dict[key];
+        if (v instanceof Number) {
+            return v as Number;
+        }
+        if (v instanceof Float) {
+            return (v as Float).toNumber();
+        }
+        return null;
+    }
+
     // ---------------------------------------------------------------
     // Minimal flat-JSON-object parser (tolerant)
     // ---------------------------------------------------------------
@@ -198,11 +237,11 @@ class MessageHandler {
         var result = {};
         var n = text.length();
         var i = skipWs(text, 0);
-        if (i >= n || text.substring(i, i + 1) != "{") {
+        if (i >= n || !text.substring(i, i + 1).equals("{")) {
             return null;
         }
         i = skipWs(text, i + 1);
-        if (i < n && text.substring(i, i + 1) == "}") {
+        if (i < n && text.substring(i, i + 1).equals("}")) {
             return result;
         }
         while (i < n) {
@@ -211,14 +250,14 @@ class MessageHandler {
                 return null;
             }
             var c = text.substring(i, i + 1);
-            if (c == "}") {
+            if (c.equals("}")) {
                 return result;
             }
-            if (c == ",") {
+            if (c.equals(",")) {
                 i++;
                 continue;
             }
-            if (c != "\"") {
+            if (!c.equals("\"")) {
                 return null;
             }
             var keyEnd = findStringEnd(text, i);
@@ -227,7 +266,7 @@ class MessageHandler {
             }
             var key = parseStringValue(text, i, keyEnd);
             i = skipWs(text, keyEnd + 1);
-            if (i >= n || text.substring(i, i + 1) != ":") {
+            if (i >= n || !text.substring(i, i + 1).equals(":")) {
                 return null;
             }
             i = skipWs(text, i + 1);
@@ -235,14 +274,14 @@ class MessageHandler {
                 return null;
             }
             c = text.substring(i, i + 1);
-            if (c == "\"") {
+            if (c.equals("\"")) {
                 var valEnd = findStringEnd(text, i);
                 if (valEnd < 0) {
                     return null;
                 }
                 result[key] = parseStringValue(text, i, valEnd);
                 i = valEnd + 1;
-            } else if (c == "{" || c == "[") {
+            } else if (c.equals("{") || c.equals("[")) {
                 var after = skipNested(text, i);
                 if (after < 0) {
                     return null;
@@ -253,18 +292,18 @@ class MessageHandler {
                 var j = i;
                 while (j < n) {
                     var ch = text.substring(j, j + 1);
-                    if (ch == "," || ch == "}" || ch == " " || ch == "\t" || ch == "\n" || ch == "\r") {
+                    if (ch.equals(",") || ch.equals("}") || ch.equals(" ") || ch.equals("\t") || ch.equals("\n") || ch.equals("\r")) {
                         break;
                     }
                     j++;
                 }
                 var raw = text.substring(i, j);
                 i = j;
-                if (raw == "true") {
+                if (raw.equals("true")) {
                     result[key] = true;
-                } else if (raw == "false") {
+                } else if (raw.equals("false")) {
                     result[key] = false;
-                } else if (raw == "null" || raw.length() == 0) {
+                } else if (raw.equals("null") || raw.length() == 0) {
                     result[key] = null;
                 } else {
                     var num = raw.toNumber();
@@ -282,7 +321,7 @@ class MessageHandler {
         var n = text.length();
         while (i < n) {
             var c = text.substring(i, i + 1);
-            if (c == " " || c == "\t" || c == "\n" || c == "\r") {
+            if (c.equals(" ") || c.equals("\t") || c.equals("\n") || c.equals("\r")) {
                 i++;
             } else {
                 break;
@@ -298,11 +337,11 @@ class MessageHandler {
         var n = text.length();
         while (i < n) {
             var c = text.substring(i, i + 1);
-            if (c == "\\") {
+            if (c.equals("\\")) {
                 i += 2;
                 continue;
             }
-            if (c == "\"") {
+            if (c.equals("\"")) {
                 return i;
             }
             i++;
@@ -322,22 +361,22 @@ class MessageHandler {
         var n = raw.length();
         while (i < n) {
             var c = raw.substring(i, i + 1);
-            if (c == "\\" && i + 1 < n) {
+            if (c.equals("\\") && i + 1 < n) {
                 var e = raw.substring(i + 1, i + 2);
                 var skip = 2;
-                if (e == "n") {
+                if (e.equals("n")) {
                     result += "\n";
-                } else if (e == "t") {
+                } else if (e.equals("t")) {
                     result += "\t";
-                } else if (e == "r") {
+                } else if (e.equals("r")) {
                     result += "\r";
-                } else if (e == "\"") {
+                } else if (e.equals("\"")) {
                     result += "\"";
-                } else if (e == "\\") {
+                } else if (e.equals("\\")) {
                     result += "\\";
-                } else if (e == "/") {
+                } else if (e.equals("/")) {
                     result += "/";
-                } else if (e == "u") {
+                } else if (e.equals("u")) {
                     // \uXXXX: skip the whole escape (control characters only
                     // in practice — org.json emits raw UTF-8 for printable
                     // text, which passes through untouched above).
@@ -363,19 +402,19 @@ class MessageHandler {
         while (i < n) {
             var c = text.substring(i, i + 1);
             if (inString) {
-                if (c == "\\") {
+                if (c.equals("\\")) {
                     i += 2;
                     continue;
                 }
-                if (c == "\"") {
+                if (c.equals("\"")) {
                     inString = false;
                 }
             } else {
-                if (c == "\"") {
+                if (c.equals("\"")) {
                     inString = true;
-                } else if (c == "{" || c == "[") {
+                } else if (c.equals("{") || c.equals("[")) {
                     depth++;
-                } else if (c == "}" || c == "]") {
+                } else if (c.equals("}") || c.equals("]")) {
                     depth--;
                     if (depth == 0) {
                         return i + 1;

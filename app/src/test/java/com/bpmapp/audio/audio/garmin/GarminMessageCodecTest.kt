@@ -84,6 +84,48 @@ class GarminMessageCodecTest {
     }
 
     @Test
+    fun decodesRequestStateCommand() {
+        assertEquals(
+            GarminCommand.RequestState,
+            GarminMessageCodec.decodeCommand("{\"type\":\"request_state\"}")
+        )
+    }
+
+    @Test
+    fun decodesSeekCommand() {
+        assertEquals(
+            GarminCommand.Seek(42000L),
+            GarminMessageCodec.decodeCommand("{\"type\":\"seek\",\"positionMs\":42000}")
+        )
+        // The boundaries of the 24 h sanity range are accepted.
+        assertEquals(
+            GarminCommand.Seek(0L),
+            GarminMessageCodec.decodeCommand("{\"type\":\"seek\",\"positionMs\":0}")
+        )
+        assertEquals(
+            GarminCommand.Seek(86400000L),
+            GarminMessageCodec.decodeCommand("{\"type\":\"seek\",\"positionMs\":86400000}")
+        )
+    }
+
+    @Test
+    fun decodeCommandRejectsMissingInvalidOrAbsurdSeekPosition() {
+        // Missing field: optDouble would yield NaN.
+        assertNull(GarminMessageCodec.decodeCommand("{\"type\":\"seek\"}"))
+        // JSON null.
+        assertNull(GarminMessageCodec.decodeCommand("{\"type\":\"seek\",\"positionMs\":null}"))
+        // Non-numeric field.
+        assertNull(GarminMessageCodec.decodeCommand("{\"type\":\"seek\",\"positionMs\":\"abc\"}"))
+        // Negative position.
+        assertNull(GarminMessageCodec.decodeCommand("{\"type\":\"seek\",\"positionMs\":-1}"))
+        // Non-integral position.
+        assertNull(GarminMessageCodec.decodeCommand("{\"type\":\"seek\",\"positionMs\":42000.5}"))
+        // Beyond the 24 h sanity bound.
+        assertNull(GarminMessageCodec.decodeCommand("{\"type\":\"seek\",\"positionMs\":86400001}"))
+        assertNull(GarminMessageCodec.decodeCommand("{\"type\":\"seek\",\"positionMs\":100000000000}"))
+    }
+
+    @Test
     fun decodeCommandIsTolerant() {
         assertNull(GarminMessageCodec.decodeCommand("not json"))
         assertNull(GarminMessageCodec.decodeCommand("{\"type\":\"unknown_command\"}"))
@@ -156,6 +198,8 @@ class GarminMessageCodecTest {
             GarminCommand.VolumeDelta(1),
             GarminCommand.VolumeDelta(-1),
             GarminCommand.MarkNotForRunning,
+            GarminCommand.RequestState,
+            GarminCommand.Seek(42000L),
         )
         for (command in commands) {
             val encoded = GarminMessageCodec.encodeCommand(command)
@@ -179,6 +223,14 @@ class GarminMessageCodecTest {
             "{\"type\":\"volume_delta\",\"delta\":1}",
             GarminMessageCodec.encodeCommand(GarminCommand.VolumeDelta(1))
         )
+        assertEquals(
+            "{\"type\":\"request_state\"}",
+            GarminMessageCodec.encodeCommand(GarminCommand.RequestState)
+        )
+        assertEquals(
+            "{\"type\":\"seek\",\"positionMs\":42000}",
+            GarminMessageCodec.encodeCommand(GarminCommand.Seek(42000L))
+        )
     }
 
     // ---------------------------------------------------------------
@@ -189,8 +241,11 @@ class GarminMessageCodecTest {
     fun decodesWatchExampleStateMessage() {
         // The example from architecture.md / MessageHandler.mc, verbatim.
         val json = "{\"type\":\"state\",\"source\":\"RunBeat\",\"isPlaying\":true," +
-            "\"trackId\":\"content://media/...\",\"title\":\"Song name\",\"bpm\":140.0," +
-            "\"targetCadence\":172,\"speedCorrection\":true,\"playbackSpeed\":1.03,\"volume\":12}"
+            "\"trackId\":\"content://media/...\",\"title\":\"Song name\"," +
+            "\"artist\":\"Artist name\",\"album\":\"Album name\"," +
+            "\"durationMs\":213000,\"positionMs\":42000," +
+            "\"bpm\":140.0,\"targetCadence\":172,\"speedCorrection\":true," +
+            "\"playbackSpeed\":1.03,\"volume\":12}"
         val state = GarminMessageCodec.decodeState(json)
         assertEquals(
             GarminWatchState(
@@ -198,6 +253,10 @@ class GarminMessageCodecTest {
                 isPlaying = true,
                 trackId = "content://media/...",
                 title = "Song name",
+                artist = "Artist name",
+                album = "Album name",
+                durationMs = 213000L,
+                positionMs = 42000L,
                 bpm = 140f,
                 targetCadence = 172f,
                 speedCorrection = true,
@@ -215,6 +274,10 @@ class GarminMessageCodecTest {
             isPlaying = false,
             trackId = "/music/track.mp3",
             title = "Track",
+            artist = "Track Artist",
+            album = "Track Album",
+            durationMs = 213000L,
+            positionMs = 42000L,
             bpm = 86.5f,
             targetCadence = 173f,
             speedCorrection = false,
@@ -243,6 +306,23 @@ class GarminMessageCodecTest {
     }
 
     @Test
+    fun stateRoundTripWithUtf8AndSpecialCharactersInArtistAndAlbum() {
+        val state = GarminWatchState(
+            source = "RunBeat",
+            isPlaying = true,
+            trackId = "track-1",
+            title = "Track",
+            artist = "Björk — “Hyperballad” \\ 100% café \uD83C\uDFB8",
+            album = "Homogénéité \uD83D\uDCE0 newline\nand\ttab",
+            durationMs = 213000L,
+            positionMs = 42000L,
+            volume = 12,
+        )
+        val encoded = GarminMessageCodec.encodeState(state)
+        assertEquals(state, GarminMessageCodec.decodeState(encoded))
+    }
+
+    @Test
     fun encodeStateOmitsUnknownRunBeatOnlyFields() {
         // source != "RunBeat": RunBeat-only fields are omitted, per the protocol.
         val encoded = GarminMessageCodec.encodeState(
@@ -253,7 +333,7 @@ class GarminMessageCodecTest {
         assertEquals("external", obj.getString("source"))
         assertTrue(obj.getBoolean("isPlaying"))
         assertEquals(7, obj.getInt("volume"))
-        for (key in listOf("trackId", "title", "bpm", "targetCadence", "speedCorrection", "playbackSpeed")) {
+        for (key in listOf("trackId", "title", "artist", "album", "durationMs", "positionMs", "bpm", "targetCadence", "speedCorrection", "playbackSpeed")) {
             assertFalse("$key should be omitted: $encoded", obj.has(key))
         }
         // Decoding the sparse message yields nulls for the omitted fields.
@@ -261,6 +341,29 @@ class GarminMessageCodecTest {
             GarminWatchState(source = "external", isPlaying = true, volume = 7),
             GarminMessageCodec.decodeState(encoded)
         )
+    }
+
+    @Test
+    fun encodeStateEmitsArtistAlbumDurationAndPosition() {
+        val encoded = GarminMessageCodec.encodeState(
+            GarminWatchState(
+                source = "RunBeat",
+                isPlaying = true,
+                trackId = "track-1",
+                title = "Song",
+                artist = "Song Artist",
+                album = "Song Album",
+                durationMs = 213000L,
+                positionMs = 42000L,
+                volume = 12,
+            )
+        )
+        val obj = JSONObject(encoded)
+        assertEquals("state", obj.getString("type"))
+        assertEquals("Song Artist", obj.getString("artist"))
+        assertEquals("Song Album", obj.getString("album"))
+        assertEquals(213000L, obj.getLong("durationMs"))
+        assertEquals(42000L, obj.getLong("positionMs"))
     }
 
     @Test

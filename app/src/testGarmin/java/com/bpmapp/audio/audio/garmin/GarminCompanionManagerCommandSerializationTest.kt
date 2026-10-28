@@ -20,10 +20,13 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import org.junit.After
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.mockito.Mockito
 import org.mockito.kotlin.any
 import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.doSuspendableAnswer
@@ -48,6 +51,11 @@ import kotlin.math.max
  * garmin flavor's unit-test source set (app/src/testGarmin). The Room write
  * is stubbed with a suspending answer so the interleaving the mutex
  * prevents is actually reachable without the fix.
+ *
+ * Also covers the request_state handshake (the "phone not recognized" fix):
+ * a watch's request_state is answered with exactly one state push to that
+ * device — no ack — which is what lets a watch launched after the link was
+ * already up still get recognized.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -71,7 +79,8 @@ class GarminCompanionManagerCommandSerializationTest {
     @Before
     fun setUp() {
         // The manager's command scope uses Dispatchers.Main.immediate; route
-        // it through the test scheduler so the test is deterministic.
+        // it through the test scheduler so the test is deterministic. The send
+        // dispatcher is passed explicitly for the same reason.
         Dispatchers.setMain(testDispatcher)
         playerRepository = mock()
         trackRepository = mock()
@@ -91,7 +100,7 @@ class GarminCompanionManagerCommandSerializationTest {
             currentTrack.value = track("track-2", "Second Song", "140")
         }.whenever(playerRepository).playNext()
         val router = GarminCommandRouter(playerRepository, trackRepository, mediaKeyDispatcher)
-        manager = GarminCompanionManager(mock<Context>(), playerRepository, router)
+        manager = GarminCompanionManager(mock<Context>(), playerRepository, router, testDispatcher)
     }
 
     @After
@@ -99,14 +108,27 @@ class GarminCompanionManagerCommandSerializationTest {
         Dispatchers.resetMain()
     }
 
-    private fun track(trackId: String, title: String, bpm: String): MediaItem {
+    private fun track(
+        trackId: String,
+        title: String,
+        bpm: String,
+        artist: String? = null,
+        album: String? = null,
+        durationMs: Long? = null,
+    ): MediaItem {
         val extras = Bundle().apply {
             putString("trackId", trackId)
             putString("bpm", bpm)
+            if (durationMs != null) putLong("durationMs", durationMs)
         }
+        val metadata = MediaMetadata.Builder()
+            .setTitle(title)
+            .setExtras(extras)
+        if (artist != null) metadata.setArtist(artist)
+        if (album != null) metadata.setAlbumTitle(album)
         return MediaItem.Builder()
             .setMediaId(trackId)
-            .setMediaMetadata(MediaMetadata.Builder().setTitle(title).setExtras(extras).build())
+            .setMediaMetadata(metadata.build())
             .build()
     }
 
@@ -142,6 +164,84 @@ class GarminCompanionManagerCommandSerializationTest {
         // instead of flagging the same track twice (double skip).
         assertEquals(listOf("track-1", "track-2"), markedTrackIds)
         verify(playerRepository, times(2)).playNext()
+    }
+
+    @Test
+    fun requestState_isAnsweredWithOneStatePushToThatDevice() {
+        val connectIQ = mock<ConnectIQ>()
+        val sentMessages = mutableListOf<Pair<IQDevice, String>>()
+        val device = IQDevice(1L, "Forerunner")
+        val notConnectedDevice = IQDevice(2L, "NotConnected")
+        val app = IQApp(GarminCompanionManager.IQ_APP_ID)
+
+        Mockito.mockStatic(ConnectIQ::class.java).use { mocked ->
+            mocked.`when`<ConnectIQ> { ConnectIQ.getInstance(any(), any()) }.thenReturn(connectIQ)
+            doAnswer { invocation ->
+                sentMessages.add(
+                    invocation.getArgument<IQDevice>(0) to invocation.getArgument<String>(2)
+                )
+                null
+            }.whenever(connectIQ).sendMessage(any(), any(), any(), any())
+
+            // The SDK reports the watch connected, as it would on a real link.
+            manager.onDeviceStatusChanged(device, IQDevice.IQDeviceStatus.CONNECTED)
+            manager.onDeviceStatusChanged(notConnectedDevice, IQDevice.IQDeviceStatus.NOT_CONNECTED)
+            // Run the state-push collector's first (no-op) emission. The 1 Hz
+            // volume ticker never goes idle, so the scheduler is advanced with
+            // runCurrent, not advanceUntilIdle.
+            testDispatcher.scheduler.runCurrent()
+
+            currentTrack.value = track(
+                trackId = "track-1",
+                title = "First Song",
+                bpm = "140",
+                artist = "Song Artist",
+                album = "Song Album",
+                durationMs = 213000L,
+            )
+            playerState.value = PlayerRepository.PlayerState(
+                isPlaying = true,
+                playbackState = Player.STATE_READY,
+                currentPosition = 42500L,
+                duration = 213000L,
+            )
+
+            manager.onMessageReceived(
+                device,
+                app,
+                listOf("{\"type\":\"request_state\"}"),
+                ConnectIQ.IQMessageStatus.SUCCESS,
+            )
+            testDispatcher.scheduler.runCurrent()
+
+            // Exactly one push, to the requesting device only, carrying the
+            // current state with the extended track metadata.
+            assertEquals(1, sentMessages.size)
+            assertEquals(1L, sentMessages[0].first.deviceIdentifier)
+            val payload = sentMessages[0].second
+            assertEquals("state", JSONObject(payload).getString("type"))
+            val state = GarminMessageCodec.decodeState(payload)
+            assertEquals("RunBeat", state?.source)
+            assertTrue(state!!.isPlaying)
+            assertEquals("Song Artist", state.artist)
+            assertEquals("Song Album", state.album)
+            assertEquals(213000L, state.durationMs)
+            // Rounded down to whole seconds by the phone.
+            assertEquals(42000L, state.positionMs)
+
+            // A request_state from a device that is not connected is not answered.
+            manager.onMessageReceived(
+                notConnectedDevice,
+                app,
+                listOf("{\"type\":\"request_state\"}"),
+                ConnectIQ.IQMessageStatus.SUCCESS,
+            )
+            testDispatcher.scheduler.runCurrent()
+            assertEquals(1, sentMessages.size)
+
+            // Stop the state-push collector and reset the global connection state.
+            manager.shutdown()
+        }
     }
 
     companion object {
