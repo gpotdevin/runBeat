@@ -132,7 +132,7 @@ decode to `null` and are logged + ignored by the phone.
 | `speed_correction_toggle` | — | `PlayerRepository.toggleSpeedCorrection()`. RunBeat only. |
 | `volume_delta` | `{"delta": 1}` or `{"delta": -1}` | `AudioManager.adjustStreamVolume(STREAM_MUSIC, ...)` — works for RunBeat and external apps alike |
 | `seek` (optional, 2026-10-24) | `{"positionMs": 42000}` | RunBeat active: `PlayerRepository.seekTo(positionMs)`; otherwise ignored. No ack — the following state push confirms. Phone sanity bound: 0 ≤ N ≤ 86 400 000 |
-| `request_state` (2026-10-24) | — | no ack; the phone answers the **sender** with one `state` push (`pushStateTo(device)`). The watch sends it on app start and every ~5 s while no message has arrived for ~10 s — this is what makes a watch launched after the link was already up still get recognized |
+| `request_state` (2026-10-24) | — | no ack; the phone answers the **sender** with one `state` push (`pushStateTo(device)`). The watch sends it on app start and, while no message has arrived for ~10 s, re-sends it with exponential backoff (5 -> 10 -> 20 -> 40 -> 60 s cap, reset as soon as a message arrives) — this is what makes a watch launched after the link was already up still get recognized, without an unreachable phone keeping the BLE radio busy every 5 s |
 | `mark_not_for_running` | — | flag current `trackId` + skip immediately (see below). RunBeat only. |
 
 ### Phone -> watch (state, pushed on change, on connect, and in answer to `request_state`)
@@ -181,6 +181,15 @@ state push confirms them.
 Cadence samples are **not** streamed continuously; only the 60-second mean
 is sent, on button press. This keeps BLE traffic near zero and battery
 impact minimal.
+
+Watch-side repaint policy (battery): the app's 1 Hz cadence tick repaints
+the screen **only when visible content changed** — a `positionMs`-only state
+push (deferred from the message handler so it shares the tick's repaint
+instead of adding a second one), the connection header flipping between
+fresh and stale, the transient ack line expiring, or the displayed cadence
+number changing. Paused and standing still, the app does not repaint at all.
+While playing, the progress position still advances at 1 Hz (one repaint per
+second, painted by the tick).
 
 ## Feature flows
 

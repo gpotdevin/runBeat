@@ -73,8 +73,10 @@ class MessageHandler {
     }
 
     // Handshake: ask the phone for one state push. Sent on app start and
-    // re-sent every 5 s while the state is stale. No ack — the answer is
-    // the state push itself.
+    // re-sent while the state is stale with exponential backoff (see
+    // RunBeatCompanionApp.onStateTimerTick — an unreachable phone must
+    // not trigger a radio attempt every 5 s forever). No ack — the answer
+    // is the state push itself.
     function sendRequestState() as Void {
         sendJson("{\"type\":\"request_state\"}");
     }
@@ -113,6 +115,18 @@ class MessageHandler {
 
     private function applyState(dict as Dictionary) as Void {
         var s = _state;
+        var now = System.getTimer();
+        // The header flips back from "Phone not connected" to the source
+        // label when this message un-stales the link — repaint even if the
+        // state content is unchanged.
+        var wasStale = s.isStale(now);
+        // Snapshot of every rendered field except positionMs: while playing
+        // the phone pushes ~1/s and only positionMs advances, and painting
+        // those pushes immediately would double the repaint rate on top of
+        // the 1 Hz tick. A position-only push is deferred to the tick.
+        var before = [s.source, s.isPlaying, s.trackId, s.title, s.artist,
+            s.album, s.durationMs, s.bpm, s.targetCadence, s.speedCorrection,
+            s.playbackSpeed, s.volume];
         var source = dict["source"];
         if (source instanceof String) {
             s.source = source as String;
@@ -164,7 +178,44 @@ class MessageHandler {
         }
 
         s.markMessageReceived();
-        WatchUi.requestUpdate();
+        var after = [s.source, s.isPlaying, s.trackId, s.title, s.artist,
+            s.album, s.durationMs, s.bpm, s.targetCadence, s.speedCorrection,
+            s.playbackSpeed, s.volume];
+        if (wasStale || !statesEqual(before, after)) {
+            WatchUi.requestUpdate();
+        } else {
+            // Position-only push (the common case while playing): let the
+            // app's 1 Hz tick paint it in the same repaint as the cadence
+            // tick, instead of a second full-screen render.
+            s.markPositionDirty();
+        }
+    }
+
+    // Element-wise equality of the two applyState field snapshots.
+    private function statesEqual(a as Array, b as Array) as Boolean {
+        var n = a.size();
+        for (var i = 0; i < n; i++) {
+            if (valueDiffers(a[i], b[i])) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // True when two parsed field values differ. Monkey C compares strings
+    // by reference with ==/!= (see e2e_connection_test_report.md rev. 4),
+    // so strings go through .equals(); null is compared explicitly.
+    // Numbers/booleans arrive type-consistently from the parser
+    // (optionalFloat always yields Float, optionalNumber always Number),
+    // so == compares values there.
+    private function valueDiffers(a, b) as Boolean {
+        if (a == null || b == null) {
+            return !(a == null && b == null);
+        }
+        if (a instanceof String && b instanceof String) {
+            return !(a as String).equals(b as String);
+        }
+        return !(a == b);
     }
 
     private function applyAck(dict as Dictionary) as Void {

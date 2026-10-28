@@ -59,9 +59,10 @@ class BaseView extends WatchUi.View {
         }
     }
 
-    // Transient confirmation line, visible for ~2.5 s after it was set.
+    // Transient confirmation line, visible for ACK_VISIBLE_MS after it
+    // was set (the app's 1 Hz tick repaints once at expiry).
     function drawAck(dc as Dc) as Void {
-        _state.clearExpiredAck(System.getTimer(), 2500);
+        _state.clearExpiredAck(System.getTimer(), WatchState.ACK_VISIBLE_MS);
         if (_state.ackText.length() == 0) {
             return;
         }

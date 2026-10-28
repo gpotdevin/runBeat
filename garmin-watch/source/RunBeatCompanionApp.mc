@@ -27,10 +27,18 @@ import Toybox.WatchUi;
 // (AudioProvider.mc holds the content/sync plumbing, which is empty —
 // all playback happens on the phone).
 //
-// Recognition handshake: on start (and every 5 s while the state is stale)
-// the watch sends {"type":"request_state"}; the phone answers the sender
-// with one state push. This fixes the "phone not recognized" case where the
-// watch app starts after the phone already pushed its state.
+// Recognition handshake: on start (and, while the state is stale, with
+// exponential backoff) the watch sends {"type":"request_state"}; the
+// phone answers the sender with one state push. This fixes the "phone
+// not recognized" case where the watch app starts after the phone
+// already pushed its state.
+//
+// Battery: the 1 Hz cadence tick repaints the screen ONLY when visible
+// content changed (deferred position push, connection-header flip, ack
+// expiry, changed cadence number) instead of unconditionally — a full
+// repaint every second was the main battery drain. The stale retry
+// backs off (5 -> 10 -> 20 -> 40 -> 60 s) so an unreachable phone does
+// not keep waking the BLE radio every 5 s.
 class RunBeatCompanionApp extends Application.AudioContentProviderApp {
 
     private var _state;           // WatchState
@@ -38,6 +46,16 @@ class RunBeatCompanionApp extends Application.AudioContentProviderApp {
     private var _cadenceSampler;  // CadenceSampler
     private var _messages;        // MessageHandler
     private var _stateTimer;      // Timer.Timer? — request_state retry
+
+    // request_state retry backoff (exponential while the phone never
+    // answers; reset as soon as any message arrives).
+    private var _retryDelayMs as Number = 5000;
+    private var _lastRequestAt as Number = 0;
+
+    // Repaint-transition tracking for the 1 Hz tick (see shouldRedraw).
+    private var _wasStale as Boolean = true;     // stale at app start
+    private var _ackWasVisible as Boolean = false;
+    private var _lastMeanText as String = "";    // displayed cadence number
 
     function initialize() {
         Application.AudioContentProviderApp.initialize();
@@ -53,11 +71,14 @@ class RunBeatCompanionApp extends Application.AudioContentProviderApp {
         // Handshake: ask for the current state right away (the phone may
         // have pushed it before this app started listening).
         _messages.sendRequestState();
-        // 1 Hz cadence sampling (also drives the 1 Hz screen refresh).
+        _lastRequestAt = System.getTimer();
+        _retryDelayMs = 5000;
+        // 1 Hz cadence sampling (also drives the conditional 1 Hz screen
+        // refresh).
         _cadenceSampler.start();
-        // Re-ask every 5 s while no message arrived in the last 10 s: covers
-        // "no message ever" and a dropped link; recovery is automatic once
-        // the phone answers.
+        // Re-ask with exponential backoff while no message arrived in the
+        // last 10 s: covers "no message ever" and a dropped link; recovery
+        // is automatic once the phone answers.
         var timer = new Timer.Timer();
         timer.start(method(:onStateTimerTick), 5000, true);
         _stateTimer = timer;
@@ -74,8 +95,12 @@ class RunBeatCompanionApp extends Application.AudioContentProviderApp {
     }
 
     function onCadenceTick() as Void {
-        // 1 Hz redraw: live cadence number and ack expiry.
-        WatchUi.requestUpdate();
+        var now = System.getTimer();
+        // Repaint only when visible content changed since the last pass —
+        // a full-screen render every second was the main battery drain.
+        if (shouldRedraw(now)) {
+            WatchUi.requestUpdate();
+        }
         // Drive the pushed adjust screen's auto-return (it must not run a
         // Timer of its own: hosts allow only ~3 concurrent timers and the
         // app already runs two repeating ones).
@@ -85,11 +110,54 @@ class RunBeatCompanionApp extends Application.AudioContentProviderApp {
         }
     }
 
-    // 5 s retry tick: re-send request_state while the state is stale.
-    function onStateTimerTick() as Void {
-        if (_state.isStale(System.getTimer())) {
-            _messages.sendRequestState();
+    // True when something visible changed since the last repaint: a
+    // position-only state push deferred by MessageHandler, the
+    // connection header flipping between fresh and stale, the ack line
+    // expiring, or the displayed cadence number changing. Paused and
+    // standing still, nothing repaints at all.
+    private function shouldRedraw(now as Number) as Boolean {
+        if (_state.consumePositionDirty()) {
+            return true;
         }
+        var stale = _state.isStale(now);
+        if (stale != _wasStale) {
+            _wasStale = stale;
+            return true;
+        }
+        var ackVisible = _state.isAckVisible(now);
+        if (ackVisible != _ackWasVisible) {
+            _ackWasVisible = ackVisible;
+            return true;
+        }
+        // The cadence page displays mean() formatted "%.0f" — compare the
+        // formatted value so sub-display drift does not repaint.
+        var mean = _cadenceBuffer.mean(now);
+        var meanText = mean == null ? "" : (mean as Float).format("%.0f");
+        if (!meanText.equals(_lastMeanText)) {
+            _lastMeanText = meanText;
+            return true;
+        }
+        return false;
+    }
+
+    // 5 s retry tick: while the state is stale, re-send request_state with
+    // exponential backoff (5 -> 10 -> 20 -> 40 -> 60 s cap) — an unreachable
+    // phone must not trigger a BLE session attempt every 5 s forever. The
+    // backoff resets as soon as the state is fresh again (any message
+    // arriving does that), so a live link still recovers within one tick.
+    function onStateTimerTick() as Void {
+        var now = System.getTimer();
+        if (!_state.isStale(now)) {
+            _retryDelayMs = 5000;
+            return;
+        }
+        if (now - _lastRequestAt < _retryDelayMs) {
+            return;
+        }
+        _messages.sendRequestState();
+        _lastRequestAt = now;
+        var next = _retryDelayMs * 2;
+        _retryDelayMs = next > 60000 ? 60000 : next;
     }
 
     function getInitialView() {

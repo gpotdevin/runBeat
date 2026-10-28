@@ -7,6 +7,11 @@ import Toybox.System;
 // (protocol: docs/companion_garmin_app/architecture.md).
 class WatchState {
 
+    // How long a transient ack line stays on screen (BaseView.drawAck
+    // clears it when it expires; the app's 1 Hz tick repaints once at
+    // expiry).
+    static const ACK_VISIBLE_MS = 2500;
+
     // --- playback state (from "state" messages) ---
     var source as String = "none";      // "RunBeat" | "external" | external app name | "none"
     var isPlaying as Boolean = false;
@@ -30,6 +35,13 @@ class WatchState {
     // --- connection tracking ---
     var lastMessageAt as Number = 0;    // System.getTimer() of the last valid incoming message
     var phoneReachable as Boolean = false;
+
+    // --- deferred repaint (battery: coalesce redraws) ---
+    // Set when a "state" push changed nothing but the playback position:
+    // nothing else on screen changed, so instead of a second full-screen
+    // repaint on top of the 1 Hz tick's, the tick consumes the flag and
+    // paints the position together with its own update.
+    private var _positionDirty as Boolean = false;
 
     // --- pushed adjust screen (volume / target cadence) ---
     // The screen that is currently pushed on top of the view stack, or
@@ -76,6 +88,26 @@ class WatchState {
         if (ackText.length() > 0 && now - ackTimestamp > timeoutMs) {
             ackText = "";
         }
+    }
+
+    // True while the ack line is inside its display window (the same
+    // constant drawAck uses to expire it). The app's 1 Hz tick watches
+    // the visible/not-visible transition to repaint exactly once when
+    // the line disappears.
+    function isAckVisible(now as Number) as Boolean {
+        return ackText.length() > 0 && now - ackTimestamp <= ACK_VISIBLE_MS;
+    }
+
+    // Deferred-repaint flag: set by MessageHandler on a position-only
+    // state push, consumed by the app's 1 Hz tick.
+    function markPositionDirty() as Void {
+        _positionDirty = true;
+    }
+
+    function consumePositionDirty() as Boolean {
+        var dirty = _positionDirty;
+        _positionDirty = false;
+        return dirty;
     }
 
     // Formatted accessors (empty string when the field is absent).
