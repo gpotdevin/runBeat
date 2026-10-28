@@ -70,11 +70,19 @@ button opens the per-page menu):
 2. **Cadence page** (RunBeat only — greyed out when `source != "RunBeat"`)
    - Big number: live 60-second average cadence (spm).
    - Target cadence display (from phone state).
-   - Select: use current as target (send `cadence_use_current` with the
-     ring buffer mean). Menu entries:
+   - Three stacked action buttons — one per action, so it is obvious
+     where to tap:
+     - `SET TARGET`: open the pushed target-cadence adjuster (upper half
+       +1 spm, lower half -1 spm, auto-return).
+     - `USE AVG AS TARGET`: send `cadence_use_current` with the ring
+       buffer mean (the last-minute cadence).
+     - `TEMPO ON/OFF`: toggle speed correction.
+   - Select: use current as target (same as the USE AVG button). Menu
+     entries:
      - `+` / `-`: send `cadence_delta` (+1 / -1).
      - `Use current as target`: send `cadence_use_current` with the ring
        buffer mean.
+     - `Speed correction`: toggle speed correction.
 3. **Control page**
    - Speed correction toggle (RunBeat only; shows on/off from phone state).
    - Volume: `-` / `+` (send `volume_delta`; always STREAM_MUSIC).
