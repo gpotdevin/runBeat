@@ -54,10 +54,10 @@ import Toybox.WatchUi;
 //     Background.registerForPhoneAppMessageEvent) wakes when the phone
 //     sends {"type":"wake"} (playback started, no watch app active) and
 //     offers a launch dialog.
-//   - Back at a page root exits the app outright: returning false would
-//     pop into the system music flow that launched the provider view
-//     (the stock music app screen), which the app should not sit on top
-//     of.
+//   - Back at a page root attempts System.exit but never swallows the
+//     event: on device System.exit does nothing from this
+//     audio-content-provider context (2026-10-29), so back falls through
+//     to the system pop (the stock music app beneath), as it always did.
 class RunBeatCompanionApp extends Application.AudioContentProviderApp {
 
     private var _state;           // WatchState
@@ -363,12 +363,21 @@ class RunBeatPageDelegate extends WatchUi.BehaviorDelegate {
         return false;
     }
 
-    // Back at a page root exits the app outright: returning false would
-    // pop into the system music flow that launched the provider view
-    // (the stock music app screen).
+    // Back at a page root attempts a clean exit, but NEVER swallows the
+    // event: System.exit() is documented to end the app "from any point",
+    // yet on the real device (2026-10-29) it does nothing from this
+    // audio-content-provider context, and returning true trapped the
+    // user in the app (no exit, no pop). Returning false lets the system
+    // pop to the context that launched the provider view (the stock
+    // music app) — back always leaves the screen one way or the other.
     function onBack() as Boolean {
-        System.exit();
-        return true;
+        try {
+            System.exit();
+        } catch (e) {
+            // Exit unavailable here — the fall-through pop below is the
+            // way out.
+        }
+        return false;
     }
 
     function onMenu() as Boolean {
@@ -466,11 +475,15 @@ class RunBeatFallbackDelegate extends WatchUi.BehaviorDelegate {
         return true;
     }
 
-    // Back exits the app outright (not the stock music app beneath — see
-    // RunBeatPageDelegate.onBack).
+    // Back attempts a clean exit but always falls through to the system
+    // pop (see RunBeatPageDelegate.onBack — returning true traps the user
+    // when System.exit is a no-op on device).
     function onBack() as Boolean {
-        System.exit();
-        return true;
+        try {
+            System.exit();
+        } catch (e) {
+        }
+        return false;
     }
 
     function onMenu() as Boolean {

@@ -216,11 +216,13 @@ incoming watch message** (any command, `request_state`, `bye`-cleared):
 
 Watch-side lifecycle (battery): the app exits itself (`System.exit`)
 after 3 minutes without user interaction once music has stopped or the
-phone link is stale, and back at a page root exits outright instead of
-popping into the stock music app beneath (the audio-content-provider
-launch context). Re-activation is the `wake` message above, plus the
-usual manual launch from the music provider list (instant: the app
-re-handshakes with `request_state` on start).
+phone link is stale, and back at a page root attempts the same exit but
+never swallows the event — on device `System.exit` does nothing from
+the audio-content-provider context (2026-10-29: returning true trapped
+the user), so back falls through to the system pop (the stock music
+app beneath), as it always did. Re-activation is the `wake` message
+above, plus the usual manual launch from the music provider list
+(instant: the app re-handshakes with `request_state` on start).
 
 ## Feature flows
 
