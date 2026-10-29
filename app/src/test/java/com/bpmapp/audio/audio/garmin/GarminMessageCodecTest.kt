@@ -225,6 +225,10 @@ class GarminMessageCodecTest {
             GarminMessageCodec.encodeCommand(GarminCommand.VolumeDelta(1))
         )
         assertEquals(
+            "{\"type\":\"mark_not_for_running\"}",
+            GarminMessageCodec.encodeCommand(GarminCommand.MarkNotForRunning)
+        )
+        assertEquals(
             "{\"type\":\"request_state\"}",
             GarminMessageCodec.encodeCommand(GarminCommand.RequestState)
         )

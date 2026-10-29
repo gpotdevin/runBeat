@@ -19,6 +19,9 @@ import Toybox.WatchUi;
 // and square; layouts.xml only provides the header label.
 class MainView extends BaseView {
 
+    // Drawn button rect [x, y, w, h] from the last onUpdate (tap hit-testing).
+    private var _btnMark;   // Array? or null
+
     function initialize(state, messages) {
         BaseView.initialize(state, messages);
     }
@@ -137,8 +140,50 @@ class MainView extends BaseView {
                 Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
         }
 
+        // --- "Not for running" button (touch devices have no MENU key) --
+        // Same proven rendering as ControlView's volume button: one rounded
+        // rect (radius 16) with a white FONT_LARGE label centered in it.
+        // All geometry is Number - mixed Float/Number args break rendering.
+        // RunBeat-only command: dimmed when no RunBeat track is active.
+        var bW = minNum(w * 0.72, 300).toNumber();
+        var bH = maxNum(36, minNum(56, h * 0.13)).toNumber();
+        var bLeft = ((w - bW) / 2).toNumber();
+        var bTop = minNum((h * 0.78).toNumber(), (h - 40 - bH).toNumber());
+        var bMinTop = (yTitle + fhLarge / 2 + 6).toNumber();
+        if (bTop < bMinTop) {
+            bTop = bMinTop;
+        }
+        _btnMark = [bLeft, bTop, bW, bH];
+        if (runBeat) {
+            dc.setColor(Graphics.COLOR_GREEN, Graphics.COLOR_BLACK);
+        } else {
+            dc.setColor(Graphics.COLOR_DK_GRAY, Graphics.COLOR_BLACK);
+        }
+        dc.fillRoundedRectangle(bLeft, bTop, bW, bH, 16);
+        dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_BLACK);
+        dc.drawText((w / 2).toNumber(), (bTop + bH / 2).toNumber(), Graphics.FONT_LARGE,
+            truncateToWidth(dc, WatchUi.loadResource(Rez.Strings.MenuMarkNotForRunning) as String,
+                Graphics.FONT_LARGE, bW - 16),
+            Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
+
         drawAck(dc);
         drawPageIndicator(dc, 1, 3);
+    }
+
+    // Tap handler for RunBeatPageDelegate: the drawn "Not for running"
+    // button first (RunBeat-only; dimmed otherwise). A tap that misses it
+    // returns false so the delegate falls through to play/pause.
+    function onTap(x as Number, y as Number) as Boolean {
+        if (hitTest(_btnMark, x, y)) {
+            if (_state.isRunBeatActive()) {
+                _messages.sendMarkNotForRunning();
+            } else {
+                _state.setAck(WatchUi.loadResource(Rez.Strings.AckRunBeatOnly) as String, true);
+                WatchUi.requestUpdate();
+            }
+            return true;
+        }
+        return false;
     }
 
     // Select/ENTER = play/pause (works for RunBeat and external apps).
@@ -248,10 +293,12 @@ class MainView extends BaseView {
 class MainViewMenuDelegate extends WatchUi.MenuInputDelegate {
 
     private var _messages;
+    private var _state;     // WatchState
 
-    function initialize(messages) {
+    function initialize(messages, state) {
         MenuInputDelegate.initialize();
         _messages = messages;
+        _state = state;
     }
 
     function onMenuItem(item as Symbol) as Void {
@@ -267,6 +314,16 @@ class MainViewMenuDelegate extends WatchUi.MenuInputDelegate {
                 break;
             case :menu_volume_down:
                 _messages.sendVolumeDelta(-1);
+                break;
+            case :menu_mark_not_for_running:
+                // RunBeat-only command: .equals(), never == (Monkey C
+                // compares references with ==).
+                if (!_state.source.equals("RunBeat")) {
+                    _state.setAck(WatchUi.loadResource(Rez.Strings.AckRunBeatOnly) as String, true);
+                    WatchUi.requestUpdate();
+                    break;
+                }
+                _messages.sendMarkNotForRunning();
                 break;
         }
     }

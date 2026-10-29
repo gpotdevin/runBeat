@@ -58,6 +58,15 @@ import Toybox.WatchUi;
 //     event: on device System.exit does nothing from this
 //     audio-content-provider context (2026-10-29), so back falls through
 //     to the system pop (the stock music app beneath), as it always did.
+// (:background) per the SDK docs: the Application class itself must carry
+// the annotation for the background service (getServiceDelegate) to load.
+// initialize() must therefore stay background-safe: it may not construct
+// any class that is not (:background)-annotated (the background heap does
+// not load them — "Class not available to 'Background'" crash, seen on
+// device 2026-10-29 and in the simulator at app load). All foreground
+// objects are created in onStart(), which the background context never
+// calls.
+(:background)
 class RunBeatCompanionApp extends Application.AudioContentProviderApp {
 
     private var _state;           // WatchState
@@ -89,15 +98,35 @@ class RunBeatCompanionApp extends Application.AudioContentProviderApp {
         _lastUserAt = System.getTimer();
     }
 
+    private var _foregroundStarted as Boolean = false;
+
     function initialize() {
+        // Background-safe: only the super call. The background context
+        // (app class is (:background)) runs initialize() AND onStart() —
+        // both must stay free of non-annotated classes, otherwise the
+        // background service dies with "Class not available to
+        // 'Background'" (seen on device 2026-10-29 and in the simulator).
         Application.AudioContentProviderApp.initialize();
+    }
+
+    function onStart(state as Dictionary?) as Void {
+        // Nothing here: foreground setup happens lazily in
+        // ensureForegroundStarted(), called from the foreground-only entry
+        // points (getInitialView / getPlaybackConfigurationView), which the
+        // background context never calls.
+    }
+
+    // Foreground-only startup (idempotent). Called from getInitialView() /
+    // getPlaybackConfigurationView() — never from the background path.
+    private function ensureForegroundStarted() as Void {
+        if (_foregroundStarted) {
+            return;
+        }
+        _foregroundStarted = true;
         _state = new WatchState();
         _cadenceBuffer = new CadenceRingBuffer();
         _cadenceSampler = new CadenceSampler(_cadenceBuffer, method(:onCadenceTick));
         _messages = new MessageHandler(_state);
-    }
-
-    function onStart(state as Dictionary?) as Void {
         // Receive state/ack pushes from the phone companion.
         Communications.registerForPhoneAppMessages(_messages.method(:onPhoneMessage));
         // Handshake: ask for the current state right away (the phone may
@@ -127,9 +156,16 @@ class RunBeatCompanionApp extends Application.AudioContentProviderApp {
         // Best-effort farewell: the phone drops its watch-app active
         // window immediately and stops the ~1 Hz state stream, instead of
         // waiting for the window to expire (battery: a closed app must
-        // cost the watch nothing).
-        _messages.sendBye();
-        _cadenceSampler.stop();
+        // cost the watch nothing). Null-guarded: in the background context
+        // onStop can run without the foreground objects ever existing.
+        var messages = _messages;
+        if (messages != null) {
+            (messages as MessageHandler).sendBye();
+        }
+        var sampler = _cadenceSampler;
+        if (sampler != null) {
+            (sampler as CadenceSampler).stop();
+        }
         var timer = _stateTimer;
         if (timer != null) {
             (timer as Timer.Timer).stop();
@@ -245,6 +281,8 @@ class RunBeatCompanionApp extends Application.AudioContentProviderApp {
     }
 
     function getInitialView() {
+        // Foreground entry point — safe to build the foreground objects.
+        ensureForegroundStarted();
         // ViewLoop (API 3.4.0) replaces SwitchableView. Only a real fr245
         // running CIQ 3.3.1 (< 3.4.0) takes the fallback: main page only.
         if (WatchUi has :ViewLoop) {
@@ -253,7 +291,7 @@ class RunBeatCompanionApp extends Application.AudioContentProviderApp {
                 {:page => 0, :wrap => true, :color => Graphics.COLOR_GREEN});
             return [viewLoop, new RunBeatViewLoopDelegate(viewLoop)];
         }
-        return [new MainView(_state, _messages), new RunBeatFallbackDelegate(_messages)];
+        return [new MainView(_state, _messages), new RunBeatFallbackDelegate(_messages, _state)];
     }
 
     // ----- audio-content-provider plumbing (AudioProvider.mc holds the
@@ -318,8 +356,8 @@ class RunBeatViewLoopFactory extends WatchUi.ViewLoopFactory {
         var view = new MainView(_state, _messages);
         return [view, new RunBeatPageDelegate(view,
             new Rez.Menus.MainViewMenu(),
-            new MainViewMenuDelegate(_messages),
-            null,
+            new MainViewMenuDelegate(_messages, _state),
+            view.method(:onTap),
             view.method(:onHorizontalSwipe))];
     }
 
@@ -471,10 +509,12 @@ class RunBeatViewLoopDelegate extends WatchUi.ViewLoopDelegate {
 class RunBeatFallbackDelegate extends WatchUi.BehaviorDelegate {
 
     private var _messages;   // MessageHandler
+    private var _state;      // WatchState
 
-    function initialize(messages) {
+    function initialize(messages, state) {
         BehaviorDelegate.initialize();
         _messages = messages;
+        _state = state;
     }
 
     function onSelect() as Boolean {
@@ -497,7 +537,7 @@ class RunBeatFallbackDelegate extends WatchUi.BehaviorDelegate {
     function onMenu() as Boolean {
         noteActivity();
         WatchUi.pushView(new Rez.Menus.MainViewMenu(),
-            new MainViewMenuDelegate(_messages), WatchUi.SLIDE_IMMEDIATE);
+            new MainViewMenuDelegate(_messages, _state), WatchUi.SLIDE_IMMEDIATE);
         return true;
     }
 

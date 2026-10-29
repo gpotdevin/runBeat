@@ -42,11 +42,13 @@
     <string id="MenuSpeedCorrection">Speed correction</string>
     <string id="MenuVolumeDown">Volume -</string>
     <string id="MenuVolumeUp">Volume +</string>
+    <string id="MenuMarkNotForRunning">No good run</string>
 
     <!-- Transient hints and ack confirmations. -->
     <string id="RunBeatOnlyHint">RunBeat only</string>
     <string id="NoCadenceHint">No cadence yet</string>
     <string id="AckMarked">Marked: not for running</string>
+    <string id="AckRunBeatOnly">RunBeat only</string>
     <string id="AckMarkFailed">Mark failed</string>
     <string id="AckCadenceApplied">Target set</string>
     <string id="AckCadenceFailed">Not applied</string>

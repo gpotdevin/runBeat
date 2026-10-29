@@ -72,6 +72,10 @@ class MessageHandler {
         sendJson("{\"type\":\"volume_delta\",\"delta\":" + delta.format("%d") + "}");
     }
 
+    function sendMarkNotForRunning() as Void {
+        sendJson("{\"type\":\"mark_not_for_running\"}");
+    }
+
     // Handshake: ask the phone for one state push. Sent on app start, every
     // 5 s while playing (keepalive — the phone only pushes state to an
     // "active" watch app, and while playing the app itself sends nothing),
