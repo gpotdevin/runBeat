@@ -12,15 +12,18 @@ Date: 2026-10-22 (revised 2026-10-24 — see [requirements_update_2026-10-24.md]
 >
 > **Type history (decided 2026-10-29):** the manifest type IS
 > `audio-content-provider-app` — the provider-list placement (Music →
-> Music Providers → RunBeat) is a hard requirement, and on this firmware that
-> is the only way to reach any provider (Spotify works the same way). The
-> cost, accepted deliberately: the stock Music app hosts every session (back
-> from the remote lands on it — one extra press), and `System.exit` is a
-> no-op in that context, so the idle auto-exit cannot fire (the battery is
-> still protected: the phone stops pushing at "bye" / the 30 s active-window
-> expiry, and the system's own inactivity timeout ends the session). A brief
-> experiment with a plain `watch-app` type (clean exits, app-list launch, no
-> provider list) was reverted the same day.
+> Music Providers → RunBeat) is a hard requirement. On current firmware
+> the app appears in BOTH the provider list AND the app menu (same as
+> Spotify on the same watch): the direct app-menu launch is a standalone
+> session — back exits to the watch face with no stock Music app, and
+> `System.exit` is expected to work there (verify). Only the
+> provider-flow launch is hosted by the stock Music app: back lands on
+> it (one extra press) and `System.exit` is a no-op in that context
+> (guarded; the battery does not depend on it — the phone stops pushing
+> at "bye" / the 30 s active-window expiry). A brief experiment with a
+> plain `watch-app` type (clean exits, app-list-only launch) was reverted
+> the same day. Details and verification checklist:
+> [launch_paths_and_state_2026-10-29.md](launch_paths_and_state_2026-10-29.md).
 
 ## System overview
 
