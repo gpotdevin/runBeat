@@ -132,7 +132,8 @@ decode to `null` and are logged + ignored by the phone.
 | `speed_correction_toggle` | — | `PlayerRepository.toggleSpeedCorrection()`. RunBeat only. |
 | `volume_delta` | `{"delta": 1}` or `{"delta": -1}` | `AudioManager.adjustStreamVolume(STREAM_MUSIC, ...)` — works for RunBeat and external apps alike |
 | `seek` (optional, 2026-10-24) | `{"positionMs": 42000}` | RunBeat active: `PlayerRepository.seekTo(positionMs)`; otherwise ignored. No ack — the following state push confirms. Phone sanity bound: 0 ≤ N ≤ 86 400 000 |
-| `request_state` (2026-10-24) | — | no ack; the phone answers the **sender** with one `state` push (`pushStateTo(device)`). The watch sends it on app start and, while no message has arrived for ~10 s, re-sends it with exponential backoff (5 -> 10 -> 20 -> 40 -> 60 s cap, reset as soon as a message arrives) — this is what makes a watch launched after the link was already up still get recognized, without an unreachable phone keeping the BLE radio busy every 5 s |
+| `request_state` (2026-10-24) | — | no ack; the phone answers the **sender** with one `state` push (`pushStateTo(device)`). The watch sends it on app start, every 5 s while playing (keepalive — see the battery section), and, while no message has arrived for ~10 s, re-sends it with exponential backoff (5 -> 10 -> 20 -> 40 -> 60 s cap, reset as soon as a message arrives) — this is what makes a watch launched after the link was already up still get recognized, without an unreachable phone keeping the BLE radio busy every 5 s |
+| `bye` | — | link-layer farewell, sent by the watch in `onStop`: the phone drops its watch-app active window immediately and stops the state stream, instead of waiting for the window to expire. No answer, never routed. |
 | `mark_not_for_running` | — | flag current `trackId` + skip immediately (see below). RunBeat only. |
 
 ### Phone -> watch (state, pushed on change, on connect, and in answer to `request_state`)
@@ -178,6 +179,13 @@ confirmations for commands that need feedback (e.g. mark, cadence applied).
 `request_state` and `seek` are **not** acked: the answering / following
 state push confirms them.
 
+Phone -> watch also includes `{"type":"wake"}`, sent exactly once when
+playback starts while no watch app is active (see the battery section):
+the watch's background service (`Background.registerForPhoneAppMessageEvent`,
+`RunBeatBackgroundService.mc`) receives it while the app is closed and
+answers with a launch-confirmation dialog — re-activation without the
+app running (or polling) in between.
+
 Cadence samples are **not** streamed continuously; only the 60-second mean
 is sent, on button press. This keeps BLE traffic near zero and battery
 impact minimal.
@@ -190,6 +198,29 @@ fresh and stale, the transient ack line expiring, or the displayed cadence
 number changing. Paused and standing still, the app does not repaint at all.
 While playing, the progress position still advances at 1 Hz (one repaint per
 second, painted by the tick).
+
+Push gating (battery, the big one — diagnosed 2026-10-29 after a report of
+25% watch battery in 8 h): `IQDevice` CONNECTED only means the watch is
+reachable via Garmin Connect Mobile, NOT that the RunBeat app is open on it.
+The phone used to push state (~1/s while playing) to every connected watch
+regardless, and the resulting BLE receive wakeups drained the watch battery
+all day. The phone now pushes **only within a 30 s window of the last
+incoming watch message** (any command, `request_state`, `bye`-cleared):
+- watch app open, playing: the watch's 5 s `request_state` keepalive
+  keeps the window armed, so the 1 Hz stream flows exactly as before;
+- watch app open, paused: the stale-retry `request_state` (~every 15 s)
+  keeps it armed; on-change pushes (track, cadence, volume) still arrive;
+- watch app closed: `bye` (sent in `onStop`) drops the window at once;
+  an abnormal close still expires it within 30 s — after that, a closed
+  app costs the watch nothing.
+
+Watch-side lifecycle (battery): the app exits itself (`System.exit`)
+after 3 minutes without user interaction once music has stopped or the
+phone link is stale, and back at a page root exits outright instead of
+popping into the stock music app beneath (the audio-content-provider
+launch context). Re-activation is the `wake` message above, plus the
+usual manual launch from the music provider list (instant: the app
+re-handshakes with `request_state` on start).
 
 ## Feature flows
 

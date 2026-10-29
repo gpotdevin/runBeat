@@ -46,7 +46,13 @@ import javax.inject.Singleton
  *  - push [GarminWatchState] to the watch whenever any underlying flow
  *    changes (playerState, currentTrack, targetCadence, speedCorrectionEnabled,
  *    playbackSpeed), plus a ~1 Hz tick that picks up volume changes (volume is
- *    not a repository flow), and right after volume commands;
+ *    not a repository flow), and right after volume commands — but ONLY while
+ *    the RunBeat watch app is active (open; see [watchAppActiveUntilMs], armed
+ *    by any incoming watch message and dropped by "bye"): a closed watch app
+ *    must not be pushed at, the BLE wakeups drained its battery;
+ *  - send one {"type":"wake"} when playback starts while no watch app is
+ *    active: the watch's background service turns it into a launch dialog
+ *    (re-activation without the app running in between);
  *  - answer a watch's request_state with one state push to that device (the
  *    watch sends it on app start and every ~5 s while it has heard nothing
  *    for ~10 s, so a watch launched after the connect-time push still gets
@@ -152,6 +158,33 @@ class GarminCompanionManager @Inject constructor(
     private val devices = LinkedHashMap<Long, IQDevice>()
     private val deviceStatuses = HashMap<Long, IQDevice.IQDeviceStatus>()
     private var statePushJob: Job? = null
+    private var wakeJob: Job? = null
+
+    /**
+     * Wall-clock time until which the RunBeat watch app is considered
+     * active (open on a watch). Armed by ANY incoming watch message
+     * (request_state, commands — the watch app sends request_state on
+     * start, as a keepalive every 5 s while playing, and as a stale
+     * retry); cleared immediately by a "bye" (the watch's onStop farewell)
+     * and by expiry. State is pushed to the watch ONLY inside this window:
+     * IQDevice CONNECTED means the watch is reachable via Garmin Connect
+     * Mobile, NOT that the app is open — pushing at ~1 Hz to a closed app
+     * kept the watch's BLE radio busy all day and drained its battery.
+     */
+    private var watchAppActiveUntilMs = 0L
+
+    private fun isWatchAppActive(): Boolean =
+        System.currentTimeMillis() < watchAppActiveUntilMs
+
+    /** Arms the watch-app active window ([WATCH_APP_ACTIVE_WINDOW_MS] from now). */
+    private fun armWatchAppActivity() {
+        watchAppActiveUntilMs = System.currentTimeMillis() + WATCH_APP_ACTIVE_WINDOW_MS
+    }
+
+    private fun dropWatchAppActivity() {
+        watchAppActiveUntilMs = 0L
+    }
+
     private var initializeCalled = false
     private val mainHandler = Handler(Looper.getMainLooper())
     private var deviceRefreshRetryCount = 0
@@ -177,6 +210,7 @@ class GarminCompanionManager @Inject constructor(
         if (initializeCalled) return
         initializeCalled = true
         GarminWatchConnection.update(GarminConnectionState.CONNECTING)
+        startWakeWatch()
         try {
             // showGcmDialogs = false: GCM problems are reported via
             // onInitializeError and surfaced as DISCONNECTED in Settings.
@@ -194,6 +228,8 @@ class GarminCompanionManager @Inject constructor(
      */
     fun shutdown() {
         stopStatePush()
+        wakeJob?.cancel()
+        wakeJob = null
         mainHandler.removeCallbacks(deviceRefreshRetryRunnable)
         deviceRefreshRetryCount = 0
         try {
@@ -283,6 +319,17 @@ class GarminCompanionManager @Inject constructor(
             val command = GarminMessageCodec.decodeCommand(json)
             if (command == null) {
                 Log.w(TAG, "Ignoring undecodable watch message: $json")
+                continue
+            }
+            // ANY watch message means the app is open: arm the active
+            // window so the state-push stream may flow.
+            armWatchAppActivity()
+            // Link-layer farewell, not a playback command: the watch app
+            // is closing — drop the active window immediately so pushes
+            // stop now instead of at window expiry. No answer.
+            if (command is GarminCommand.Bye) {
+                Log.i(TAG, "Watch app bye: dropping watch-app active window")
+                dropWatchAppActivity()
                 continue
             }
             // Link-layer request, not a playback command: answer the sender
@@ -434,7 +481,12 @@ class GarminCompanionManager @Inject constructor(
         statePushJob?.cancel()
         statePushJob = scope.launch {
             watchStateFlow().collect { state ->
-                sendToWatch(GarminMessageCodec.encodeState(state))
+                // Gated on watch-app activity (see [watchAppActiveUntilMs]):
+                // a closed watch app must not be pushed at — the BLE wakeups
+                // drained the watch battery. sendToWatch filters connection.
+                if (isWatchAppActive()) {
+                    sendToWatch(GarminMessageCodec.encodeState(state))
+                }
             }
         }
     }
@@ -442,6 +494,35 @@ class GarminCompanionManager @Inject constructor(
     private fun stopStatePush() {
         statePushJob?.cancel()
         statePushJob = null
+    }
+
+    /**
+     * Watches for playback start (isPlaying false -> true) and offers the
+     * watch app a wake: when no watch app is active (the remote is closed)
+     * and a watch is connected, one {"type":"wake"} message is sent. The
+     * watch's background service (registered via the CIQ
+     * registerForPhoneAppMessageEvent) shows a launch-confirmation dialog —
+     * re-activation without the app running, or polling, in between.
+     */
+    private fun startWakeWatch() {
+        wakeJob?.cancel()
+        wakeJob = scope.launch {
+            var wasPlaying: Boolean? = null
+            playerRepository.playerState
+                .map { it.isPlaying }
+                .distinctUntilChanged()
+                .collect { playing ->
+                    if (playing && wasPlaying == false) maybeSendWake()
+                    wasPlaying = playing
+                }
+        }
+    }
+
+    private fun maybeSendWake() {
+        if (connectionState.value != GarminConnectionState.CONNECTED) return
+        if (isWatchAppActive()) return
+        Log.i(TAG, "Playback started with no watch app active: sending wake")
+        sendToWatch(GarminMessageCodec.encodeWake())
     }
 
     /**
@@ -476,9 +557,13 @@ class GarminCompanionManager @Inject constructor(
         }
     }
 
-    /** Pushes the current state to the watch (no-op while disconnected). */
+    /**
+     * Pushes the current state to the watch. No-op while disconnected OR
+     * while no watch app is active — the stream is only for an open remote.
+     */
     private fun pushState() {
         if (connectionState.value != GarminConnectionState.CONNECTED) return
+        if (!isWatchAppActive()) return
         sendToWatch(GarminMessageCodec.encodeState(router.currentState()))
     }
 
@@ -545,6 +630,16 @@ class GarminCompanionManager @Inject constructor(
 
         /** Volume poll interval while a watch is connected (~1 Hz). */
         private const val VOLUME_POLL_INTERVAL_MS = 1000L
+
+        /**
+         * How long after the last incoming watch message the watch app is
+         * considered active (open). The watch sends request_state on start
+         * and every 5 s while playing (keepalive), and commands on every
+         * interaction, so 30 s is far longer than any legitimate gap while
+         * the app is open — and short enough that a closed app stops the
+         * ~1 Hz state stream (and its BLE cost) within half a minute.
+         */
+        private const val WATCH_APP_ACTIVE_WINDOW_MS = 30_000L
 
         /** Device-refresh retries after a transient failure (exponential backoff). */
         private const val MAX_DEVICE_REFRESH_RETRIES = 5

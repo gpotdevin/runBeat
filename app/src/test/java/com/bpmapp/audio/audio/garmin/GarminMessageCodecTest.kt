@@ -199,6 +199,7 @@ class GarminMessageCodecTest {
             GarminCommand.VolumeDelta(-1),
             GarminCommand.MarkNotForRunning,
             GarminCommand.RequestState,
+            GarminCommand.Bye,
             GarminCommand.Seek(42000L),
         )
         for (command in commands) {
@@ -228,9 +229,32 @@ class GarminMessageCodecTest {
             GarminMessageCodec.encodeCommand(GarminCommand.RequestState)
         )
         assertEquals(
+            "{\"type\":\"bye\"}",
+            GarminMessageCodec.encodeCommand(GarminCommand.Bye)
+        )
+        assertEquals(
             "{\"type\":\"seek\",\"positionMs\":42000}",
             GarminMessageCodec.encodeCommand(GarminCommand.Seek(42000L))
         )
+    }
+
+    // ---------------------------------------------------------------
+    // Phone -> watch: wake (background re-activation)
+    // ---------------------------------------------------------------
+
+    @Test
+    fun wakeWireFormatIsExact() {
+        // The watch's background service matches the exact substring
+        // "type":"wake" with no JSON parser (32 KB background heap), so
+        // the wire format must stay whitespace-free.
+        assertEquals("{\"type\":\"wake\"}", GarminMessageCodec.encodeWake())
+    }
+
+    @Test
+    fun isWakeRecognizesWakeMessages() {
+        assertTrue(GarminMessageCodec.isWake(GarminMessageCodec.encodeWake()))
+        assertEquals(false, GarminMessageCodec.isWake(GarminMessageCodec.encodeAck(GarminAck("toggle", true))))
+        assertEquals(false, GarminMessageCodec.isWake("not json"))
     }
 
     // ---------------------------------------------------------------

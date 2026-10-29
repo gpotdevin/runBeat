@@ -45,6 +45,11 @@
         <iq:uses-permission id="Communications"/>
         <!-- Accelerometer-based cadence sampling. -->
         <iq:uses-permission id="Sensor"/>
+        <!-- Background service: re-activation. registerForPhoneAppMessageEvent
+             wakes the app's background process when the phone sends
+             {"type":"wake"} (playback started, no watch app open) — the
+             background shows the launch dialog without the app running. -->
+        <iq:uses-permission id="Background"/>
         <!-- NOTE: no Media permission — music always plays on the phone, the
              watch only sends messages. -->
         <!-- NOTE: no FitContributor — this app is not a data field. -->

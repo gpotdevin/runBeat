@@ -1,3 +1,4 @@
+import Toybox.Application;
 import Toybox.Graphics;
 import Toybox.Lang;
 import Toybox.System;
@@ -143,13 +144,16 @@ class AdjustScreenDelegate extends WatchUi.BehaviorDelegate {
     }
 
     // Back (button or right-swipe): disarm the auto-return and let the
-    // system pop the screen.
+    // system pop the screen (back here returns to the page, not out of
+    // the app).
     function onBack() as Boolean {
+        noteActivity();
         _view.disarm();
         return false;
     }
 
     function onTap(clickEvent as WatchUi.ClickEvent) as Boolean {
+        noteActivity();
         var coords = clickEvent.getCoordinates();
         _view.noteTap();
         applyDelta((coords[1] as Number) < _view.halfHeight() ? 1 : -1);
@@ -158,5 +162,14 @@ class AdjustScreenDelegate extends WatchUi.BehaviorDelegate {
 
     // Subclass hook: send the +1/-1 command.
     function applyDelta(delta as Number) as Void {
+    }
+
+    // Any input is user activity: restarts the app's idle auto-exit clock
+    // (RunBeatCompanionApp.noteUserActivity).
+    private function noteActivity() as Void {
+        var app = Application.getApp();
+        if (app instanceof RunBeatCompanionApp) {
+            (app as RunBeatCompanionApp).noteUserActivity();
+        }
     }
 }

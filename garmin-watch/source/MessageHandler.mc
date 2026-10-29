@@ -72,13 +72,22 @@ class MessageHandler {
         sendJson("{\"type\":\"volume_delta\",\"delta\":" + delta.format("%d") + "}");
     }
 
-    // Handshake: ask the phone for one state push. Sent on app start and
-    // re-sent while the state is stale with exponential backoff (see
+    // Handshake: ask the phone for one state push. Sent on app start, every
+    // 5 s while playing (keepalive — the phone only pushes state to an
+    // "active" watch app, and while playing the app itself sends nothing),
+    // and while the state is stale with exponential backoff (see
     // RunBeatCompanionApp.onStateTimerTick — an unreachable phone must
     // not trigger a radio attempt every 5 s forever). No ack — the answer
     // is the state push itself.
     function sendRequestState() as Void {
         sendJson("{\"type\":\"request_state\"}");
+    }
+
+    // Best-effort farewell, sent in onStop: lets the phone drop its
+    // watch-app active window immediately (and stop pushing state) instead
+    // of waiting for the window to expire.
+    function sendBye() as Void {
+        sendJson("{\"type\":\"bye\"}");
     }
 
     // ---------------------------------------------------------------

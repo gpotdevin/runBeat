@@ -157,6 +157,9 @@ class GarminCommandRouter @Inject constructor(
             // Never reached: the manager intercepts RequestState as a
             // link-layer request before routing (see GarminCompanionManager).
             is GarminCommand.RequestState -> GarminAck(cmd.wireType(), ok = true)
+            // Never reached: the manager intercepts Bye as a link-layer
+            // farewell before routing (see GarminCompanionManager).
+            is GarminCommand.Bye -> GarminAck(cmd.wireType(), ok = true)
         }
     }
 
@@ -244,6 +247,8 @@ class GarminCommandRouter @Inject constructor(
         // RequestState never reaches the router (the manager intercepts it);
         // the mapping exists to keep this when exhaustive.
         GarminCommand.RequestState -> "request_state"
+        // Same for Bye (link-layer farewell, intercepted by the manager).
+        GarminCommand.Bye -> "bye"
         is GarminCommand.Seek -> "seek"
     }
 

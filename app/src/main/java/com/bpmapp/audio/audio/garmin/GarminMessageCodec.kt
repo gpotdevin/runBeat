@@ -19,6 +19,7 @@ import org.json.JSONObject
  *   {"type":"mark_not_for_running"}
  *   {"type":"request_state"}
  *   {"type":"seek","positionMs":42000}
+ *   {"type":"bye"}                      (app closing: stop the watch-active window)
  */
 sealed class GarminCommand {
     data object Play : GarminCommand()
@@ -39,6 +40,14 @@ sealed class GarminCommand {
      * push (no ack).
      */
     data object RequestState : GarminCommand()
+
+    /**
+     * Link-layer farewell, not a playback command: the watch sends it in
+     * onStop so the phone can drop its watch-app active window (and stop
+     * pushing state) immediately instead of waiting for the window to
+     * expire. Intercepted like [RequestState], never routed.
+     */
+    data object Bye : GarminCommand()
 
     /** Absolute seek position in ms; RunBeat-only (no media-key equivalent). */
     data class Seek(val positionMs: Long) : GarminCommand()
@@ -125,9 +134,11 @@ object GarminMessageCodec {
     private const val TYPE_VOLUME_DELTA = "volume_delta"
     private const val TYPE_MARK_NOT_FOR_RUNNING = "mark_not_for_running"
     private const val TYPE_REQUEST_STATE = "request_state"
+    private const val TYPE_BYE = "bye"
     private const val TYPE_SEEK = "seek"
     private const val TYPE_STATE = "state"
     private const val TYPE_ACK = "ack"
+    private const val TYPE_WAKE = "wake"
 
     // Sanity bound for cadence_delta / volume_delta: the watch sends ±1 per
     // button press, so anything beyond this is a corrupt or hostile message.
@@ -160,6 +171,7 @@ object GarminMessageCodec {
                 ?.let { GarminCommand.VolumeDelta(it) }
             TYPE_MARK_NOT_FOR_RUNNING -> GarminCommand.MarkNotForRunning
             TYPE_REQUEST_STATE -> GarminCommand.RequestState
+            TYPE_BYE -> GarminCommand.Bye
             TYPE_SEEK -> obj.optPositionMsOrNull(KEY_POSITION_MS)
                 ?.let { GarminCommand.Seek(it) }
             else -> null
@@ -193,6 +205,7 @@ object GarminMessageCodec {
             .toString()
         is GarminCommand.MarkNotForRunning -> typed(TYPE_MARK_NOT_FOR_RUNNING)
         is GarminCommand.RequestState -> typed(TYPE_REQUEST_STATE)
+        is GarminCommand.Bye -> typed(TYPE_BYE)
         is GarminCommand.Seek -> JSONObject()
             .put(KEY_TYPE, TYPE_SEEK)
             .put(KEY_POSITION_MS, command.positionMs)
@@ -259,6 +272,20 @@ object GarminMessageCodec {
         .put(KEY_COMMAND, ack.command)
         .put(KEY_OK, ack.ok)
         .toString()
+
+    /**
+     * Encodes the wake message ({"type":"wake"}), sent by the phone when
+     * playback starts while no watch app is active. The watch handles it in
+     * its background service (Background.registerForPhoneAppMessageEvent):
+     * a launch-confirmation dialog opens the remote without the app having
+     * to run (or poll) meanwhile. The watch-side parser matches the exact
+     * substring "type":"wake", so the wire format must not gain whitespace.
+     */
+    fun encodeWake(): String = typed(TYPE_WAKE)
+
+    /** True when the message is a wake message (test/helper symmetry). */
+    fun isWake(json: String): Boolean =
+        parse(json)?.optString(KEY_TYPE) == TYPE_WAKE
 
     // ---------------------------------------------------------------
     // Helpers
