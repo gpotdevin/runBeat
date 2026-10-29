@@ -9,6 +9,16 @@ Date: 2026-10-22 (revised 2026-10-24 — see [requirements_update_2026-10-24.md]
 > playback ("leave your phone behind"), which is the standalone app that is
 > rejected. The native Music app surfaces RunBeat via its built-in "Phone" source
 > (RunBeat's MediaSession must expose title/artist/album + play state).
+>
+> **2026-10-29:** the manifest type briefly was `audio-content-provider-app`
+> (for placement in the music provider list), and is back to a plain
+> `watch-app`: RunBeat is a remote for phone playback, not an on-watch music
+> source, and the provider flow launches the stock music app beneath the
+> remote (back-exit lands in it, and `System.exit` / the launch-dialog wake
+> are restricted in that context). As a plain watch-app it launches from
+> the app list / hotkey, back exits to the watch face, `System.exit` and
+> `Background.requestApplicationWake` are valid, and it is no longer
+> reachable from the provider list.
 
 ## System overview
 
@@ -216,13 +226,13 @@ incoming watch message** (any command, `request_state`, `bye`-cleared):
 
 Watch-side lifecycle (battery): the app exits itself (`System.exit`)
 after 3 minutes without user interaction once music has stopped or the
-phone link is stale, and back at a page root attempts the same exit but
-never swallows the event — on device `System.exit` does nothing from
-the audio-content-provider context (2026-10-29: returning true trapped
-the user), so back falls through to the system pop (the stock music
-app beneath), as it always did. Re-activation is the `wake` message
-above, plus the usual manual launch from the music provider list
-(instant: the app re-handshakes with `request_state` on start).
+phone link is stale; back at a page root attempts the same exit and
+never swallows the event. As a plain watch-app both are expected to
+work (`System.exit` is restricted only in the audio-content-provider
+context, where it was observed as a no-op, 2026-10-29) — verify on
+device. Re-activation is the `wake` message above, plus the usual
+manual launch from the app list / hotkey (instant: the app
+re-handshakes with `request_state` on start).
 
 ## Feature flows
 

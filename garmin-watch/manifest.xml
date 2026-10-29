@@ -5,18 +5,29 @@
   The id below is the final registered IQ app UUID. Keep in sync with
   GarminCompanionManager.IQ_APP_ID on the phone side (it registers the same
   id with the Connect IQ Mobile SDK).
+
+  Plain device app (watch-app), NOT an audio-content-provider-app: RunBeat
+  is a remote control for playback on the phone, never an on-watch music
+  source, so it has no reason to live inside the system music provider flow
+  (launching from the provider list starts the stock music app beneath the
+  remote and back-exit lands in it). As a watch-app it launches directly
+  from the app list / hotkey, back exits to the watch face, System.exit
+  works (device apps), and Background.requestApplicationWake is valid for
+  its background tasks.
 -->
 <iq:manifest version="3" xmlns:iq="http://www.garmin.com/xml/connectiq">
 <iq:application id="06c14376-0c60-4e4c-a977-e93364ace3eb"
-                type="audio-content-provider-app"
+                type="watch-app"
                 name="@Strings.AppName"
                 entry="RunBeatCompanionApp"
                 launcherIcon="@Drawables.LauncherIcon">
 
     <iq:products>
-        <!-- Forerunner 245 Music / 255 Music / 265 / 955 / 965
-             (audio-content-provider apps need on-watch music support:
-             the plain fr245/fr255 are NOT valid targets for this type). -->
+        <!-- Forerunner 245 Music / 255 Music / 265 / 955 / 965,
+             fenix 7/8, epix (Gen 2), Venu 2/3. As a plain watch-app the
+             music hardware requirement is gone (nothing plays on the
+             watch) — the set is kept to the devices the app was tested
+             on; non-music variants can be added without code changes. -->
         <iq:product id="fr245m"/>
         <iq:product id="fr255m"/>
         <iq:product id="fr265"/>

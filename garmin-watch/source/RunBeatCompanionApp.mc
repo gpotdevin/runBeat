@@ -8,8 +8,6 @@ import Toybox.Graphics;
 
 import Toybox.Lang;
 
-import Toybox.Media;
-
 import Toybox.System;
 
 import Toybox.Timer;
@@ -23,11 +21,11 @@ import Toybox.WatchUi;
 // itself; it only exchanges messages with the phone companion
 // (GarminCompanionManager, see docs/companion_garmin_app/architecture.md).
 //
-// The app is registered as an audio content provider (manifest type
-// "audio-content-provider-app") so it is reachable from the watch's
-// music provider list; its playback-configuration view IS the remote UI
-// (AudioProvider.mc holds the content/sync plumbing, which is empty —
-// all playback happens on the phone).
+// Plain device app (manifest type "watch-app"), NOT an
+// audio-content-provider-app: RunBeat is not an on-watch music source,
+// so it does not belong inside the system music provider flow (that flow
+// launches the stock music app beneath the remote, and back-exit lands
+// in it). Launch: app list / hotkey; back: watch face.
 //
 // Recognition handshake: on start (and, while the state is stale, with
 // exponential backoff) the watch sends {"type":"request_state"}; the
@@ -54,11 +52,7 @@ import Toybox.WatchUi;
 //     Background.registerForPhoneAppMessageEvent) wakes when the phone
 //     sends {"type":"wake"} (playback started, no watch app active) and
 //     offers a launch dialog.
-//   - Back at a page root attempts System.exit but never swallows the
-//     event: on device System.exit does nothing from this
-//     audio-content-provider context (2026-10-29), so back falls through
-//     to the system pop (the stock music app beneath), as it always did.
-class RunBeatCompanionApp extends Application.AudioContentProviderApp {
+class RunBeatCompanionApp extends Application.AppBase {
 
     private var _state;           // WatchState
     private var _cadenceBuffer;   // CadenceRingBuffer
@@ -90,7 +84,7 @@ class RunBeatCompanionApp extends Application.AudioContentProviderApp {
     }
 
     function initialize() {
-        Application.AudioContentProviderApp.initialize();
+        Application.AppBase.initialize();
         _state = new WatchState();
         _cadenceBuffer = new CadenceRingBuffer();
         _cadenceSampler = new CadenceSampler(_cadenceBuffer, method(:onCadenceTick));
@@ -149,7 +143,13 @@ class RunBeatCompanionApp extends Application.AudioContentProviderApp {
         // stopped (or the phone link is stale), nothing on screen can
         // change — exit instead of burning power until the system kills us.
         if (shouldExit(now)) {
-            System.exit();
+            try {
+                System.exit();
+            } catch (e) {
+                // Exit unavailable in this context (observed as a no-op
+                // from the input-delegate path on device, 2026-10-29): the
+                // system's own inactivity timeout is the remaining bound.
+            }
             return;
         }
         // Repaint only when visible content changed since the last pass —
@@ -246,33 +246,6 @@ class RunBeatCompanionApp extends Application.AudioContentProviderApp {
             return [viewLoop, new RunBeatViewLoopDelegate(viewLoop)];
         }
         return [new MainView(_state, _messages), new RunBeatFallbackDelegate(_messages)];
-    }
-
-    // ----- audio-content-provider plumbing (AudioProvider.mc holds the
-    // content/sync classes; RunBeat serves no on-watch audio) -----
-
-    // The system music player's content view into this provider: empty —
-    // playback happens on the phone.
-    function getContentDelegate(args as Application.PersistableType) as Media.ContentDelegate {
-        return new RunBeatContentDelegate();
-    }
-
-    // IMPORTANT: return null here. With a real SyncDelegate the system's
-    // provider flow syncs and then opens its own (empty) content browser —
-    // our remote UI is never launched (observed on the real watch,
-    // 2026-10-28: null -> the playback-configuration view IS launched).
-    function getSyncDelegate() as Communications.SyncDelegate? {
-        return null;
-    }
-
-    // Reached from the watch's music provider list: the remote UI itself.
-    function getPlaybackConfigurationView() as [WatchUi.Views] or [WatchUi.Views, WatchUi.InputDelegates] {
-        return getInitialView();
-    }
-
-    // Nothing to sync — a note screen with back.
-    function getSyncConfigurationView() as [WatchUi.Views] or [WatchUi.Views, WatchUi.InputDelegates] {
-        return [new RunBeatSyncConfigView(), new RunBeatSyncConfigDelegate()];
     }
 }
 

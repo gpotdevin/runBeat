@@ -12,7 +12,6 @@
     <string id="NoPlayback">Nothing playing</string>
     <string id="PhoneNotConnected">Phone not connected</string>
     <string id="Connecting">Connecting...</string>
-    <string id="PhonePlaybackOnly">Music plays on the phone</string>
     <string id="NoValue">--</string>
     <string id="BpmSuffix"> BPM</string>
     <string id="SpeedSuffix">x</string>
