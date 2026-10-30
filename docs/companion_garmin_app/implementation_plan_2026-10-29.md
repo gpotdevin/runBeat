@@ -72,4 +72,10 @@ setting, same as the Android UI.
   from external controllers on this build. Watch adjuster screens now also
   accept vertical swipe / up-down keys (taps don't reach onTap in pushed
   views on Venu 2): `tools/garmin-build/out-step2-watch/venu2.prg`.
-- **Step 3 — pending:** playlist selection/playback from the watch.
+- **Step 3 — DONE (commits 1ed0114 + follow-up, real device):** watch→phone
+  `playlist_list` → phone pushes `playlists` (flat idN/nameN, cap 50) →
+  watch 4th page lists playlists → tap row → `playlist_play` (acked) →
+  phone loads the playlist (not-for-running filter applied) and plays.
+  Verified on device: push count=2 (electro, selectRun), both rows render,
+  tap on selectRun → RunBeat PLAYING. Watch build:
+  `tools/garmin-build/out-step3b-watch/venu2.prg`.
