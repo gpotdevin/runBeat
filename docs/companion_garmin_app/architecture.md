@@ -1,364 +1,152 @@
 # Architecture — Garmin Companion for RunBeat
 
-Date: 2026-10-22 (revised 2026-10-24 — see [requirements_update_2026-10-24.md](requirements_update_2026-10-24.md))
-
-> **2026-10-24 revision:** the watch app is the phone's music-control source
-> (first screen = track artist/album/title + play/pause + next/prev + volume).
-> It stays a `watch-app` remote, **not** an audio-content-provider — the only
-> Connect IQ "music source in the native Music app" mechanism forces watch-side
-> playback ("leave your phone behind"), which is the standalone app that is
-> rejected. The native Music app surfaces RunBeat via its built-in "Phone" source
-> (RunBeat's MediaSession must expose title/artist/album + play state).
->
-> **Type history (decided 2026-10-29):** the manifest type IS
-> `audio-content-provider-app` — the provider-list placement (Music →
-> Music Providers → RunBeat) is a hard requirement. On current firmware
-> the app appears in BOTH the provider list AND the app menu (same as
-> Spotify on the same watch): the direct app-menu launch is a standalone
-> session — back exits to the watch face with no stock Music app, and
-> `System.exit` is expected to work there (verify). Only the
-> provider-flow launch is hosted by the stock Music app: back lands on
-> it (one extra press) and `System.exit` is a no-op in that context
-> (guarded; the battery does not depend on it — the phone stops pushing
-> at "bye" / the 30 s active-window expiry). A brief experiment with a
-> plain `watch-app` type (clean exits, app-list-only launch) was reverted
-> the same day. Details and verification checklist:
-> [launch_paths_and_state_2026-10-29.md](launch_paths_and_state_2026-10-29.md).
+**Normative reference for the watch↔phone wire protocol** — referenced from code:
+`GarminMessageCodec.kt` and `GarminCommandRouter.kt` must match the tables below
+(pinned by unit tests such as `encodeCommandMatchesWatchWireFormat`).
+Synced 2026-10-29. Feature rationale and status: [README.md](README.md).
 
 ## System overview
-
 ```
-┌────────────────────────┐         Connect IQ messages          ┌──────────────────────────┐
-│      Garmin watch      │         (via Garmin Connect          │   RunBeat (phone app)    │
-│  ┌──────────────────┐  │          Mobile over BLE)            │                          │
-│  │ Connect IQ app   │  │  ─────────────────────────────────▶  │  GarminCompanionManager  │
-│  │  (Monkey C)      │  │   commands (play, cadence, ...)      │  (new, Hilt @Singleton)  │
-│  │                  │  │                                      │           │              │
-│  │ - cadence sampler│  │  ◀─────────────────────────────────  │  PlayerRepository        │
-│  │ - 60s ring buffer│  │   state (track, cadence, volume...)  │  (existing, extended)    │
-│  │ - control pages  │  │                                      │           │              │
-│  └──────────────────┘  │                                      │  TrackRepository / Room  │
-│                        │                                      │  (existing, + notForRunning)│
-└────────────────────────┘                                      └──────────────────────────┘
-                                                                        │
-                                              standard media session   │ (unchanged, fallback)
-                                                                        ▼
-                                                              Garmin "Music" app / BT
-                                                              (play/pause/next/prev)
+┌──────────────────┐  Connect IQ messages via Garmin Connect Mobile (BLE)  ┌───────────────────────┐
+│  Garmin watch    │  ── commands (play, cadence, ...) ──────────────────▶  │  RunBeat (phone)      │
+│  Connect IQ app  │  ◀── state / ack / wake ────────────────────────────  │  GarminCompanionManager│
+│  (Monkey C)      │                                                      │         │             │
+│  - cadence 1 Hz  │                                                      │  GarminCommandRouter ─┼─▶ PlayerRepository / TrackRepository (RunBeat active)
+│  - 60 s ring buf │                                                      │  MediaKeyDispatcher ───┴─▶ media key events + STREAM_MUSIC (external app)
+└──────────────────┘                                                      └───────────────────────┘
 ```
+All RunBeat control flows through the existing `PlayerRepository` singleton; the Garmin layer is
+a thin command adapter, never touches `ExoPlayer` directly. The exported `MediaSessionService`
+stays as fallback transport for basic controls.
 
-Key principle: **all RunBeat control flows through the existing
-`PlayerRepository` singleton**
-(`app/src/main/java/com/bpmapp/audio/audio/PlayerRepository.kt`). The Garmin
-layer is a thin command adapter; it never touches `ExoPlayer` directly. This
-keeps one source of truth and means the phone UI, the media notification,
-and the watch always agree.
+## Command routing (phone decides; the watch always sends the same commands)
+- RunBeat active → transport/cadence/speed-correction/mark/playlists go to `PlayerRepository` +
+  `TrackRepository`; volume → `AudioManager` STREAM_MUSIC.
+- RunBeat not active → transport → external media session via `MediaSessionManager.getActiveSessions`
+  (requires notification access: `GarminMediaNotificationListener`), driving the playing session's
+  `MediaController.TransportControls`; fallback → `AudioManager.dispatchMediaKeyEvent(...)`.
+  Volume → `adjustStreamVolume(STREAM_MUSIC)`. `exoPlayer.volume` stays an in-app multiplier, untouched.
+- RunBeat-only controls are greyed out on the watch when pushed `source != "RunBeat"`.
 
-## Command routing (default music app behavior)
+## Components
 
-The watch sends the same commands regardless of which app is playing. The
-**phone** decides where they go:
+Phone (`audio/garmin/`, SDK-free in `main`; SDK wiring in the `garmin` flavor source set):
 
-```
-watch command
-     │
-     ▼
-GarminCompanionManager (thin SDK shell: decode + delegate)
-     │
-     ▼
-GarminCommandRouter (decides RunBeat vs external app)
-     │
-     ├─ RunBeat active (AudioService foreground / player playing)?
-     │     ├─ transport ─▶ PlayerRepository (togglePlayPause/playNext/...)
-     │     ├─ cadence / speed-correction / mark-not-for-running ─▶ PlayerRepository + TrackRepository
-     │     └─ volume ─▶ AudioManager STREAM_MUSIC (see note below)
-     │
-     └─ RunBeat not active
-           ├─ transport ─▶ AudioManager.dispatchMediaKeyEvent(...)  (routes to the app holding media focus)
-           └─ volume ─▶ AudioManager.adjustStreamVolume(STREAM_MUSIC, ...)
-```
+| Component | Role |
+|-----------|------|
+| `GarminCompanionManager` (garmin flavor, Hilt @Singleton) | Connect IQ SDK shell: register IQ app (UUID `06c14376-0c60-4e4c-a977-e93364ace3eb`), decode via `GarminMessageCodec`, delegate to `GarminCommandRouter`, push `state`/`ack`/`wake`; registers a second listener under `IQApp("")` in simulator-ADB mode (SDK 2.4.0 re-broadcasts tethered packets with an empty UUID) |
+| `GarminCommandRouter` | RunBeat-vs-external routing; builds `state`/`ack` payloads (`currentState()`) |
+| `GarminMessageCodec` | (de)serializes the protocol below; pure functions, unit-tested |
+| `MediaKeyDispatcher` | external-session `MediaController` transport (via `GarminMediaNotificationListener` notification access) + media-key fallback; STREAM_MUSIC volume |
+| `GarminMediaNotificationListener` | `NotificationListenerService` (manifest `BIND_NOTIFICATION_LISTENER_SERVICE`); enables `getActiveSessions` for other apps. User grants access from Settings |
+| `GarminWatchConnection` | process-wide `StateFlow` DISCONNECTED/CONNECTING/CONNECTED for the Settings screen |
+| `CadenceAverager` | 60-sample ring buffer; fallback only (the watch computes the mean) |
+| `ExternalPlaybackMonitor` | **optional, not shipped** — NotificationListenerService for external now-playing metadata (reserved protocol value `source:"external"`) |
 
-Notes:
+Watch (`garmin-watch/`, Monkey C, SDK 9.3.0, manifest type `audio-content-provider-app`,
+permissions `Communications`+`Sensor`+`Background`, 16 product ids):
 
-- **Volume uses `AudioManager` STREAM_MUSIC in both branches.** It is the
-  global media volume and works for every app. RunBeat's `exoPlayer.volume`
-  remains an in-app multiplier (default 1.0) used by the mode-beep ducking;
-  the two compose without conflict.
-- **Now-playing metadata from external apps** is optional: a
-  `NotificationListenerService` reading MediaStyle notifications (requires
-  the user to grant notification access). It is not implemented in the
-  shipped build: the phone pushes `"source": "RunBeat"` when RunBeat is
-  the active player and `"none"` otherwise; the optional monitor would
-  push `"external"` (or the external app's name). See
-  [feasibility.md](feasibility.md).
-- The watch disables RunBeat-only commands (cadence, speed correction,
-  mark not-for-running) when the pushed state says `source != "RunBeat"`.
+| Component | Role |
+|-----------|------|
+| `CadenceSampler` + `CadenceRingBuffer` | 1 Hz `Sensor.getInfo().cadence` into a 60-slot buffer (step-delta fallback); `mean()` ignores samples older than 60 s and zeros |
+| `MessageHandler` | parse/build the JSON protocol; **all string comparisons use `.equals()`** (Monkey C `==` compares references — see simulator notes) |
+| `RunBeatCompanionApp` | lifecycle; `(:background)` class with lazy foreground init; `getInitialView()` and `getPlaybackConfigurationView()` both return the same 3-page ViewLoop remote |
+| Views | Main (artist/album/title + play/pause, next, prev, volume), Controls, Cadence; fr245 (CIQ 3.3.1) Main-only fallback |
+| `RunBeatBackgroundService` | turns the phone's `wake` message into a launch-confirmation dialog while the app is closed |
 
-## Phone-side components
+Data layer: `Track.notForRunning` (Room migration 6→7, keyed by `trackId` = file path /
+content URI), DAO/repository mark+unmark, queue filtering behind a settings toggle (default ON),
+badge + unmark in the library UI.
 
-| Component | Type | Responsibility |
-|-----------|------|----------------|
-| `GarminCompanionManager` (new, `audio/garmin/`) | Hilt `@Singleton` | Thin Connect IQ SDK shell (garmin flavor only): initialize `ConnectIQ`, register the IQ app, receive watch messages, decode them with `GarminMessageCodec` and delegate to `GarminCommandRouter`; pushes state updates and acks to the watch. Exposes the connection state via `GarminWatchConnection`. |
-| `GarminCommandRouter` (new, `audio/garmin/`) | Hilt `@Singleton` | Decides RunBeat vs media-key routing (see above) and builds the `state`/`ack` payloads (`currentState()`). Deliberately free of Garmin SDK imports, so it compiles and unit-tests in every flavor. |
-| `GarminWatchConnection` (new, `GarminConnectionState.kt`) | plain object | Process-wide `StateFlow<GarminConnectionState>` holder (DISCONNECTED / CONNECTING / CONNECTED): written by `GarminCompanionManager` (garmin flavor), read by the Settings screen. |
-| `MediaKeyDispatcher` (new, `audio/garmin/`) | plain class | Forwards transport commands to external apps via `AudioManager.dispatchMediaKeyEvent()` and adjusts STREAM_MUSIC volume. No permissions; unit-testable with a mocked `AudioManager`. |
-| `ExternalPlaybackMonitor` (new, optional, `audio/garmin/`) | `NotificationListenerService` | Reads MediaStyle notifications to expose external apps' now-playing metadata. Requires user-granted notification access; keep optional and document in PRIVACY.md. |
-| `GarminMessageCodec` (new, `audio/garmin/`) | plain object | (De)serializes the JSON message protocol below. Pure functions — unit-testable without the Garmin SDK. |
-| `CadenceAverager` (new, `audio/garmin/`) | plain class | 60-sample ring buffer of cadence values with timestamps; `add(sample)`, `meanLast60s(): Float?`. Fallback path if cadence samples are ever streamed to the phone; the watch-side average is the primary path. |
-| `PlayerRepository` (extend) | existing `@Singleton` | Expose `speedCorrectionEnabled` (already a flow), `targetCadence`, `playbackSpeed`, `currentTrack` (all exist). Mark-not-for-running orchestration lives in the manager to avoid a dependency cycle. |
-| `TrackRepository` / `TrackDao` (extend) | existing | Add `notForRunning` flag: DAO `updateNotForRunning(trackId, value)`, query excluding flagged tracks; repository `markTrackNotForRunning(trackId)` / `unmarkTrackNotForRunning(trackId)`. |
-| `LibraryViewModel` (extend) | existing | Filter `notForRunning` tracks when building the play queue **behind a settings toggle (default ON)**; expose toggle to mark/unmark from the phone UI. |
-| `SettingsViewModel` / `SettingsScreen` (extend) | existing | New setting: "Exclude tracks marked 'not for running' from playback" (default ON); Garmin connection status section (flavor-gated). |
-| `AudioService` (unchanged) | existing | Already an exported `MediaSessionService`; remains the fallback transport for basic controls. No change needed. |
+## Message protocol (NORMATIVE)
 
-Dependency direction: `GarminCompanionManager` depends on
-`GarminCommandRouter` + `GarminMessageCodec`; `GarminCommandRouter`
-depends on `PlayerRepository` + `TrackRepository` + `MediaKeyDispatcher`.
-Neither existing class depends on the Garmin layer (the Garmin code
-lives behind the `garmin` product flavor — see
-[phone_app_changes.md](phone_app_changes.md)), so the core app stays
-SDK-free.
+Transport: Connect IQ phone messages, JSON UTF-8 strings. Decoding is tolerant: unknown fields
+skipped, unknown commands decode to `null` and are logged + ignored.
 
-## Watch-side components (Monkey C, separate project)
-
-| Component | Responsibility |
-|-----------|----------------|
-| `CadenceSampler` | Once per second, read cadence (primary source: `Toybox.Sensor` `Sensor.getInfo().cadence`, accelerometer-based, `Sensor` permission; last-resort fallback: step-delta from `ActivityMonitor.getInfo().steps`), push into ring buffer. |
-| `CadenceRingBuffer` | Fixed-size (60) circular buffer; `mean()` over samples not older than 60 s. |
-| `MessageHandler` | Parse phone->watch state messages; send watch->phone commands. |
-| Views (pages) | Main control page, cadence page, settings/toggles page — see [watch_app_plan.md](watch_app_plan.md). |
-
-## Message protocol
-
-Transport: Connect IQ phone messages (small payloads, JSON-encoded UTF-8
-strings via `org.json`, already on Android — no new dependency). Decoding
-is tolerant on both sides: unknown fields are skipped, and unknown commands
-decode to `null` and are logged + ignored by the phone.
-
-### Watch -> phone (commands)
-
+### Watch → phone (commands)
 | Message | Payload | Phone action |
 |---------|---------|--------------|
-| `play` / `pause` / `toggle` | — | RunBeat active: `PlayerRepository.play()/pause()/togglePlayPause()`; otherwise `MediaKeyDispatcher` (media key event) |
-| `next` / `prev` | — | RunBeat active: `PlayerRepository.playNext()/playPrevious()`; otherwise media key event |
-| `cadence_set` | `{"cadence": 172}` | `PlayerRepository.setTargetCadence(value)` (clamped 150-195). RunBeat only. |
-| `cadence_delta` | `{"delta": 1}` or `{"delta": -1}` | `incrementTargetCadence()` / `decrementTargetCadence()`. RunBeat only. |
-| `cadence_use_current` | `{"cadence": <60s mean computed on watch>}` | same as `cadence_set` — the watch computes the average and sends the result; the phone just applies it. RunBeat only. |
-| `speed_correction_toggle` | — | `PlayerRepository.toggleSpeedCorrection()`. RunBeat only. |
-| `volume_delta` | `{"delta": 1}` or `{"delta": -1}` | `AudioManager.adjustStreamVolume(STREAM_MUSIC, ...)` — works for RunBeat and external apps alike |
-| `seek` (optional, 2026-10-24) | `{"positionMs": 42000}` | RunBeat active: `PlayerRepository.seekTo(positionMs)`; otherwise ignored. No ack — the following state push confirms. Phone sanity bound: 0 ≤ N ≤ 86 400 000 |
-| `request_state` (2026-10-24) | — | no ack; the phone answers the **sender** with one `state` push (`pushStateTo(device)`). The watch sends it on app start, every 5 s while playing (keepalive — see the battery section), and, while no message has arrived for ~10 s, re-sends it with exponential backoff (5 -> 10 -> 20 -> 40 -> 60 s cap, reset as soon as a message arrives) — this is what makes a watch launched after the link was already up still get recognized, without an unreachable phone keeping the BLE radio busy every 5 s |
-| `bye` | — | link-layer farewell, sent by the watch in `onStop`: the phone drops its watch-app active window immediately and stops the state stream, instead of waiting for the window to expire. No answer, never routed. |
-| `mark_not_for_running` | — | flag current `trackId` + skip immediately (see below). RunBeat only. |
+| `play` / `pause` / `toggle` / `next` / `prev` | — | RunBeat active: `PlayerRepository`; else media key event |
+| `cadence_set` | `{"cadence": 172}` | `setTargetCadence` (clamped 150–195). RunBeat only. Acked |
+| `cadence_delta` | `{"delta": ±1}` | increment/decrement. RunBeat only. Acked |
+| `cadence_use_current` | `{"cadence": <60 s mean computed on watch>}` | same as `cadence_set`. RunBeat only. Acked |
+| `speed_correction_toggle` | — | `toggleSpeedCorrection()`. RunBeat only. Acked |
+| `volume_delta` | `{"delta": ±1}` | `adjustStreamVolume(STREAM_MUSIC)`. Works for all apps. Not acked |
+| `seek` | `{"positionMs": N}` | RunBeat active: `seekTo(N)` (0 ≤ N ≤ 86 400 000); else ignored. Not acked — next state push confirms |
+| `request_state` | — | phone answers with one `state` push. Sent on app start, every 5 s while playing (keepalive), exponential backoff (5→60 s cap) when silent. Not acked |
+| `bye` | — | sent in `onStop`; phone drops the active window immediately. Never routed, no answer |
+| `mark_not_for_running` | — | flag current `trackId` in Room **and** `playNext()` (immediate skip). RunBeat only. Acked |
+| `playlist_list` | — | link-layer: phone answers with one `playlists` push. Not acked |
+| `playlist_play` | `{"playlistId": "..."}` | load playlist (not-for-running filter applied) and play. RunBeat side. Acked |
 
-### Phone -> watch (state, pushed on change, on connect, and in answer to `request_state`)
-
+### Phone → watch
+`state` (pushed on change, on connect, and in answer to `request_state`):
 ```json
 {
-  "type": "state",
-  "source": "RunBeat",
-  "isPlaying": true,
-  "trackId": "content://media/...",
-  "title": "Song name",
-  "artist": "Artist name",
-  "album": "Album name",
-  "durationMs": 213000,
-  "positionMs": 42000,
-  "bpm": 140.0,
-  "targetCadence": 172,
-  "speedCorrection": true,
-  "playbackSpeed": 1.03,
-  "volume": 12
+  "type": "state", "source": "RunBeat", "isPlaying": true,
+  "trackId": "content://media/...", "title": "Song name", "artist": "Artist name",
+  "album": "Album name", "durationMs": 213000, "positionMs": 42000,
+  "bpm": 140.0, "targetCadence": 172, "speedCorrection": true,
+  "playbackSpeed": 1.03, "volume": 12
 }
 ```
+- `source`: `"RunBeat"` when RunBeat is the active player, else `"none"` (`"external"` reserved
+  for the optional monitor, never emitted by the shipped build). RunBeat-only fields are
+  null/omitted when `source != "RunBeat"`; `artist`/`album` required when `source == "RunBeat"`.
+- `positionMs` rounded down to whole seconds (≈1 push/s while playing); `volume` = STREAM_MUSIC index.
+- `{"type":"playlists","count":N,"id0":"...","name0":"...",...}` answers `playlist_list` (flat
+  indexed fields — the watch parser skips nested arrays; cap 50).
+- `{"type":"ack","command":"...","ok":true}` confirms the acked commands.
+- `{"type":"wake"}` sent once when playback starts with no watch app active.
 
-- `source`: `"RunBeat"` when RunBeat is the active playback app,
-  otherwise `"none"`. `"external"` (or the external app's name) is a
-  reserved protocol value, not currently emitted: the optional
-  `ExternalPlaybackMonitor` notification listener is not implemented.
-- RunBeat-only fields (`trackId`, `title`, `artist`, `album`,
-  `durationMs`, `positionMs`, `bpm`, `targetCadence`,
-  `speedCorrection`, `playbackSpeed`) are omitted or null when
-  `source != "RunBeat"`; the watch greys out the corresponding controls.
-- `artist` / `album` (from `MediaMetadata.artist` / `albumTitle`) are
-  required when `source == "RunBeat"`.
-- `durationMs` is the track duration: the track's `extras.durationMs`,
-  falling back to `PlayerState.duration`; omitted when unknown.
-- `positionMs` is the current playback position **rounded down to whole
-  seconds by the phone** (`currentPosition / 1000 * 1000`), so while
-  playing the state changes — and is pushed — about once per second.
-- `volume`: current STREAM_MUSIC media volume (AudioManager index, not 0..1).
+Cadence samples are never streamed; only the 60 s mean, on button press.
 
-Plus `{"type":"ack","command":"mark_not_for_running","ok":true}` style
-confirmations for commands that need feedback (e.g. mark, cadence applied).
-`request_state` and `seek` are **not** acked: the answering / following
-state push confirms them.
+## Battery & lifecycle
+- **Push gating:** `IQDevice` CONNECTED ≠ app open on the watch. Phone pushes only within a 30 s
+  window of the last incoming watch message (armed by `request_state`, cleared by `bye`; abnormal
+  close expires it in ≤30 s). A closed app costs the watch nothing.
+- **Watch repaint policy:** the 1 Hz tick repaints only when visible content changed (position,
+  header freshness, ack line, cadence number). Paused and still = no repaint.
+- **Idle exit:** `System.exit()` after 3 min without interaction once music stopped or link stale;
+  `onBack` attempts it but always returns false (in the provider-flow context `System.exit` is a
+  no-op and returning true trapped the user) — back falls through to the system pop.
 
-Phone -> watch also includes `{"type":"wake"}`, sent exactly once when
-playback starts while no watch app is active (see the battery section):
-the watch's background service (`Background.registerForPhoneAppMessageEvent`,
-`RunBeatBackgroundService.mc`) receives it while the app is closed and
-answers with a launch-confirmation dialog — re-activation without the
-app running (or polling) in between.
+## Launch paths (decided 2026-10-29, Venu 2 firmware)
+An `audio-content-provider-app` appears BOTH in Music → Music Providers AND in the app menu
+(same as Spotify). Both entry points return the same remote UI; only the host context differs:
 
-Cadence samples are **not** streamed continuously; only the 60-second mean
-is sent, on button press. This keeps BLE traffic near zero and battery
-impact minimal.
-
-Watch-side repaint policy (battery): the app's 1 Hz cadence tick repaints
-the screen **only when visible content changed** — a `positionMs`-only state
-push (deferred from the message handler so it shares the tick's repaint
-instead of adding a second one), the connection header flipping between
-fresh and stale, the transient ack line expiring, or the displayed cadence
-number changing. Paused and standing still, the app does not repaint at all.
-While playing, the progress position still advances at 1 Hz (one repaint per
-second, painted by the tick).
-
-Push gating (battery, the big one — diagnosed 2026-10-29 after a report of
-25% watch battery in 8 h): `IQDevice` CONNECTED only means the watch is
-reachable via Garmin Connect Mobile, NOT that the RunBeat app is open on it.
-The phone used to push state (~1/s while playing) to every connected watch
-regardless, and the resulting BLE receive wakeups drained the watch battery
-all day. The phone now pushes **only within a 30 s window of the last
-incoming watch message** (any command, `request_state`, `bye`-cleared):
-- watch app open, playing: the watch's 5 s `request_state` keepalive
-  keeps the window armed, so the 1 Hz stream flows exactly as before;
-- watch app open, paused: the stale-retry `request_state` (~every 15 s)
-  keeps it armed; on-change pushes (track, cadence, volume) still arrive;
-- watch app closed: `bye` (sent in `onStop`) drops the window at once;
-  an abnormal close still expires it within 30 s — after that, a closed
-  app costs the watch nothing.
-
-Watch-side lifecycle (battery): the app exits itself (`System.exit`)
-after 3 minutes without user interaction once music has stopped or the
-phone link is stale, and back at a page root attempts the same exit but
-never swallows the event — on device `System.exit` does nothing from
-the audio-content-provider context (2026-10-29: returning true trapped
-the user), so back falls through to the system pop (the stock music
-app beneath), as it always did. Re-activation is the `wake` message
-above, plus the usual manual launch from the music provider list
-(instant: the app re-handshakes with `request_state` on start).
+| | Provider-flow launch | Direct (app-menu) launch |
+|---|---|---|
+| Entry | Music → Music Providers → RunBeat (`getPlaybackConfigurationView`) | App menu (`getInitialView`) |
+| Back from remote | lands on the stock Music app (one extra press) | watch face, no Music app (verify) |
+| `System.exit` | no-op on device (guarded) | expected to work (verify) |
 
 ## Feature flows
+1. **Transport:** command → router → `PlayerRepository` or media key → state push back.
+2. **Cadence:** watch ± → `cadence_delta`; "use current" → watch computes 60 s mean →
+   `cadence_use_current` → `setTargetCadence(mean)`; speed correction re-applies in the repository.
+3. **Speed correction:** toggle → `toggleSpeedCorrection()` → state push.
+4. **Volume:** `volume_delta` → STREAM_MUSIC ±1; current volume pushed in `state`.
+5. **Mark not-for-running:** `mark_not_for_running` → Room flag + immediate `playNext()` + ack;
+   future queues exclude flagged tracks behind the settings toggle (default ON).
+6. **External apps:** same watch commands; phone routes to media keys / STREAM_MUSIC;
+   RunBeat-only controls disabled; watch shows "Nothing playing" (no monitor shipped).
 
-### 1. Play control
-Watch button -> `toggle`/`next`/`prev` message -> `GarminCompanionManager`
--> `GarminCommandRouter`, routed per the routing table:
-`PlayerRepository` when RunBeat is active, media key event otherwise.
-Phone pushes updated `state` back; watch icon and source label refresh.
+## Connect IQ simulator (ADB tether) — gotchas (verified 2026-10-25/26/29)
+Staging procedure and division of labor: [simulator_runbook_2026-10-29.md](simulator_runbook_2026-10-29.md).
+Enable Settings > GARMIN > "Use Connect IQ simulator (ADB)" (debug builds only); tether is
+`adb forward tcp:7381 tcp:7381` + simulator Connection > Start; no Garmin Connect Mobile needed.
 
-### 2a. Manual target cadence (watch UI)
-Watch +/- -> `cadence_delta` -> `PlayerRepository.increment/decrementTargetCadence()`
--> `reapplySpeedCorrection()` runs inside the repository (existing
-behavior) -> new `targetCadence` pushed to watch.
-
-### 2b. Target cadence = average of last minute
-1. Watch samples cadence every second into the 60-sample ring buffer.
-2. User presses the dedicated "use current cadence" button.
-3. Watch computes `mean()` of the last 60 s (ignoring stale/zero samples,
-   e.g. when the arm was still) and sends `cadence_use_current` with the
-   value.
-4. Phone applies `setTargetCadence(mean)`; speed correction re-applies
-   automatically for the current track.
-
-Rationale for computing the average on the watch: the sensor is there, it
-avoids 60x message traffic, and the phone app needs no new permissions.
-A phone-side `CadenceAverager` is included only as a fallback if a future
-variant streams raw samples.
-
-### 3. Toggle speed correction
-Watch toggle -> `speed_correction_toggle` ->
-`PlayerRepository.toggleSpeedCorrection()` (existing: enable re-applies the
-cadence-matched speed factor, disable restores 1.0x) -> state push.
-
-### 4. Volume up/down
-Watch +/- -> `volume_delta` -> `AudioManager.adjustStreamVolume(
-STREAM_MUSIC, +/-1, ...)` via `MediaKeyDispatcher`. This is the global media
-volume: it works identically for RunBeat and for external apps. The phone
-reads back the current volume (`AudioManager.getStreamVolume`) and pushes it
-in the `state` message.
-
-This deliberately does **not** touch `exoPlayer.volume`: RunBeat's player
-volume stays an in-app multiplier (default 1.0) used by the mode-beep
-ducking, and composes with the stream volume without conflict. (The
-`PlayerRepository` volume API from the earlier draft is therefore dropped.)
-
-### 5. Mark current track "not for running"
-
-User-facing wording: **"Not for running"** — the track may sound perfectly
-fine, it just does not feel right to run on. The flag is stored in the
-library and filtered from future sessions; it is not a quality rating.
-
-1. Watch button -> `mark_not_for_running` message (enabled only when
-   `source == "RunBeat"`).
-2. `GarminCommandRouter` reads the current `trackId` from
-   `PlayerRepository.currentTrack` (extras key `"trackId"`, already set by
-   `LibraryViewModel.getMediaItemForTrack()`).
-3. `TrackRepository.markTrackNotForRunning(trackId)` — new
-   `notForRunning = true` in Room (migration 6->7).
-4. **Skip immediately (confirmed decision):** `PlayerRepository.playNext()`.
-   (`removeTrackFromUpcoming()` becomes unnecessary for the current track
-   since we skip; it is still useful for symmetry but not required here.)
-5. Phone pushes state + ack; watch shows a brief "Marked: not for running"
-   confirmation.
-6. **Future sessions:** when the play queue is built in `LibraryViewModel`,
-   tracks with `notForRunning = true` are excluded **behind a settings
-   toggle, on by default** ("Exclude tracks marked 'not for running'").
-   Flagged tracks stay visible in the library with a badge and can be
-   unmarked from the phone UI.
-
-Note: marking is keyed by `trackId` (the Room primary key = file path or
-content URI string), so it survives across sessions and playlists.
-
-### 6. Control external apps (default music app)
-1. Phone pushes `source` in every `state` message: `"RunBeat"` while
-   RunBeat's playback is active, otherwise `"none"`. The shipped build
-   has no `ExternalPlaybackMonitor`, so `"external"` (or the external
-   app's name) is never emitted — it remains a reserved protocol value
-   for the optional notification listener (future work).
-2. Watch transport buttons always send the same commands; the phone routes
-   them per the routing table above (media key events when RunBeat is not
-   active).
-3. Watch volume buttons always adjust STREAM_MUSIC.
-4. RunBeat-only controls (cadence page actions, speed-correction toggle,
-   mark not-for-running) are shown disabled when `source != "RunBeat"`.
-5. Main watch screen shows the current source label ("RunBeat" or
-   "Nothing playing" in the shipped build); the external track title
-   would require the optional `ExternalPlaybackMonitor`.
-
-## Connect IQ SDK simulator (ADB tether) notes — verified 2026-10-26
-
-For simulator testing only (Settings > GARMIN > "Use Connect IQ
-simulator (ADB)", debug builds). Details and evidence:
-[e2e_connection_test_report.md](e2e_connection_test_report.md), rev. 3.
-
-1. **Watch -> phone (works, with a workaround).** The companion SDK
-   2.4.0 re-broadcasts every tethered packet with an **empty app UUID**
-   (`IQApp("")`) instead of the real one, so a listener registered under
-   the real UUID never matches and the message is dropped silently.
-   `GarminCompanionManager` therefore registers a **second** app-events
-   listener under `IQApp("")` when `simulatorAdbMode` is on. WIRELESS
-   (real watch) mode is unaffected.
-2. **Phone -> watch (works — an earlier "broken in the simulator"
-   conclusion was a watch-app bug, since fixed).** State pushes and
-   acks ARE delivered to the watch app, in the simulator and on real
-   BLE hardware alike. They were silently dropped 2026-10-26 and
-   earlier because the watch's hand-rolled JSON parser compared
-   strings with `==`/`!=` — which in Monkey C compares object
-   references, not content — so every message failed at the first
-   character check. All string comparisons in the watch app now use
-   `.equals()` (see the rev. 4 section of
-   [e2e_connection_test_report.md](e2e_connection_test_report.md)).
-   Corollary: a watch app that fails to PARSE messages looks
-   identical to one that does not RECEIVE them (its
-   `request_state` re-ask timer never stops), so "the app is deaf"
-   evidence must distinguish parse failure from delivery failure.
-3. **Simulator input model.** `M` on the keyboard opens the
-   per-screen menu (all commands reachable), mouse swipes navigate
-   menus and cycle the ViewLoop pages, click/Enter confirms, and a
-   click on the watch face acts as SELECT (the page's primary action).
-   Clicks on the watch face ARE delivered as positional taps — but
-   note (open item, 2026-10-26) that the app currently turns every tap
-   into `onSelect` instead of the drawn buttons' `onTap` zones on BOTH
-   the simulator and the real watch; see the rev. 4 section of
-   [e2e_connection_test_report.md](e2e_connection_test_report.md).
+1. **Watch → phone in tethered mode** needs the phone-side `IQApp("")` listener (SDK 2.4.0
+   re-broadcasts tethered packets with an empty app UUID). WIRELESS (real watch) unaffected.
+2. **Phone → watch** works in the simulator and on real BLE alike. It was silently broken until
+   2026-10-26 because the watch parser compared strings with `==`/`!=` (reference comparison in
+   Monkey C) — every message failed at the first character check, looking identical to "not
+   received" (the `request_state` re-ask stream never pauses). **Use `.equals()` for all string
+   comparisons.**
+3. **Input model:** `M` opens the per-screen menu (all commands reachable), vertical swipe cycles
+   ViewLoop pages, horizontal swipe on page 1 seeks ±15 s, click/Enter = SELECT (the page's
+   primary action). Open bug: positional taps on drawn buttons fire `onSelect` instead of the
+   buttons' `onTap` zones, on simulator and device.
+4. Environment quirks (adb not on PATH → modal "no data connection" dialog, window drift,
+   `ss` segfaults → use `/proc/net/tcp(6)` port `1CD5`, Git Bash path mangling): runbook §4.
