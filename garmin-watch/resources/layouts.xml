@@ -31,4 +31,12 @@
     <layout id="ControlLayoutRound">
         <label id="headerLabel" x="center" y="34" font="Graphics.FONT_TINY" color="#AAAAAA" justification="Graphics.TEXT_JUSTIFY_CENTER">@Strings.HeaderControls</label>
     </layout>
+
+    <!-- Playlists page. -->
+    <layout id="PlaylistsLayout">
+        <label id="headerLabel" x="center" y="18" font="Graphics.FONT_TINY" color="#AAAAAA" justification="Graphics.TEXT_JUSTIFY_CENTER">@Strings.PlaylistsHeader</label>
+    </layout>
+    <layout id="PlaylistsLayoutRound">
+        <label id="headerLabel" x="center" y="34" font="Graphics.FONT_TINY" color="#AAAAAA" justification="Graphics.TEXT_JUSTIFY_CENTER">@Strings.PlaylistsHeader</label>
+    </layout>
 </layouts>

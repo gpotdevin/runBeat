@@ -9,7 +9,6 @@ import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
-import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
@@ -21,6 +20,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem
 import com.bpmapp.audio.audio.BpmResolver
 import com.bpmapp.audio.audio.CadenceMatcher
+import com.bpmapp.audio.audio.MediaItemFactory
 import com.bpmapp.audio.audio.MetadataEditor
 import com.bpmapp.audio.audio.PlayerRepository
 import com.bpmapp.audio.audio.TrackRepository
@@ -29,6 +29,7 @@ import com.bpmapp.audio.data.Playlist
 import com.bpmapp.audio.data.PlaylistDao
 import com.bpmapp.audio.data.PlaylistTrack
 import com.bpmapp.audio.data.Track
+import com.bpmapp.audio.audio.garmin.SettingsKeys
 import com.bpmapp.audio.data.TrackSource
 import com.bpmapp.audio.util.WriteAccess
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -59,6 +60,7 @@ class LibraryViewModel @Inject constructor(
     private val trackRepository: TrackRepository,
     private val bpmResolver: BpmResolver,
     private val playerRepository: PlayerRepository,
+    private val mediaItemFactory: MediaItemFactory,
     appDatabase: AppDatabase,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
@@ -72,11 +74,6 @@ class LibraryViewModel @Inject constructor(
     
     companion object {
         private const val TAG = "LibraryViewModel"
-
-        // "AppSettings" SharedPreferences (same file SettingsViewModel uses)
-        private const val SETTINGS_PREFS_NAME = "AppSettings"
-        private const val KEY_EXCLUDE_NOT_FOR_RUNNING_TRACKS = "exclude_not_for_running_tracks"
-        private const val DEFAULT_EXCLUDE_NOT_FOR_RUNNING_TRACKS = true
     }
     
     // All tracks from repository
@@ -328,16 +325,19 @@ class LibraryViewModel @Inject constructor(
     // Persisted setting: exclude tracks marked "not for running" from the play
     // queue (default ON). Stored in the "AppSettings" SharedPreferences, the
     // same file the Settings screen toggle writes to.
-    private val settingsPrefs = context.getSharedPreferences(SETTINGS_PREFS_NAME, Context.MODE_PRIVATE)
+    private val settingsPrefs = context.getSharedPreferences(SettingsKeys.PREFS_NAME, Context.MODE_PRIVATE)
 
     private val _excludeNotForRunningTracks = MutableStateFlow(
-        settingsPrefs.getBoolean(KEY_EXCLUDE_NOT_FOR_RUNNING_TRACKS, DEFAULT_EXCLUDE_NOT_FOR_RUNNING_TRACKS)
+        settingsPrefs.getBoolean(
+            SettingsKeys.KEY_EXCLUDE_NOT_FOR_RUNNING_TRACKS,
+            SettingsKeys.DEFAULT_EXCLUDE_NOT_FOR_RUNNING_TRACKS
+        )
     )
 
     val excludeNotForRunningTracks: StateFlow<Boolean> = _excludeNotForRunningTracks.asStateFlow()
 
     fun setExcludeNotForRunningTracks(value: Boolean) {
-        settingsPrefs.edit().putBoolean(KEY_EXCLUDE_NOT_FOR_RUNNING_TRACKS, value).apply()
+        settingsPrefs.edit().putBoolean(SettingsKeys.KEY_EXCLUDE_NOT_FOR_RUNNING_TRACKS, value).apply()
         _excludeNotForRunningTracks.value = value
     }
     
@@ -985,8 +985,8 @@ class LibraryViewModel @Inject constructor(
      */
     fun playableTracks(tracks: List<Track>): List<Track> {
         val exclude = settingsPrefs.getBoolean(
-            KEY_EXCLUDE_NOT_FOR_RUNNING_TRACKS,
-            DEFAULT_EXCLUDE_NOT_FOR_RUNNING_TRACKS
+            SettingsKeys.KEY_EXCLUDE_NOT_FOR_RUNNING_TRACKS,
+            SettingsKeys.DEFAULT_EXCLUDE_NOT_FOR_RUNNING_TRACKS
         )
         return if (exclude) tracks.filterNot { it.notForRunning } else tracks
     }
@@ -1002,43 +1002,8 @@ class LibraryViewModel @Inject constructor(
      * Get a MediaItem for a track to play it
      * Includes BPM information in the media metadata for display in playlist
      */
-    fun getMediaItemForTrack(track: Track): MediaItem {
-        // Use track.id directly if it's already a valid URI
-        // For APP tracks from CSV import, track.id contains the full file:// URI
-        val uriString = if (track.id.startsWith("file://") || track.id.startsWith("content://")) {
-            track.id
-        } else if (track.source == TrackSource.APP) {
-            // Fallback: construct file URI from relativePath and fileName
-            val path = if (track.relativePath == ".") {
-                track.fileName
-            } else {
-                "${track.relativePath}/${track.fileName}"
-            }
-            "file:///$path"
-        } else {
-            track.id
-        }
-        
-        return MediaItem.Builder()
-            .setUri(Uri.parse(uriString))
-            .setMediaMetadata(
-                androidx.media3.common.MediaMetadata.Builder()
-                    .setTitle(track.metadataTitle ?: track.fileName)
-                    .setArtist(track.metadataArtist ?: "Unknown")
-                    .setAlbumTitle(track.metadataAlbum ?: "Unknown")
-                    .apply {
-                        val extras = Bundle().apply {
-                            putString("trackId", track.id)
-                            putString("bpm", track.bpm?.toString() ?: "")
-                            putString("fileName", track.fileName)
-                            putLong("durationMs", track.durationMs ?: 0L)
-                        }
-                        setExtras(extras)
-                    }
-                    .build()
-            )
-            .build()
-    }
+    fun getMediaItemForTrack(track: Track): MediaItem =
+        mediaItemFactory.mediaItemFor(track)
     
     /**
      * Analyze BPM for all tracks in library

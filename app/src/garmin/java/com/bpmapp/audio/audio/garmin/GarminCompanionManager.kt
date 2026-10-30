@@ -343,6 +343,15 @@ class GarminCompanionManager @Inject constructor(
                 }
                 continue
             }
+            // Link-layer request, not a playback command: answer the sender
+            // with one playlists push. No ack and no command mutex, exactly
+            // like request_state.
+            if (command is GarminCommand.PlaylistList) {
+                scope.launch {
+                    pushPlaylistsTo(device)
+                }
+                continue
+            }
             Log.d(TAG, "Watch command from ${device.friendlyName}: $json")
             scope.launch {
                 try {
@@ -582,6 +591,20 @@ class GarminCompanionManager @Inject constructor(
         sendTo(device, GarminMessageCodec.encodeState(router.currentState()))
     }
 
+    /**
+     * Answers a watch's playlist_list: pushes the library playlists (flat
+     * indexed fields) to that one device when it is connected — same
+     * device-local path as [pushStateTo], independent of the aggregate
+     * [connectionState] gate and of the watch-app active window.
+     */
+    private suspend fun pushPlaylistsTo(device: IQDevice) {
+        if (deviceStatuses[device.deviceIdentifier] != IQDevice.IQDeviceStatus.CONNECTED) {
+            Log.i(TAG, "playlist_list from ${device.friendlyName}: device not connected, not answering")
+            return
+        }
+        sendTo(device, GarminMessageCodec.encodePlaylists(router.currentPlaylists()))
+    }
+
     /** Sends a JSON message to every connected, registered watch. */
     private fun sendToWatch(json: String) {
         val targets = devices.values.filter {
@@ -615,6 +638,7 @@ class GarminCompanionManager @Inject constructor(
         is GarminCommand.CadenceUseCurrent,
         is GarminCommand.SpeedCorrectionToggle,
         is GarminCommand.MarkNotForRunning,
+        is GarminCommand.PlaylistPlay,
         -> true
         else -> false
     }

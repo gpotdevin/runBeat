@@ -2,9 +2,13 @@
 
 package com.bpmapp.audio.audio.garmin
 
+import android.content.Context
 import androidx.media3.common.Player
+import com.bpmapp.audio.audio.MediaItemFactory
+import com.bpmapp.audio.audio.PlaylistRepository
 import com.bpmapp.audio.audio.PlayerRepository
 import com.bpmapp.audio.audio.TrackRepository
+import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -38,7 +42,10 @@ import javax.inject.Singleton
 class GarminCommandRouter @Inject constructor(
     private val playerRepository: PlayerRepository,
     private val trackRepository: TrackRepository,
+    private val playlistRepository: PlaylistRepository,
+    private val mediaItemFactory: MediaItemFactory,
     private val mediaKeyDispatcher: MediaKeyDispatcher,
+    @ApplicationContext private val context: Context,
 ) {
 
     /**
@@ -160,8 +167,48 @@ class GarminCommandRouter @Inject constructor(
             // Never reached: the manager intercepts Bye as a link-layer
             // farewell before routing (see GarminCompanionManager).
             is GarminCommand.Bye -> GarminAck(cmd.wireType(), ok = true)
+            is GarminCommand.PlaylistPlay -> playPlaylist(cmd)
+            // Never reached: the manager intercepts PlaylistList as a
+            // link-layer request before routing (see GarminCompanionManager).
+            is GarminCommand.PlaylistList -> GarminAck(cmd.wireType(), ok = true)
         }
     }
+
+    /**
+     * Plays a library playlist in RunBeat: loads its tracks (ordered by
+     * position) as the play queue and starts playback. Tracks flagged "not
+     * for running" are left out when the shared "exclude not for running"
+     * setting is on (the same filter the library UI applies). Ack ok=false
+     * when the playlist is missing or has no playable track after filtering.
+     */
+    private suspend fun playPlaylist(cmd: GarminCommand.PlaylistPlay): GarminAck {
+        val relations = playlistRepository.tracksForPlaylist(cmd.playlistId)
+        val tracks = relations.mapNotNull { playlistRepository.trackById(it.trackId) }
+        val playable = if (excludeNotForRunningTracks()) tracks.filterNot { it.notForRunning } else tracks
+        if (playable.isEmpty()) return GarminAck(cmd.wireType(), ok = false)
+        val items = playable.map { mediaItemFactory.mediaItemFor(it) }
+        playerRepository.loadPlaylist(items)
+        playerRepository.play()
+        return GarminAck(cmd.wireType(), ok = true)
+    }
+
+    /**
+     * The library playlists as (id, name) pairs, for the playlists push that
+     * answers a watch's playlist_list request.
+     */
+    suspend fun currentPlaylists(): List<Pair<String, String>> =
+        playlistRepository.playlistsOnce().map { it.id to it.name }
+
+    /**
+     * The shared "exclude not for running" setting, read fresh from the
+     * "AppSettings" SharedPreferences (same key/default as the library UI).
+     */
+    private fun excludeNotForRunningTracks(): Boolean =
+        context.getSharedPreferences(SettingsKeys.PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(
+                SettingsKeys.KEY_EXCLUDE_NOT_FOR_RUNNING_TRACKS,
+                SettingsKeys.DEFAULT_EXCLUDE_NOT_FOR_RUNNING_TRACKS
+            )
 
     /**
      * Builds the state message pushed to the watch. [GarminWatchState.source]
@@ -250,6 +297,10 @@ class GarminCommandRouter @Inject constructor(
         // Same for Bye (link-layer farewell, intercepted by the manager).
         GarminCommand.Bye -> "bye"
         is GarminCommand.Seek -> "seek"
+        // PlaylistList never reaches the router (the manager intercepts it);
+        // the mapping exists to keep this when exhaustive.
+        GarminCommand.PlaylistList -> "playlist_list"
+        is GarminCommand.PlaylistPlay -> "playlist_play"
     }
 
     private companion object {

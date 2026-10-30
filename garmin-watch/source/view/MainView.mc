@@ -167,7 +167,7 @@ class MainView extends BaseView {
             Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
 
         drawAck(dc);
-        drawPageIndicator(dc, 1, 3);
+        drawPageIndicator(dc, 1, 4);
     }
 
     // Tap handler for RunBeatPageDelegate: the drawn "Not for running"

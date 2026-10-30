@@ -114,7 +114,7 @@ class CadenceView extends BaseView {
         }
 
         drawAck(dc);
-        drawPageIndicator(dc, 3, 3);
+        drawPageIndicator(dc, 3, 4);
     }
 
     // One rounded action button with a centered label (the label is

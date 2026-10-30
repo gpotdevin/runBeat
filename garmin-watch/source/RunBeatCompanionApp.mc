@@ -323,7 +323,7 @@ class RunBeatCompanionApp extends Application.AudioContentProviderApp {
 }
 
 // ViewLoop factory: one view/delegate pair per page
-// (0 = MainView, 1 = ControlView, 2 = CadenceView).
+// (0 = MainView, 1 = ControlView, 2 = CadenceView, 3 = PlaylistsView).
 class RunBeatViewLoopFactory extends WatchUi.ViewLoopFactory {
 
     private var _state;           // WatchState
@@ -352,6 +352,15 @@ class RunBeatViewLoopFactory extends WatchUi.ViewLoopFactory {
                 new CadenceViewMenuDelegate(view, _messages, _state),
                 view.method(:onTap),
                 null)];
+        } else if (page == 3) {
+            // Playlists page is tap-only: no menu (onMenu guards a null
+            // menu and returns false).
+            var view = new PlaylistsView(_state, _messages);
+            return [view, new RunBeatPageDelegate(view,
+                null,
+                null,
+                view.method(:onTap),
+                null)];
         }
         var view = new MainView(_state, _messages);
         return [view, new RunBeatPageDelegate(view,
@@ -362,7 +371,7 @@ class RunBeatViewLoopFactory extends WatchUi.ViewLoopFactory {
     }
 
     function getSize() {
-        return 3;
+        return 4;
     }
 }
 
@@ -373,7 +382,7 @@ class RunBeatViewLoopFactory extends WatchUi.ViewLoopFactory {
 // gesture (prev/next track on page 0).
 class RunBeatPageDelegate extends WatchUi.BehaviorDelegate {
 
-    private var _view;          // MainView | ControlView | CadenceView
+    private var _view;          // MainView | ControlView | CadenceView | PlaylistsView
     private var _menu;          // WatchUi.Menu
     private var _menuDelegate;  // WatchUi.MenuInputDelegate
     private var _tapHandler;    // Method? — view.onTap(x, y), or null
@@ -428,7 +437,12 @@ class RunBeatPageDelegate extends WatchUi.BehaviorDelegate {
 
     function onMenu() as Boolean {
         noteActivity();
-        WatchUi.pushView(_menu, _menuDelegate, WatchUi.SLIDE_IMMEDIATE);
+        var menu = _menu;
+        if (menu == null) {
+            // Tap-only page (playlists): no menu to push.
+            return false;
+        }
+        WatchUi.pushView(menu, _menuDelegate, WatchUi.SLIDE_IMMEDIATE);
         return true;
     }
 

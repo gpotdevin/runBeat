@@ -92,6 +92,31 @@ class GarminMessageCodecTest {
     }
 
     @Test
+    fun decodesPlaylistCommands() {
+        assertEquals(
+            GarminCommand.PlaylistList,
+            GarminMessageCodec.decodeCommand("{\"type\":\"playlist_list\"}")
+        )
+        assertEquals(
+            GarminCommand.PlaylistPlay("pl-1"),
+            GarminMessageCodec.decodeCommand("{\"type\":\"playlist_play\",\"playlistId\":\"pl-1\"}")
+        )
+    }
+
+    @Test
+    fun decodeCommandRejectsMissingOrInvalidPlaylistId() {
+        // Missing field.
+        assertNull(GarminMessageCodec.decodeCommand("{\"type\":\"playlist_play\"}"))
+        // JSON null.
+        assertNull(GarminMessageCodec.decodeCommand("{\"type\":\"playlist_play\",\"playlistId\":null}"))
+        // Empty string.
+        assertNull(GarminMessageCodec.decodeCommand("{\"type\":\"playlist_play\",\"playlistId\":\"\"}"))
+        // Non-string field: playlistId must be an actual JSON string.
+        assertNull(GarminMessageCodec.decodeCommand("{\"type\":\"playlist_play\",\"playlistId\":42}"))
+        assertNull(GarminMessageCodec.decodeCommand("{\"type\":\"playlist_play\",\"playlistId\":true}"))
+    }
+
+    @Test
     fun decodesSeekCommand() {
         assertEquals(
             GarminCommand.Seek(42000L),
@@ -239,6 +264,74 @@ class GarminMessageCodecTest {
         assertEquals(
             "{\"type\":\"seek\",\"positionMs\":42000}",
             GarminMessageCodec.encodeCommand(GarminCommand.Seek(42000L))
+        )
+        assertEquals(
+            "{\"type\":\"playlist_list\"}",
+            GarminMessageCodec.encodeCommand(GarminCommand.PlaylistList)
+        )
+        assertEquals(
+            "{\"type\":\"playlist_play\",\"playlistId\":\"pl-1\"}",
+            GarminMessageCodec.encodeCommand(GarminCommand.PlaylistPlay("pl-1"))
+        )
+    }
+
+    // ---------------------------------------------------------------
+    // Phone -> watch: playlists (flat indexed fields)
+    // ---------------------------------------------------------------
+
+    @Test
+    fun encodePlaylistsUsesFlatIndexedFields() {
+        assertEquals(
+            "{\"type\":\"playlists\",\"count\":2,\"id0\":\"a\",\"name0\":\"Chill\",\"id1\":\"b\",\"name1\":\"Run\"}",
+            GarminMessageCodec.encodePlaylists(listOf("a" to "Chill", "b" to "Run"))
+        )
+        assertEquals(
+            "{\"type\":\"playlists\",\"count\":0}",
+            GarminMessageCodec.encodePlaylists(emptyList())
+        )
+    }
+
+    @Test
+    fun encodePlaylistsCapsAtMaxPlaylists() {
+        val many = (0 until 80).map { "id$it" to "name$it" }
+        val encoded = GarminMessageCodec.encodePlaylists(many)
+        val obj = JSONObject(encoded)
+        assertEquals(50, obj.getInt("count"))
+        assertTrue(obj.has("id49"))
+        assertFalse(obj.has("id50"))
+    }
+
+    @Test
+    fun playlistsRoundTrip() {
+        val playlists = listOf(
+            "pl-1" to "Chill",
+            "pl-2" to "Run — üñïçødé \"quoted\"",
+            "pl-3" to "",
+        )
+        val decoded = GarminMessageCodec.decodePlaylists(GarminMessageCodec.encodePlaylists(playlists))
+        assertEquals(GarminPlaylists(playlists), decoded)
+    }
+
+    @Test
+    fun decodePlaylistsIsTolerant() {
+        assertNull(GarminMessageCodec.decodePlaylists("not json"))
+        // A command or state message is not a playlists message.
+        assertNull(GarminMessageCodec.decodePlaylists("{\"type\":\"playlist_list\"}"))
+        assertNull(GarminMessageCodec.decodePlaylists("{\"type\":\"state\",\"source\":\"RunBeat\"}"))
+        // Missing or null count.
+        assertNull(GarminMessageCodec.decodePlaylists("{\"type\":\"playlists\"}"))
+        assertNull(GarminMessageCodec.decodePlaylists("{\"type\":\"playlists\",\"count\":null}"))
+        // Negative or beyond the MAX_PLAYLISTS sanity bound.
+        assertNull(GarminMessageCodec.decodePlaylists("{\"type\":\"playlists\",\"count\":-1}"))
+        assertNull(GarminMessageCodec.decodePlaylists("{\"type\":\"playlists\",\"count\":51}"))
+        // Entries with a missing or blank id are skipped; a missing name
+        // decodes as "".
+        assertEquals(
+            GarminPlaylists(listOf("a" to "A", "c" to "")),
+            GarminMessageCodec.decodePlaylists(
+                "{\"type\":\"playlists\",\"count\":4,\"id0\":\"a\",\"name0\":\"A\"," +
+                    "\"name1\":\"no-id\",\"id2\":\"\",\"name2\":\"blank-id\",\"id3\":\"c\"}"
+            )
         )
     }
 

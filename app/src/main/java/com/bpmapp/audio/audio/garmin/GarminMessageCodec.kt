@@ -20,6 +20,8 @@ import org.json.JSONObject
  *   {"type":"request_state"}
  *   {"type":"seek","positionMs":42000}
  *   {"type":"bye"}                      (app closing: stop the watch-active window)
+ *   {"type":"playlist_list"}            (link-layer: answered with one playlists push)
+ *   {"type":"playlist_play","playlistId":"..."}
  */
 sealed class GarminCommand {
     data object Play : GarminCommand()
@@ -51,6 +53,20 @@ sealed class GarminCommand {
 
     /** Absolute seek position in ms; RunBeat-only (no media-key equivalent). */
     data class Seek(val positionMs: Long) : GarminCommand()
+
+    /**
+     * Link-layer request, not a playback command: like [RequestState], the
+     * companion manager intercepts it before routing and answers the sender
+     * with one playlists push (no ack).
+     */
+    data object PlaylistList : GarminCommand()
+
+    /**
+     * Play the playlist with the given id in RunBeat. Routed and acked:
+     * ok=true when the playlist exists and has at least one playable track
+     * after the "exclude not for running" filter, ok=false otherwise.
+     */
+    data class PlaylistPlay(val playlistId: String) : GarminCommand()
 }
 
 /**
@@ -94,6 +110,16 @@ data class GarminWatchState(
 data class GarminAck(val command: String, val ok: Boolean)
 
 /**
+ * Playlist list pushed from the phone to the watch (answer to playlist_list):
+ *
+ *   {"type":"playlists","count":N,"id0":"...","name0":"...","id1":"...","name1":"...",...}
+ *
+ * Flat indexed fields only: the watch parser skips nested arrays/objects, so
+ * the list goes as id{i}/name{i} pairs. [playlists] holds (id, name) pairs.
+ */
+data class GarminPlaylists(val playlists: List<Pair<String, String>>)
+
+/**
  * Pure Kotlin + org.json (de)serialization of the watch <-> phone message
  * protocol. No Garmin SDK imports — compiles and tests in every flavor.
  *
@@ -121,6 +147,8 @@ object GarminMessageCodec {
     private const val KEY_SPEED_CORRECTION = "speedCorrection"
     private const val KEY_PLAYBACK_SPEED = "playbackSpeed"
     private const val KEY_VOLUME = "volume"
+    private const val KEY_PLAYLIST_ID = "playlistId"
+    private const val KEY_COUNT = "count"
 
     private const val TYPE_PLAY = "play"
     private const val TYPE_PAUSE = "pause"
@@ -139,6 +167,9 @@ object GarminMessageCodec {
     private const val TYPE_STATE = "state"
     private const val TYPE_ACK = "ack"
     private const val TYPE_WAKE = "wake"
+    private const val TYPE_PLAYLIST_LIST = "playlist_list"
+    private const val TYPE_PLAYLIST_PLAY = "playlist_play"
+    private const val TYPE_PLAYLISTS = "playlists"
 
     // Sanity bound for cadence_delta / volume_delta: the watch sends ±1 per
     // button press, so anything beyond this is a corrupt or hostile message.
@@ -146,6 +177,10 @@ object GarminMessageCodec {
 
     // Sanity bound for seek: 24 h of audio is far beyond any track length.
     private const val MAX_SEEK_POSITION_MS = 86_400_000.0
+
+    // Sanity bound for the playlists push: the watch's page shows a handful of
+    // entries, so anything beyond this is a corrupt or hostile message.
+    private const val MAX_PLAYLISTS = 50
 
     // ---------------------------------------------------------------
     // Watch -> phone (commands)
@@ -174,6 +209,10 @@ object GarminMessageCodec {
             TYPE_BYE -> GarminCommand.Bye
             TYPE_SEEK -> obj.optPositionMsOrNull(KEY_POSITION_MS)
                 ?.let { GarminCommand.Seek(it) }
+            TYPE_PLAYLIST_LIST -> GarminCommand.PlaylistList
+            TYPE_PLAYLIST_PLAY -> (obj.opt(KEY_PLAYLIST_ID) as? String)
+                ?.takeIf { it.isNotEmpty() }
+                ?.let { GarminCommand.PlaylistPlay(it) }
             else -> null
         }
     }
@@ -209,6 +248,11 @@ object GarminMessageCodec {
         is GarminCommand.Seek -> JSONObject()
             .put(KEY_TYPE, TYPE_SEEK)
             .put(KEY_POSITION_MS, command.positionMs)
+            .toString()
+        is GarminCommand.PlaylistList -> typed(TYPE_PLAYLIST_LIST)
+        is GarminCommand.PlaylistPlay -> JSONObject()
+            .put(KEY_TYPE, TYPE_PLAYLIST_PLAY)
+            .put(KEY_PLAYLIST_ID, command.playlistId)
             .toString()
     }
 
@@ -282,6 +326,44 @@ object GarminMessageCodec {
      * substring "type":"wake", so the wire format must not gain whitespace.
      */
     fun encodeWake(): String = typed(TYPE_WAKE)
+
+    // ---------------------------------------------------------------
+    // Phone -> watch (playlists)
+    // ---------------------------------------------------------------
+
+    /**
+     * Encodes the playlists push: flat indexed fields (the watch parser skips
+     * nested arrays/objects), capped at [MAX_PLAYLISTS] entries.
+     */
+    fun encodePlaylists(playlists: List<Pair<String, String>>): String {
+        val obj = JSONObject().put(KEY_TYPE, TYPE_PLAYLISTS)
+        val bounded = playlists.take(MAX_PLAYLISTS)
+        obj.put(KEY_COUNT, bounded.size)
+        bounded.forEachIndexed { index, (id, name) ->
+            obj.put("id$index", id)
+            obj.put("name$index", name)
+        }
+        return obj.toString()
+    }
+
+    /**
+     * Decodes a playlists message; null when malformed or not a playlists
+     * message. Tolerant: entries with a missing or blank id are skipped, a
+     * missing name decodes as "", and the count is capped at [MAX_PLAYLISTS].
+     */
+    fun decodePlaylists(json: String): GarminPlaylists? {
+        val obj = parse(json) ?: return null
+        if (obj.optString(KEY_TYPE) != TYPE_PLAYLISTS) return null
+        if (!obj.has(KEY_COUNT) || obj.isNull(KEY_COUNT)) return null
+        val count = obj.optInt(KEY_COUNT, -1)
+        if (count < 0 || count > MAX_PLAYLISTS) return null
+        val playlists = (0 until count).mapNotNull { index ->
+            val id = (obj.opt("id$index") as? String)?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+            val name = obj.opt("name$index") as? String ?: ""
+            id to name
+        }
+        return GarminPlaylists(playlists)
+    }
 
     /** True when the message is a wake message (test/helper symmetry). */
     fun isWake(json: String): Boolean =

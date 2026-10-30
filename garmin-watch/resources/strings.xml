@@ -6,10 +6,12 @@
     <!-- Page headers (layout labels). -->
     <string id="HeaderCadence">CADENCE</string>
     <string id="HeaderControls">CONTROLS</string>
+    <string id="PlaylistsHeader">PLAYLISTS</string>
 
     <!-- Main page. -->
     <string id="ExternalApp">External app</string>
     <string id="NoPlayback">Nothing playing</string>
+    <string id="NoPlaylists">No playlists</string>
     <string id="PhoneNotConnected">Phone not connected</string>
     <string id="Connecting">Connecting...</string>
     <string id="PhonePlaybackOnly">Music plays on the phone</string>
@@ -53,6 +55,8 @@
     <string id="AckCadenceApplied">Target set</string>
     <string id="AckCadenceFailed">Not applied</string>
     <string id="AckSpeedCorrection">Toggled</string>
+    <string id="AckPlaylistStarted">Playlist started</string>
+    <string id="AckPlaylistFailed">Playlist failed</string>
     <string id="AckOk">OK</string>
     <string id="AckFailed">Failed</string>
 </strings>

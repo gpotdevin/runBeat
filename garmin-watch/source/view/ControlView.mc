@@ -63,7 +63,7 @@ class ControlView extends BaseView {
             Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
 
         drawAck(dc);
-        drawPageIndicator(dc, 2, 3);
+        drawPageIndicator(dc, 2, 4);
     }
 
     // Select opens the volume adjuster, same as tapping the button.

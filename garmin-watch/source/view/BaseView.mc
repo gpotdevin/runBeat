@@ -3,7 +3,7 @@ import Toybox.Lang;
 import Toybox.System;
 import Toybox.WatchUi;
 
-// Common behavior for the three pages: header label (three connection
+// Common behavior for the four pages: header label (three connection
 // states), transient ack line, page indicator, text truncation, drawn-
 // button hit-testing, the pushed volume adjuster. Each subclass picks
 // its square/round layout in onLayout().

@@ -16,6 +16,9 @@ import Toybox.WatchUi;
 //   {"type":"request_state"}            (no payload, no ack; the phone answers
 //                                       the sender with one state push)
 //   {"type":"seek","positionMs":42000}  (no ack; positionMs is an integer)
+//   {"type":"playlist_list"}             (no ack; the phone answers the sender
+//                                       with one playlists push)
+//   {"type":"playlist_play","playlistId":"..."}  (acked)
 //
 // Phone -> watch:
 //   {"type":"state","source":"RunBeat","isPlaying":true,"trackId":"...","title":"...",
@@ -26,11 +29,18 @@ import Toybox.WatchUi;
 //       (positionMs rounded down to whole seconds by the phone);
 //     - both are null/omitted when source != "RunBeat" or unknown.
 //   {"type":"ack","command":"mark_not_for_running","ok":true}
+//   {"type":"playlists","count":N,"id0":"...","name0":"...",...}
+//     - flat indexed fields (the parser skips nested arrays/objects);
+//       sanity bound MAX_PLAYLISTS.
 //
 // Monkey C has no org.json, so the flat JSON objects are built/parsed by hand.
 // The parser is deliberately tolerant: unknown fields, nested structures and
 // malformed input are ignored instead of failing.
 class MessageHandler {
+
+    // Sanity bound for the "playlists" push: the phone sends at most this
+    // many idN/nameN indexed pairs; a larger count is truncated.
+    static const MAX_PLAYLISTS = 50;
 
     private var _state;   // WatchState
 
@@ -74,6 +84,17 @@ class MessageHandler {
 
     function sendMarkNotForRunning() as Void {
         sendJson("{\"type\":\"mark_not_for_running\"}");
+    }
+
+    // Playlist list request (link-layer: the phone intercepts it like
+    // request_state and answers the sender with one playlists push, no ack).
+    function sendPlaylistList() as Void {
+        sendJson("{\"type\":\"playlist_list\"}");
+    }
+
+    // Play one library playlist on the phone (routed, acked).
+    function sendPlaylistPlay(playlistId as String) as Void {
+        sendJson("{\"type\":\"playlist_play\",\"playlistId\":\"" + jsonEscape(playlistId) + "\"}");
     }
 
     // Handshake: ask the phone for one state push. Sent on app start, every
@@ -122,6 +143,8 @@ class MessageHandler {
             applyState(dict);
         } else if (t.equals("ack")) {
             applyAck(dict);
+        } else if (t.equals("playlists")) {
+            applyPlaylists(dict);
         }
         // Unknown message types are ignored (forward compatibility).
     }
@@ -204,6 +227,33 @@ class MessageHandler {
         }
     }
 
+    // {"type":"playlists","count":N,"id0":"...","name0":"...",...} — the
+    // library playlist list pushed in answer to playlist_list. Flat indexed
+    // fields; tolerant: a missing count means 0, a missing idN/nameN entry
+    // becomes an empty string, and the count is sanity-bound to
+    // MAX_PLAYLISTS.
+    private function applyPlaylists(dict as Dictionary) as Void {
+        var countValue = optionalNumber(dict, "count");
+        var count = countValue == null ? 0 : countValue as Number;
+        if (count < 0) {
+            count = 0;
+        }
+        if (count > MAX_PLAYLISTS) {
+            count = MAX_PLAYLISTS;
+        }
+        var ids = [];
+        var names = [];
+        for (var i = 0; i < count; i++) {
+            var idValue = dict["id" + i.format("%d")];
+            var nameValue = dict["name" + i.format("%d")];
+            ids.add(idValue instanceof String ? idValue as String : "");
+            names.add(nameValue instanceof String ? nameValue as String : "");
+        }
+        _state.setPlaylists(ids, names);
+        _state.markMessageReceived();
+        WatchUi.requestUpdate();
+    }
+
     // Element-wise equality of the two applyState field snapshots.
     private function statesEqual(a as Array, b as Array) as Boolean {
         var n = a.size();
@@ -248,6 +298,8 @@ class MessageHandler {
                 text = ok ? WatchUi.loadResource(Rez.Strings.AckCadenceApplied) as String : WatchUi.loadResource(Rez.Strings.AckCadenceFailed) as String;
             } else if (cmd.equals("speed_correction_toggle")) {
                 text = ok ? WatchUi.loadResource(Rez.Strings.AckSpeedCorrection) as String : WatchUi.loadResource(Rez.Strings.AckFailed) as String;
+            } else if (cmd.equals("playlist_play")) {
+                text = ok ? WatchUi.loadResource(Rez.Strings.AckPlaylistStarted) as String : WatchUi.loadResource(Rez.Strings.AckPlaylistFailed) as String;
             } else {
                 text = ok ? WatchUi.loadResource(Rez.Strings.AckOk) as String : WatchUi.loadResource(Rez.Strings.AckFailed) as String;
             }
@@ -264,6 +316,30 @@ class MessageHandler {
         // transmit() reports failure through the ConnectionListener's
         // onError() callback.
         Communications.transmit(json, null, new RunBeatConnectionListener(_state));
+    }
+
+    // Escapes a string for embedding as a JSON string value (used for the
+    // playlist id in playlist_play).
+    private function jsonEscape(s as String) as String {
+        var result = "";
+        var n = s.length();
+        for (var i = 0; i < n; i++) {
+            var c = s.substring(i, i + 1);
+            if (c.equals("\\")) {
+                result += "\\\\";
+            } else if (c.equals("\"")) {
+                result += "\\\"";
+            } else if (c.equals("\n")) {
+                result += "\\n";
+            } else if (c.equals("\r")) {
+                result += "\\r";
+            } else if (c.equals("\t")) {
+                result += "\\t";
+            } else {
+                result += c;
+            }
+        }
+        return result;
     }
 
     private function optionalFloat(dict as Dictionary, key as String) as Float? {

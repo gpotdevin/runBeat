@@ -2,12 +2,19 @@
 
 package com.bpmapp.audio.audio.garmin
 
+import android.content.Context
 import android.os.Bundle
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
+import androidx.test.core.app.ApplicationProvider
+import com.bpmapp.audio.audio.MediaItemFactory
+import com.bpmapp.audio.audio.PlaylistRepository
 import com.bpmapp.audio.audio.PlayerRepository
 import com.bpmapp.audio.audio.TrackRepository
+import com.bpmapp.audio.data.Playlist
+import com.bpmapp.audio.data.PlaylistTrack
+import com.bpmapp.audio.data.Track
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -18,6 +25,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.mockito.kotlin.any
+import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
@@ -38,7 +46,9 @@ class GarminCommandRouterTest {
 
     private lateinit var playerRepository: PlayerRepository
     private lateinit var trackRepository: TrackRepository
+    private lateinit var playlistRepository: PlaylistRepository
     private lateinit var mediaKeyDispatcher: MediaKeyDispatcher
+    private lateinit var context: Context
     private lateinit var router: GarminCommandRouter
 
     private lateinit var playerState: MutableStateFlow<PlayerRepository.PlayerState>
@@ -51,7 +61,13 @@ class GarminCommandRouterTest {
     fun setUp() {
         playerRepository = mock()
         trackRepository = mock()
+        playlistRepository = mock()
         mediaKeyDispatcher = mock()
+        context = ApplicationProvider.getApplicationContext<Context>()
+        // Start each test with a clean "AppSettings" prefs file; the
+        // exclude-not-for-running default is ON.
+        context.getSharedPreferences(SettingsKeys.PREFS_NAME, Context.MODE_PRIVATE)
+            .edit().clear().commit()
         playerState = MutableStateFlow(PlayerRepository.PlayerState())
         currentTrack = MutableStateFlow(null)
         targetCadence = MutableStateFlow(172f)
@@ -63,8 +79,33 @@ class GarminCommandRouterTest {
         whenever(playerRepository.speedCorrectionEnabled).thenReturn(speedCorrectionEnabled)
         whenever(playerRepository.playbackSpeed).thenReturn(playbackSpeed)
         whenever(mediaKeyDispatcher.currentVolume()).thenReturn(7)
-        router = GarminCommandRouter(playerRepository, trackRepository, mediaKeyDispatcher)
+        router = GarminCommandRouter(
+            playerRepository,
+            trackRepository,
+            playlistRepository,
+            MediaItemFactory(),
+            mediaKeyDispatcher,
+            context,
+        )
     }
+
+    private fun setExcludeNotForRunning(value: Boolean) {
+        context.getSharedPreferences(SettingsKeys.PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(SettingsKeys.KEY_EXCLUDE_NOT_FOR_RUNNING_TRACKS, value)
+            .commit()
+    }
+
+    private fun libraryTrack(trackId: String, notForRunning: Boolean = false): Track =
+        Track(
+            id = trackId,
+            relativePath = "Music",
+            fileName = "$trackId.mp3",
+            bpm = 140f,
+            fileSizeBytes = null,
+            durationMs = null,
+            notForRunning = notForRunning,
+        )
 
     private fun setRunBeatActive(active: Boolean) {
         playerState.value = PlayerRepository.PlayerState(
@@ -491,6 +532,151 @@ class GarminCommandRouterTest {
         verify(mediaKeyDispatcher, never()).toggle()
         verify(mediaKeyDispatcher, never()).adjustStreamVolume(any())
         assertEquals("request_state", ack.command)
+    }
+
+    // ---------------------------------------------------------------
+    // Playlist play — load + play the playlist's playable tracks
+    // ---------------------------------------------------------------
+
+    private fun stubPlaylist(playlistId: String, tracks: List<Track>) {
+        runBlocking {
+            whenever(playlistRepository.tracksForPlaylist(playlistId)).thenReturn(
+                tracks.mapIndexed { index, track ->
+                    PlaylistTrack(playlistId = playlistId, trackId = track.id, position = index)
+                }
+            )
+            tracks.forEach { track ->
+                whenever(playlistRepository.trackById(track.id)).thenReturn(track)
+            }
+        }
+    }
+
+    private fun loadedTrackIds(): List<String> {
+        val captor = argumentCaptor<List<MediaItem>>()
+        verify(playerRepository).loadPlaylist(captor.capture())
+        return captor.firstValue.mapNotNull { it.mediaMetadata.extras?.getString("trackId") }
+    }
+
+    @Test
+    fun playlistPlay_loadsAndPlaysPlaylistTracksInOrder() {
+        stubPlaylist(
+            "pl-1",
+            listOf(libraryTrack("t1"), libraryTrack("t2"), libraryTrack("t3"))
+        )
+
+        val ack = runBlocking { router.handleCommand(GarminCommand.PlaylistPlay("pl-1")) }
+
+        assertTrue(ack.ok)
+        assertEquals("playlist_play", ack.command)
+        assertEquals(listOf("t1", "t2", "t3"), loadedTrackIds())
+        verify(playerRepository).play()
+    }
+
+    @Test
+    fun playlistPlay_appliesExclusionFilterWhenEnabled() {
+        // The exclude-not-for-running setting defaults to ON.
+        stubPlaylist(
+            "pl-1",
+            listOf(libraryTrack("t1"), libraryTrack("t2", notForRunning = true), libraryTrack("t3"))
+        )
+
+        val ack = runBlocking { router.handleCommand(GarminCommand.PlaylistPlay("pl-1")) }
+
+        assertTrue(ack.ok)
+        assertEquals(listOf("t1", "t3"), loadedTrackIds())
+        verify(playerRepository).play()
+    }
+
+    @Test
+    fun playlistPlay_includesFlaggedTracksWhenExclusionDisabled() {
+        setExcludeNotForRunning(false)
+        stubPlaylist(
+            "pl-1",
+            listOf(libraryTrack("t1"), libraryTrack("t2", notForRunning = true))
+        )
+
+        val ack = runBlocking { router.handleCommand(GarminCommand.PlaylistPlay("pl-1")) }
+
+        assertTrue(ack.ok)
+        assertEquals(listOf("t1", "t2"), loadedTrackIds())
+        verify(playerRepository).play()
+    }
+
+    @Test
+    fun playlistPlay_missingPlaylist_returnsNotOk() {
+        runBlocking {
+            whenever(playlistRepository.tracksForPlaylist("no-such-playlist")).thenReturn(emptyList())
+        }
+
+        val ack = runBlocking { router.handleCommand(GarminCommand.PlaylistPlay("no-such-playlist")) }
+
+        assertFalse(ack.ok)
+        assertEquals("playlist_play", ack.command)
+        verify(playerRepository, never()).loadPlaylist(any())
+        verify(playerRepository, never()).play()
+    }
+
+    @Test
+    fun playlistPlay_emptyAfterExclusionFilter_returnsNotOk() {
+        // Every track of the playlist is marked "not for running" and the
+        // exclusion setting is ON: nothing playable, ack ok=false.
+        stubPlaylist(
+            "pl-1",
+            listOf(libraryTrack("t1", notForRunning = true), libraryTrack("t2", notForRunning = true))
+        )
+
+        val ack = runBlocking { router.handleCommand(GarminCommand.PlaylistPlay("pl-1")) }
+
+        assertFalse(ack.ok)
+        assertEquals("playlist_play", ack.command)
+        verify(playerRepository, never()).loadPlaylist(any())
+        verify(playerRepository, never()).play()
+    }
+
+    @Test
+    fun playlistPlay_missingTrackEntitiesAreSkipped() {
+        // A playlist relation whose track is no longer in the library is
+        // dropped from the play queue.
+        runBlocking {
+            whenever(playlistRepository.tracksForPlaylist("pl-1")).thenReturn(
+                listOf(
+                    PlaylistTrack(playlistId = "pl-1", trackId = "gone", position = 0),
+                    PlaylistTrack(playlistId = "pl-1", trackId = "t1", position = 1),
+                )
+            )
+            whenever(playlistRepository.trackById("gone")).thenReturn(null)
+            whenever(playlistRepository.trackById("t1")).thenReturn(libraryTrack("t1"))
+        }
+
+        val ack = runBlocking { router.handleCommand(GarminCommand.PlaylistPlay("pl-1")) }
+
+        assertTrue(ack.ok)
+        assertEquals(listOf("t1"), loadedTrackIds())
+        verify(playerRepository).play()
+    }
+
+    @Test
+    fun playlistList_isNotRoutedAsAPlaybackCommand() {
+        // The manager intercepts playlist_list before the router; if one ever
+        // slipped through, it must not touch the player or the media keys.
+        val ack = runBlocking { router.handleCommand(GarminCommand.PlaylistList) }
+        verify(playerRepository, never()).loadPlaylist(any())
+        verify(playerRepository, never()).play()
+        verify(mediaKeyDispatcher, never()).toggle()
+        assertEquals("playlist_list", ack.command)
+    }
+
+    @Test
+    fun currentPlaylists_returnsIdNamePairs() {
+        runBlocking {
+            whenever(playlistRepository.playlistsOnce()).thenReturn(
+                listOf(Playlist(id = "id-1", name = "Chill"), Playlist(id = "id-2", name = "Run"))
+            )
+        }
+
+        val playlists = runBlocking { router.currentPlaylists() }
+
+        assertEquals(listOf("id-1" to "Chill", "id-2" to "Run"), playlists)
     }
 
     // ---------------------------------------------------------------

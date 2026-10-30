@@ -32,6 +32,14 @@ class WatchState {
     var ackIsError as Boolean = false;
     var ackTimestamp as Number = 0;     // System.getTimer() when the ack arrived
 
+    // --- library playlists (from the "playlists" push) ---
+    // Flat indexed fields from the phone arrive as two parallel arrays here;
+    // defaults are empty (nothing pushed yet / the phone has no playlists).
+    var playlistIds as Array = [];      // String playlist ids
+    var playlistNames as Array = [];    // String playlist names, same indexing
+    var playlistCount as Number = 0;
+    var selectedPlaylistIndex as Number = 0;   // highlighted row on the playlists page
+
     // --- connection tracking ---
     var lastMessageAt as Number = 0;    // System.getTimer() of the last valid incoming message
     var phoneReachable as Boolean = false;
@@ -76,6 +84,17 @@ class WatchState {
     // (no message yet) from "Phone not connected" (stale) in the header.
     function hasConnected() as Boolean {
         return lastMessageAt > 0;
+    }
+
+    // Replaces the playlist list (called by MessageHandler.applyPlaylists).
+    // The selection is clamped into the new range, not reset.
+    function setPlaylists(ids as Array, names as Array) as Void {
+        playlistIds = ids;
+        playlistNames = names;
+        playlistCount = ids.size();
+        if (selectedPlaylistIndex >= playlistCount) {
+            selectedPlaylistIndex = playlistCount > 0 ? playlistCount - 1 : 0;
+        }
     }
 
     function setAck(text as String, isError as Boolean) as Void {
