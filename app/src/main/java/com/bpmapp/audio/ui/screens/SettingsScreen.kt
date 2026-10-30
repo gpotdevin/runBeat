@@ -1,6 +1,8 @@
 package com.bpmapp.audio.ui.screens
 
+import android.content.Intent
 import android.net.Uri
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatDelegate
@@ -31,6 +33,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -40,14 +43,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.bpmapp.audio.BuildConfig
 import com.bpmapp.audio.R
 import com.bpmapp.audio.audio.garmin.GarminConnectionState
+import com.bpmapp.audio.audio.garmin.GarminMediaNotificationListener
 import com.bpmapp.audio.ui.theme.AppSpacing
 import com.bpmapp.audio.viewmodel.LibraryViewModel
 import com.bpmapp.audio.viewmodel.SettingsViewModel
@@ -79,6 +86,20 @@ fun SettingsScreen(
         GarminConnectionState.CONNECTED -> stringResource(R.string.settings_garmin_watch_connected)
         GarminConnectionState.CONNECTING -> stringResource(R.string.settings_garmin_watch_connecting)
         GarminConnectionState.DISCONNECTED -> stringResource(R.string.settings_garmin_watch_disconnected)
+    }
+    
+    var notificationAccessGranted by remember {
+        mutableStateOf(GarminMediaNotificationListener.isEnabled(context))
+    }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                notificationAccessGranted = GarminMediaNotificationListener.isEnabled(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     
     val uriHandler = LocalUriHandler.current
@@ -213,6 +234,23 @@ fun SettingsScreen(
                         description = garminStatusText
                     ) {
                         // Display only - no interactive element
+                    }
+                    SettingItem(
+                        title = stringResource(R.string.settings_garmin_notification_access_title),
+                        description = stringResource(R.string.settings_garmin_notification_access_desc) +
+                            " (" + stringResource(
+                                if (notificationAccessGranted) {
+                                    R.string.settings_garmin_notification_access_granted
+                                } else {
+                                    R.string.settings_garmin_notification_access_not_granted
+                                }
+                            ) + ")"
+                    ) {
+                        TextButton(onClick = {
+                            context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+                        }) {
+                            Text(text = stringResource(R.string.settings_garmin_notification_access_open))
+                        }
                     }
                     // Developer toggle (debug builds only): Connect IQ simulator over ADB.
                     if (BuildConfig.DEBUG) {

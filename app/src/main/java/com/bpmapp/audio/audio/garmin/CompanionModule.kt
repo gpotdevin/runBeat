@@ -45,7 +45,7 @@ abstract class CompanionModule {
         @Singleton
         @JvmStatic
         fun provideMediaKeyDispatcher(@ApplicationContext context: Context): MediaKeyDispatcher =
-            MediaKeyDispatcher(context.getSystemService(Context.AUDIO_SERVICE) as AudioManager)
+            MediaKeyDispatcher(context, context.getSystemService(Context.AUDIO_SERVICE) as AudioManager)
     }
 }
 

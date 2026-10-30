@@ -160,6 +160,45 @@ class AdjustScreenDelegate extends WatchUi.BehaviorDelegate {
         return true;
     }
 
+    // Vertical swipes adjust directly: swipe up = +1, swipe down = -1.
+    // The pushed-view context does not deliver onTap after onSelect
+    // returns false on every host (verified on a real Venu 2: taps on
+    // the halves produced no volume_delta), so the swipe is the
+    // reliable gesture here. Other directions fall through.
+    function onSwipe(swipeEvent as WatchUi.SwipeEvent) as Boolean {
+        noteActivity();
+        var direction = swipeEvent.getDirection();
+        if (direction == WatchUi.SWIPE_UP) {
+            _view.noteTap();
+            applyDelta(1);
+            return true;
+        }
+        if (direction == WatchUi.SWIPE_DOWN) {
+            _view.noteTap();
+            applyDelta(-1);
+            return true;
+        }
+        return false;
+    }
+
+    // Physical up/down keys adjust the same way (WatchUi exposes
+    // KEY_UP/KEY_DOWN on this API level); anything else falls through.
+    function onKey(keyEvent as WatchUi.KeyEvent) as Boolean {
+        noteActivity();
+        var key = keyEvent.getKey();
+        if (key == WatchUi.KEY_UP) {
+            _view.noteTap();
+            applyDelta(1);
+            return true;
+        }
+        if (key == WatchUi.KEY_DOWN) {
+            _view.noteTap();
+            applyDelta(-1);
+            return true;
+        }
+        return false;
+    }
+
     // Subclass hook: send the +1/-1 command.
     function applyDelta(delta as Number) as Void {
     }

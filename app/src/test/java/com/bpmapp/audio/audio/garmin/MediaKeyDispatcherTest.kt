@@ -3,8 +3,12 @@
 package com.bpmapp.audio.audio.garmin
 
 import android.media.AudioManager
+import android.media.session.PlaybackState
 import android.view.KeyEvent
+import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -18,6 +22,11 @@ import org.robolectric.annotation.Config
 
 /**
  * Unit tests for [MediaKeyDispatcher] with a mocked [AudioManager].
+ *
+ * Notification access is not granted in the Robolectric environment, so the
+ * transport commands exercise the [AudioManager.dispatchMediaKeyEvent]
+ * fallback path; the session-selection logic is covered separately through
+ * [MediaKeyDispatcher.selectExternalController].
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -29,7 +38,7 @@ class MediaKeyDispatcherTest {
     @Before
     fun setUp() {
         audioManager = mock()
-        dispatcher = MediaKeyDispatcher(audioManager)
+        dispatcher = MediaKeyDispatcher(ApplicationProvider.getApplicationContext(), audioManager)
     }
 
     /** Dispatches one transport command and returns the captured key events. */
@@ -89,5 +98,48 @@ class MediaKeyDispatcherTest {
 
         assertEquals(7, dispatcher.currentVolume())
         assertEquals(15, dispatcher.maxVolume())
+    }
+
+    // --- selectExternalController (pure session-selection logic) ---
+
+    /** Sessions as (packageName, playbackState) pairs, like MediaController exposes. */
+    private fun select(sessions: List<Pair<String, Int>>, ownPackage: String = "com.RunBeat.run.audio") =
+        MediaKeyDispatcher.selectExternalController(
+            sessions,
+            ownPackageName = ownPackage,
+            packageNameOf = { it.first },
+            playbackStateOf = { it.second },
+        )
+
+    @Test
+    fun selectionReturnsNullWhenNoSessions() {
+        assertNull(select(emptyList()))
+    }
+
+    @Test
+    fun selectionIgnoresOwnPackage() {
+        val own = "com.RunBeat.run.audio" to PlaybackState.STATE_PLAYING
+        assertNull(select(listOf(own)))
+    }
+
+    @Test
+    fun selectionPrefersPlayingSession() {
+        val paused = "com.qobuz.music" to PlaybackState.STATE_PAUSED
+        val playing = "com.spotify.music" to PlaybackState.STATE_PLAYING
+        assertSame(playing, select(listOf(paused, playing)))
+    }
+
+    @Test
+    fun selectionFallsBackToFirstExternalWhenNonePlaying() {
+        val first = "com.qobuz.music" to PlaybackState.STATE_PAUSED
+        val second = "com.spotify.music" to PlaybackState.STATE_BUFFERING
+        assertSame(first, select(listOf(first, second)))
+    }
+
+    @Test
+    fun selectionSkipsOwnPackageEvenWhenPlaying() {
+        val own = "com.RunBeat.run.audio" to PlaybackState.STATE_PLAYING
+        val external = "com.qobuz.music" to PlaybackState.STATE_PAUSED
+        assertSame(external, select(listOf(own, external)))
     }
 }
