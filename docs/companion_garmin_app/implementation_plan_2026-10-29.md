@@ -50,8 +50,26 @@ watch→phone  {"type":"playlist_play","playlistId":"..."}    (acked)
   next/prev stay in playlist, all-marked playlist → ack ok=false; regression of
   steps 1–2.
 
-## Execution order
+## Execution order & status
 
 Step 1 → Step 2 → Step 3, one build + device session per step.
 Assumption: watch playlist playback respects the "exclude not-for-running"
 setting, same as the Android UI.
+
+- **Step 1 — DONE (commit 30afc2c, real device):** watch-side sender for
+  `mark_not_for_running` as a drawn "No good run" button on the main page
+  (Venu 2 has no MENU key) + menu item; source-gated ("RunBeat only" ack).
+  Verified: tap → ack → track skipped + flag persisted. Watch build:
+  `tools/garmin-build/out-step1d-label/venu2.prg`.
+- **Step 2 — DONE (commit 85bb014, real device):** external control via
+  `GarminMediaNotificationListener` (BIND_NOTIFICATION_LISTENER_SERVICE,
+  user grants notification access — new Settings row) +
+  `MediaSessionManager.getActiveSessions` → playing external session →
+  `MediaController.TransportControls`; `dispatchMediaKeyEvent` kept as
+  fallback (proven NOT to reach the focus holder on this LineageOS build).
+  Verified with VLC on device: toggle (play/pause), next, volume_delta
+  (STREAM_MUSIC 5→6) all work. Caveat: Qobuz ignores transportControls
+  from external controllers on this build. Watch adjuster screens now also
+  accept vertical swipe / up-down keys (taps don't reach onTap in pushed
+  views on Venu 2): `tools/garmin-build/out-step2-watch/venu2.prg`.
+- **Step 3 — pending:** playlist selection/playback from the watch.
