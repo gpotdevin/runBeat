@@ -602,7 +602,10 @@ class GarminCompanionManager @Inject constructor(
             Log.i(TAG, "playlist_list from ${device.friendlyName}: device not connected, not answering")
             return
         }
-        sendTo(device, GarminMessageCodec.encodePlaylists(router.currentPlaylists()))
+        val playlists = router.currentPlaylists()
+        val payload = GarminMessageCodec.encodePlaylists(playlists)
+        Log.d(TAG, "playlists push: count=" + playlists.size + " payload=" + payload)
+        sendTo(device, payload)
     }
 
     /** Sends a JSON message to every connected, registered watch. */

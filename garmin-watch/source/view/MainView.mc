@@ -2,8 +2,6 @@ import Toybox.Graphics;
 
 import Toybox.Lang;
 
-import Toybox.Math;
-
 import Toybox.WatchUi;
 
 // Screen 1 — music-control remote. Works for RunBeat AND external apps:
@@ -231,31 +229,6 @@ class MainView extends BaseView {
 
     private function minNum(a, b) {
         return a < b ? a : b;
-    }
-
-    // Max text width at height y: the full width times maxFraction on
-    // square screens; on round screens the chord of the circle at y, so
-    // truncated text stays inside the bezel.
-    private function textWidthAt(dc as Dc, y as Number, maxFraction as Float) as Number {
-        var w = dc.getWidth();
-        var h = dc.getHeight();
-        var maxW = w * maxFraction;
-        if (isRound()) {
-            var r = w / 2;
-            var dy = y - h / 2;
-            if (dy < 0) {
-                dy = -dy;
-            }
-            if (dy < r) {
-                var chord = 2 * Math.sqrt(r * r - dy * dy);
-                if (chord < maxW) {
-                    maxW = chord;
-                }
-            } else {
-                maxW = 0.0;
-            }
-        }
-        return maxW.toNumber();
     }
 
     // Right-pointing triangle (scanline-filled; sticks to fillRectangle,

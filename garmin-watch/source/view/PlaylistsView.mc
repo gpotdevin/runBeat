@@ -1,6 +1,5 @@
 import Toybox.Graphics;
 import Toybox.Lang;
-import Toybox.Math;
 import Toybox.System;
 import Toybox.WatchUi;
 
@@ -47,27 +46,31 @@ class PlaylistsView extends BaseView {
         updateHeader(WatchUi.loadResource(Rez.Strings.PlaylistsHeader) as String, Graphics.COLOR_LT_GRAY);
 
         var count = _state.playlistCount;
-        var headerBottom = (isRound() ? 34 : 18) + fhTiny / 2;
+        // Every coordinate passed to fillRoundedRectangle/drawText is
+        // normalized with .toNumber() at each step (Number/Number division
+        // yields Float) — mixed Float/Number args break rendering on
+        // device, same step1c fix as MainView's mark button and
+        // ControlView's volume button.
+        var headerBottom = ((isRound() ? 34 : 18) + fhTiny / 2).toNumber();
 
         // Rows are centered, 0.8*w wide; on round screens the text is
-        // additionally clamped to the bezel chord at the row's y (same
-        // textWidthAt logic as MainView).
+        // additionally clamped to the bezel chord at the row's y (the
+        // shared textWidthAt in BaseView).
         _rowRects = [];
         if (count == 0) {
             dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
-            dc.drawText(w / 2, h / 2, Graphics.FONT_SMALL,
+            dc.drawText((w / 2).toNumber(), (h / 2).toNumber(), Graphics.FONT_SMALL,
                 WatchUi.loadResource(Rez.Strings.NoPlaylists) as String,
                 Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
         } else {
-            var regionTop = maxNum(h * 0.14, headerBottom + 6).toNumber();
-            var regionBottom = h - 30;
+            var regionTop = maxNum((h * 0.14).toNumber(), (headerBottom + 6).toNumber()).toNumber();
+            var regionBottom = (h - 30).toNumber();
             var rowW = (w * 0.8).toNumber();
-            var rowH = (regionBottom - regionTop) / count;
+            var rowH = ((regionBottom - regionTop) / count).toNumber();
             if (rowH > 40) {
                 rowH = 40;
             }
-            rowH = rowH.toNumber();
-            var totalH = rowH * count;
+            var totalH = (rowH * count).toNumber();
             var top = (regionTop + (regionBottom - regionTop - totalH) / 2).toNumber();
             var rowX = ((w - rowW) / 2).toNumber();
             var selected = _state.selectedPlaylistIndex;
@@ -75,16 +78,18 @@ class PlaylistsView extends BaseView {
                 var y = (top + i * rowH).toNumber();
                 var rect = [rowX, y, rowW, rowH];
                 _rowRects.add(rect);
-                var textY = (y + rowH / 2).toNumber();
                 if (i == selected) {
                     dc.setColor(Graphics.COLOR_GREEN, Graphics.COLOR_BLACK);
-                    dc.fillRoundedRectangle(rowX, y, rowW, rowH, 8);
-                    dc.setColor(Graphics.COLOR_BLACK, Graphics.COLOR_BLACK);
+                    dc.fillRoundedRectangle(rowX, y, rowW, rowH, 16);
+                    dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_BLACK);
                 } else {
+                    dc.setColor(Graphics.COLOR_DK_GRAY, Graphics.COLOR_BLACK);
+                    dc.fillRoundedRectangle(rowX, y, rowW, rowH, 16);
                     dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
                 }
                 var name = _state.playlistNames[i] as String;
-                dc.drawText(w / 2, textY, Graphics.FONT_SMALL,
+                var textY = (y + rowH / 2).toNumber();
+                dc.drawText((w / 2).toNumber(), textY, Graphics.FONT_SMALL,
                     truncateToWidth(dc, name, Graphics.FONT_SMALL, textWidthAt(dc, textY, 0.8)),
                     Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
             }
@@ -137,28 +142,4 @@ class PlaylistsView extends BaseView {
         return a > b ? a : b;
     }
 
-    // Max text width at height y: the full width times maxFraction on
-    // square screens; on round screens the chord of the circle at y, so
-    // truncated text stays inside the bezel (same as MainView).
-    private function textWidthAt(dc as Dc, y as Number, maxFraction as Float) as Number {
-        var w = dc.getWidth();
-        var h = dc.getHeight();
-        var maxW = w * maxFraction;
-        if (isRound()) {
-            var r = w / 2;
-            var dy = y - h / 2;
-            if (dy < 0) {
-                dy = -dy;
-            }
-            if (dy < r) {
-                var chord = 2 * Math.sqrt(r * r - dy * dy);
-                if (chord < maxW) {
-                    maxW = chord;
-                }
-            } else {
-                maxW = 0.0;
-            }
-        }
-        return maxW.toNumber();
-    }
 }
