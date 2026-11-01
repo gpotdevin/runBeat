@@ -16,9 +16,9 @@ import Toybox.WatchUi;
 
 // RunBeat companion watch app (Connect IQ / Monkey C).
 //
-// Remote control for the RunBeat Android app (and, through phone-side
-// routing, any other music app on the phone). The watch never plays audio
-// itself; it only exchanges messages with the phone companion
+// Remote control for the RunBeat Android app only (the phone ignores
+// commands when RunBeat is not the active player). The watch never plays
+// audio itself; it only exchanges messages with the phone companion
 // (GarminCompanionManager, see docs/companion_garmin_app/architecture.md).
 //
 // The app is an audio content provider (manifest type
@@ -55,7 +55,7 @@ import Toybox.WatchUi;
 //     listener and sends "bye" FIRST, so even where System.exit is a no-op
 //     the app stops sending request_state keepalives and the phone's push
 //     window expires: a closed/idle app costs the watch nothing.
-//   - onStop / exitApp send "bye" so the phone stops its ~1 Hz state
+//   - onStop / exitApp send "bye" so the phone stops its state stream
 //     stream immediately, and UNREGISTER the phone-message listener
 //     (registerForPhoneAppMessages(null)): System.exit() is a no-op in
 //     this provider context, so the process can linger after the view
@@ -223,7 +223,7 @@ class RunBeatCompanionApp extends Application.AudioContentProviderApp {
 
     function onStop(state as Dictionary?) as Void {
         // Best-effort farewell: the phone drops its watch-app active
-        // window immediately and stops the ~1 Hz state stream, instead of
+        // window immediately and stops the state stream, instead of
         // waiting for the window to expire (battery: a closed app must
         // cost the watch nothing). Null-guarded: in the background context
         // onStop can run without the foreground objects ever existing.

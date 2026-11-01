@@ -2,8 +2,7 @@ import Toybox.Communications;
 import Toybox.Lang;
 import Toybox.WatchUi;
 
-// Message protocol (normative): docs/companion_garmin_app/architecture.md
-// and docs/companion_garmin_app/implementation_plan_v2_2026-10-24.md (section 3).
+// Message protocol (normative): docs/companion_garmin_app/architecture.md.
 //
 // Watch -> phone commands are small JSON strings:
 //   {"type":"play"} {"type":"pause"} {"type":"toggle"} {"type":"next"} {"type":"prev"}
@@ -105,7 +104,7 @@ class MessageHandler {
     }
 
     // Handshake: ask the phone for one state push. Sent on app start, every
-    // 5 s while playing (keepalive — the phone only pushes state to an
+    // 20 s while playing (keepalive — the phone only pushes state to an
     // "active" watch app, and while playing the app itself sends nothing),
     // and while the state is stale with exponential backoff (see
     // RunBeatCompanionApp.onStateTimerTick — an unreachable phone must
@@ -286,8 +285,10 @@ class MessageHandler {
     }
 
     // True when two parsed field values differ. Monkey C compares strings
-    // by reference with ==/!= (see e2e_connection_test_report.md rev. 4),
-    // so strings go through .equals(); null is compared explicitly.
+    // by reference with ==/!= (a real-device bug: every message failed the
+    // first character check, looking identical to "not received" — see
+    // architecture.md, simulator gotcha #2), so strings go through
+    // .equals(); null is compared explicitly.
     // Numbers/booleans arrive type-consistently from the parser
     // (optionalFloat always yields Float, optionalNumber always Number),
     // so == compares values there.

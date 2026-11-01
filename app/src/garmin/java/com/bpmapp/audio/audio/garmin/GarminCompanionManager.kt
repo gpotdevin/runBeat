@@ -59,9 +59,9 @@ import javax.inject.Singleton
  *    [GarminCommandRouter.PAUSE_RESUME_GRACE_MS]; see
  *    [schedulePauseGraceExpiryPush]) — still only to an open watch;
  *  - answer a watch's request_state with one state push to that device (the
- *    watch sends it on app start and every ~5 s while playing),
- *    deduplicated against state pushes sent in the last few seconds so the
- *    ~1 Hz state stream is not answered twice;
+ *    watch sends it on app start, as a 20 s keepalive while playing, and as
+ *    a stale retry), deduplicated against state pushes sent in the last few
+ *    seconds so the ~1/5 s state push stream is not answered twice;
  *  - expose the connection state via [connectionState].
  *
  * Threading: the Connect IQ SDK delivers its callbacks (onSdkReady,
@@ -176,7 +176,7 @@ class GarminCompanionManager @Inject constructor(
      * considered active (open on that watch), keyed by
      * [IQDevice.deviceIdentifier]. Armed by ANY incoming watch message
      * from that device (request_state, commands — the watch app sends
-     * request_state on start, as a keepalive every 5 s while playing, and
+     * request_state on start, as a keepalive every 20 s while playing, and
      * as a stale retry); cleared immediately by a "bye" (the watch's
      * onStop farewell) from that device, when that device disconnects, and
      * by expiry. State is pushed to a watch ONLY inside its own window:
@@ -191,7 +191,8 @@ class GarminCompanionManager @Inject constructor(
 
     /**
      * Per-device [SystemClock.elapsedRealtime] of the last state push, used
-     * to deduplicate request_state answers against the ~1 Hz state stream.
+     * to deduplicate request_state answers against the ~1/5 s state push
+     * stream.
      */
     private val lastStatePushAtMs = HashMap<Long, Long>()
 
@@ -583,7 +584,8 @@ class GarminCompanionManager @Inject constructor(
      * push) changes about once per 5 seconds. The watch extrapolates the
      * position locally between pushes (positionMs + isPlaying +
      * System.getTimer() delta), so the progress bar stays smooth at 1 Hz
-     * without a 1 Hz BLE push (battery_analysis_2026-10-31.md, F1 / fix #1).
+     * without a 1 Hz BLE push (docs/companion_garmin_app/architecture.md,
+     * Battery & lifecycle — watch repaint policy).
      * Volume is not part of this flow (it is not a repository flow): volume
      * commands push state immediately instead, so no 1 Hz ticker is needed —
      * a ticker that re-emitted an unchanged state was a pure coroutine
@@ -728,9 +730,9 @@ class GarminCompanionManager @Inject constructor(
 
         /**
          * Minimum gap between two state pushes to the same device for a
-         * request_state answer to be sent at all: the ~5 s keepalive stream
-         * is usually answered by the regular state push a moment earlier,
-         * and answering it again would double the BLE traffic.
+         * request_state answer to be sent at all: while playing the ~1/5 s
+         * state pushes usually answered the keepalive a moment earlier, and
+         * answering it again would double the BLE traffic.
          */
         private const val REQUEST_STATE_ANSWER_DEDUP_MS = 3_000L
 
@@ -738,7 +740,7 @@ class GarminCompanionManager @Inject constructor(
          * How long after the last incoming watch message from a device the
          * watch app is considered active (open) on that device (per-device
          * window, measured on [SystemClock.elapsedRealtime]). The watch
-         * sends request_state on start and every 5 s while playing
+         * sends request_state on start and every 20 s while playing
          * (keepalive), and commands on every interaction, so 30 s is far
          * longer than any legitimate gap while the app is open — and short
          * enough that a closed app stops the state stream (and its BLE

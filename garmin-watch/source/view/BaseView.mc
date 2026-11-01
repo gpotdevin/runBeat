@@ -79,7 +79,9 @@ class BaseView extends WatchUi.View {
 
     // Header label, one of three connection states (from WatchState):
     //   - no message ever received  -> "Connecting..." (yellow)
-    //   - last message older than 10 s -> "Phone not connected" (yellow)
+    //   - last message older than the staleness threshold
+    //     (10 s playing / 30 s paused — WatchState.isStale)
+    //     -> "Phone not connected" (yellow)
     //   - otherwise the given text/color.
     // All three pages inherit this.
     function updateHeader(normalText as String, normalColor as Number) as Void {
