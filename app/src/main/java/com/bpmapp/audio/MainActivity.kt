@@ -461,6 +461,15 @@ fun PlayerScreen(
     val trackBpms by playerRepository.trackBpms.collectAsState()
     val error by playerRepository.error.collectAsState()
     val shuffleEnabled by playerRepository.shuffleEnabled.collectAsState()
+    val shuffleOrder by playerRepository.shuffleOrder.collectAsState()
+    // When shuffle is on, show the upcoming tracks in the actual play order
+    // (shuffleOrder indices into playlist) so the list reflects what will play.
+    val displayPlaylist = if (shuffleEnabled && shuffleOrder.isNotEmpty()) {
+        val shown = shuffleOrder.filter { it in playlist.indices }.map { playlist[it] }
+        shown + playlist.filterIndexed { i, _ -> i !in shuffleOrder }
+    } else {
+        playlist
+    }
     val existingPlaylists = libraryViewModel?.playlists?.collectAsState()?.value ?: emptyList()
 
     // Track ids from the current playlist, used to save/update a library playlist
@@ -667,7 +676,7 @@ fun PlayerScreen(
             }
         }
         PlaylistSection(
-            mediaItems = playlist,
+            mediaItems = displayPlaylist,
             selectedMediaItem = currentTrack,
             onItemSelected = { mediaItem ->
                 playerRepository.playMediaItem(mediaItem)
@@ -1108,6 +1117,14 @@ fun PlaylistSection(
                 )
             } else {
                 val lazyListState = rememberLazyListState()
+                // Auto-scroll to the currently playing track so the list follows playback.
+                LaunchedEffect(selectedMediaItem) {
+                    val selected = selectedMediaItem ?: return@LaunchedEffect
+                    val index = mediaItems.indexOfFirst { it == selected }
+                    if (index >= 0) {
+                        lazyListState.animateScrollToItem(index = maxOf(0, index - 2))
+                    }
+                }
                 val reorderableLazyColumnState = rememberReorderableLazyColumnState(lazyListState) { from, to ->
                     onMove(from.index, to.index)
                 }

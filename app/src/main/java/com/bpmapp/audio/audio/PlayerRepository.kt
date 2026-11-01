@@ -99,6 +99,7 @@ class PlayerRepository @Inject constructor(
 
     // Shuffled order of playlist indices used when shuffle is enabled
     private val _shuffleOrder = MutableStateFlow<List<Int>>(emptyList())
+    val shuffleOrder: StateFlow<List<Int>> = _shuffleOrder.asStateFlow()
 
     // Whether to play a binary/ternary beep signal when a track starts.
     // Persisted to SharedPreferences. Default: on.
