@@ -172,6 +172,16 @@ class GarminCommandRouter @Inject constructor(
                     GarminAck(cmd.wireType(), ok = false)
                 }
             }
+            is GarminCommand.CadenceAvg -> {
+                if (!cmd.cadence.isFinite() || cmd.cadence <= 0f) {
+                    GarminAck(cmd.wireType(), ok = false)
+                } else if (active) {
+                    playerRepository.correctBpmFromCadence(cmd.cadence)
+                    GarminAck(cmd.wireType(), ok = true)
+                } else {
+                    GarminAck(cmd.wireType(), ok = false)
+                }
+            }
             is GarminCommand.CadenceDelta -> {
                 if (active) {
                     when {
@@ -343,6 +353,7 @@ class GarminCommandRouter @Inject constructor(
         is GarminCommand.CadenceSet -> "cadence_set"
         is GarminCommand.CadenceDelta -> "cadence_delta"
         is GarminCommand.CadenceUseCurrent -> "cadence_use_current"
+        is GarminCommand.CadenceAvg -> "cadence_avg"
         GarminCommand.SpeedCorrectionToggle -> "speed_correction_toggle"
         GarminCommand.ShuffleToggle -> "shuffle_toggle"
         is GarminCommand.VolumeDelta -> "volume_delta"

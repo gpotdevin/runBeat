@@ -476,6 +476,25 @@ class PlayerRepository @Inject constructor(
             _selectedRhythmPatterns.value
         )
     }
+
+    /**
+     * Back-calculate the original track BPM from the watch's 60 s mean cadence:
+     * correctedBpm = cadenceAvg / (rhythmFactor x playbackSpeed).
+     * Updates the current track's stored BPM so the next speed-correction cycle uses it.
+     */
+    fun correctBpmFromCadence(cadenceAvg: Float) {
+        val track = _currentTrack.value ?: return
+        val trackId = track.mediaMetadata.extras?.getString("trackId") ?: return
+        val bpm = currentTrackBpm()
+        if (bpm == null || bpm <= 0f) return
+        val match = bestCadenceMatch(bpm, _targetCadence.value)
+        val rhythmFactor = match.rhythmPattern.factor
+        val speed = _playbackSpeed.value
+        val divisor = rhythmFactor * speed
+        if (divisor <= 0f) return
+        val corrected = (cadenceAvg / divisor).coerceIn(40f, 200f)
+        updateBpmForTrack(trackId, corrected)
+    }
     
     /**
      * Toggle speed correction on/off.

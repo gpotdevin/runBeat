@@ -27,6 +27,7 @@
     <string id="SetTargetLabel">SET TARGET</string>
     <string id="UseAvgAsTargetLabel">USE AVG AS TARGET</string>
     <string id="TempoLabel">TEMPO</string>
+    <string id="FixBpmLabel">FIX BPM FROM CADENCE</string>
     <string id="VolumeLabel">VOLUME</string>
     <string id="On">ON</string>
     <string id="Off">OFF</string>

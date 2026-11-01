@@ -33,6 +33,9 @@ sealed class GarminCommand {
     data class CadenceSet(val cadence: Float) : GarminCommand()
     data class CadenceDelta(val delta: Int) : GarminCommand()
     data class CadenceUseCurrent(val cadence: Float) : GarminCommand()
+
+    /** 60 s average cadence from the watch; used to back-calculate the original track BPM. */
+    data class CadenceAvg(val cadence: Float) : GarminCommand()
     data object SpeedCorrectionToggle : GarminCommand()
 
     /** Toggles shuffle playback in RunBeat (RunBeat-only, no media-key equivalent). */
@@ -168,6 +171,7 @@ object GarminMessageCodec {
     private const val TYPE_CADENCE_SET = "cadence_set"
     private const val TYPE_CADENCE_DELTA = "cadence_delta"
     private const val TYPE_CADENCE_USE_CURRENT = "cadence_use_current"
+    private const val TYPE_CADENCE_AVG = "cadence_avg"
     private const val TYPE_SPEED_CORRECTION_TOGGLE = "speed_correction_toggle"
     private const val TYPE_SHUFFLE_TOGGLE = "shuffle_toggle"
     private const val TYPE_VOLUME_DELTA = "volume_delta"
@@ -211,6 +215,8 @@ object GarminMessageCodec {
                 ?.let { GarminCommand.CadenceDelta(it) }
             TYPE_CADENCE_USE_CURRENT -> obj.optFiniteFloatOrNull(KEY_CADENCE)
                 ?.let { GarminCommand.CadenceUseCurrent(it) }
+            TYPE_CADENCE_AVG -> obj.optFiniteFloatOrNull(KEY_CADENCE)
+                ?.let { GarminCommand.CadenceAvg(it) }
             TYPE_SPEED_CORRECTION_TOGGLE -> GarminCommand.SpeedCorrectionToggle
             TYPE_SHUFFLE_TOGGLE -> GarminCommand.ShuffleToggle
             TYPE_VOLUME_DELTA -> obj.optDeltaOrNull(KEY_DELTA)
@@ -249,6 +255,10 @@ object GarminMessageCodec {
             .putCadence(KEY_CADENCE, command.cadence)
             .toString()
         is GarminCommand.SpeedCorrectionToggle -> typed(TYPE_SPEED_CORRECTION_TOGGLE)
+        is GarminCommand.CadenceAvg -> JSONObject()
+            .put(KEY_TYPE, TYPE_CADENCE_AVG)
+            .putCadence(KEY_CADENCE, command.cadence)
+            .toString()
         is GarminCommand.ShuffleToggle -> typed(TYPE_SHUFFLE_TOGGLE)
         is GarminCommand.VolumeDelta -> JSONObject()
             .put(KEY_TYPE, TYPE_VOLUME_DELTA)

@@ -76,6 +76,11 @@ class MessageHandler {
         sendJson("{\"type\":\"cadence_use_current\",\"cadence\":" + cadence.format("%.0f") + "}");
     }
 
+    function sendCadenceAvg(cadence as Float) as Void {
+        // One decimal: the BPM back-calculation divides by this value, so
+        // whole-spm quantization would lose ~0.3% precision.
+        sendJson("{\"type\":\"cadence_avg\",\"cadence\":" + cadence.format("%.1f") + "}");
+    }
     function sendSpeedCorrectionToggle() as Void {
         sendJson("{\"type\":\"speed_correction_toggle\"}");
     }
