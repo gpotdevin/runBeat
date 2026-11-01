@@ -76,48 +76,54 @@ class CadenceView extends BaseView {
 
         updateHeader(_strHeaderCadence, runBeat ? Graphics.COLOR_LT_GRAY : dim);
 
-        // --- Center info block: live cadence, 60 s average, target --------
-        // Three lines stacked in the vertical middle of the screen, between
-        // the top and bottom button rows.
+        // --- Center info block, vertically centered as a whole -------------
+        // Four lines: live cadence (big), CURRENT caption, AVG/60s, TARGET.
+        // The block is centered on h/2, not its first line.
+        var fhLarge = dc.getFontHeight(Graphics.FONT_LARGE);
+        var fhTiny = dc.getFontHeight(Graphics.FONT_TINY);
+        var gap = maxNum(2, (h * 0.012).toNumber()).toNumber();
+        var blockH = fhLarge + fhTiny * 3 + gap * 3;
+        var y = ((h - blockH) / 2).toNumber();
+
         var live = _cadenceBuffer.last(now);
         var liveText = live == null ? _strNoValue : (live as Float).format("%.0f");
         dc.setColor(runBeat ? Graphics.COLOR_WHITE : dim, Graphics.COLOR_BLACK);
-        dc.drawText(w / 2, h * 0.44, Graphics.FONT_LARGE, liveText,
+        dc.drawText(w / 2, y + fhLarge / 2, Graphics.FONT_LARGE, liveText,
             Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
+        y += fhLarge + gap;
+
         dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
-        dc.drawText(w / 2, h * 0.51, Graphics.FONT_TINY, _strCurrentCaption,
+        dc.drawText(w / 2, y + fhTiny / 2, Graphics.FONT_TINY, _strCurrentCaption,
             Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
+        y += fhTiny + gap;
 
         var mean = _cadenceBuffer.mean(now);
         var meanText = mean == null ? _strNoValue : (mean as Float).format("%.0f");
         dc.setColor(runBeat ? Graphics.COLOR_LT_GRAY : dim, Graphics.COLOR_BLACK);
-        dc.drawText(w / 2, h * 0.58, Graphics.FONT_TINY,
+        dc.drawText(w / 2, y + fhTiny / 2, Graphics.FONT_TINY,
             _strAvgCaption + " " + meanText,
             Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
+        y += fhTiny + gap;
 
         var target = _state.targetCadenceText();
         if (target.length() == 0) {
             target = _strNoValue;
         }
         dc.setColor(runBeat ? Graphics.COLOR_GREEN : dim, Graphics.COLOR_BLACK);
-        dc.drawText(w / 2, h * 0.64, Graphics.FONT_TINY,
+        dc.drawText(w / 2, y + fhTiny / 2, Graphics.FONT_TINY,
             _strTargetPrefix + " " + target,
             Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
 
         // --- Four quadrant buttons (RunBeat only) -------------------------
-        // True quadrants: top-left, top-right, bottom-left, bottom-right,
-        // centered at ~27%/73% width and ~30%/78% height. On a 416x416
-        // round screen the farthest button corner is ~64 px from the bezel
-        // (well inside the 208 px radius). Pill-shaped (corner radius =
-        // bH/2) so they read as organic on a round face. Without RunBeat
-        // the hint replaces the buttons.
+        // True quadrants: top-left, top-right, bottom-left, bottom-right.
+        // Pill-shaped, two-line labels so text stays visible at FONT_TINY.
         var bW = minNum(w * 0.38, 150).toNumber();
-        var bH = minNum(42, h * 0.10).toNumber();
-        if (bH < 28) { bH = 28; }
+        var bH = minNum(52, h * 0.125).toNumber();
+        if (bH < 36) { bH = 36; }
         var colL = (w * 0.27).toNumber();
         var colR = (w * 0.73).toNumber();
-        var rowT = (h * 0.30).toNumber();
-        var rowB = (h * 0.80).toNumber();
+        var rowT = (h * 0.26).toNumber();
+        var rowB = (h * 0.82).toNumber();
 
         if (runBeat) {
             _btnSetTarget = [colL - bW / 2, rowT - bH / 2, bW, bH];
@@ -137,7 +143,7 @@ class CadenceView extends BaseView {
             _btnTempo = null;
             _btnFixBpm = null;
             dc.setColor(dim, Graphics.COLOR_BLACK);
-            dc.drawText(w / 2, h * 0.80, Graphics.FONT_TINY,
+            dc.drawText(w / 2, h * 0.82, Graphics.FONT_TINY,
                 _strRunBeatOnlyHint,
                 Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
         }
@@ -148,6 +154,8 @@ class CadenceView extends BaseView {
 
     // One rounded action button with a centered label (the label is
     // truncated to the button width as a safety net).
+    // Pill-shaped button with a two-line label (split at the space nearest
+    // the middle) so FONT_TINY text stays visible inside the quadrant width.
     private function drawActionButton(dc as Dc, rect as Array, text as String, textColor as Number) as Void {
         var x = rect[0] as Number;
         var y = rect[1] as Number;
@@ -156,9 +164,43 @@ class CadenceView extends BaseView {
         dc.setColor(Graphics.COLOR_DK_GRAY, Graphics.COLOR_BLACK);
         dc.fillRoundedRectangle(x, y, bw, bh, bh / 2);
         dc.setColor(textColor, Graphics.COLOR_BLACK);
-        dc.drawText(x + bw / 2, y + bh / 2, Graphics.FONT_TINY,
-            truncateToWidth(dc, text, Graphics.FONT_TINY, bw - 8),
-            Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
+        var fh = dc.getFontHeight(Graphics.FONT_TINY);
+        var line1 = text;
+        var line2 = "";
+        var sp = splitNearMiddle(text);
+        if (sp > 0) {
+            line1 = text.substring(0, sp);
+            line2 = text.substring(sp + 1, text.length());
+        }
+        var l1 = truncateToWidth(dc, line1, Graphics.FONT_TINY, bw - 8);
+        var l2 = line2.length() > 0 ? truncateToWidth(dc, line2, Graphics.FONT_TINY, bw - 8) : "";
+        if (l2.length() > 0) {
+            dc.drawText(x + bw / 2, y + bh / 2 - fh / 2, Graphics.FONT_TINY, l1,
+                Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
+            dc.drawText(x + bw / 2, y + bh / 2 + fh / 2, Graphics.FONT_TINY, l2,
+                Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
+        } else {
+            dc.drawText(x + bw / 2, y + bh / 2, Graphics.FONT_TINY, l1,
+                Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
+        }
+    }
+
+    // Index of the space nearest the middle of the string, or -1 if none.
+    private function splitNearMiddle(text as String) as Number {
+        var mid = text.length() / 2;
+        var best = -1;
+        var bestDist = text.length();
+        for (var i = 0; i < text.length(); i++) {
+            if (text.substring(i, i + 1).equals(" ")) {
+                var d = i - mid;
+                if (d < 0) { d = -d; }
+                if (d < bestDist) {
+                    bestDist = d;
+                    best = i;
+                }
+            }
+        }
+        return best;
     }
 
     // Select: use the current 60 s average as the target cadence.
