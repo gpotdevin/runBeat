@@ -23,9 +23,16 @@ reads other apps' notifications or media sessions for the companion.
 ## Command routing (phone decides; the watch always sends the same commands)
 - RunBeat active → transport/cadence/speed-correction/mark/playlists go to `PlayerRepository` +
   `TrackRepository`; volume → `AudioManager` STREAM_MUSIC.
+- Pause resume grace: "active" includes a REAL pause — player `STATE_READY` with a track loaded,
+  for 60 s after the last active poll (`GarminCommandRouter.PAUSE_RESUME_GRACE_MS`). Within the
+  grace the pushed `source` stays `"RunBeat"` with `isPlaying:false` and full track metadata, so
+  the watch shows the paused track and `toggle`/`play` resume it. After the grace the phone pushes
+  `source:"none"` once (grace-expiry push, below) and watch commands are no-ops again. Stopped
+  (`STATE_IDLE`) and ended (`STATE_ENDED`) playback gets no grace.
 - RunBeat not active → transport and volume commands from the watch are ignored, and `source` is
   pushed as `"none"` (no track metadata is sent). `exoPlayer.volume` stays an in-app multiplier,
-  untouched.
+  untouched. Exception: `playlist_play` is never gated — picking a playlist explicitly starts
+  RunBeat playback.
 - RunBeat-only controls are greyed out on the watch when pushed `source != "RunBeat"`.
 
 ## Components
@@ -88,7 +95,9 @@ skipped, unknown commands decode to `null` and are logged + ignored.
   "playbackSpeed": 1.03, "volume": 12
 }
 ```
-- `source`: `"RunBeat"` when RunBeat is the active player, else `"none"` — never `"external"`;
+- `source`: `"RunBeat"` when RunBeat is the active player (playing, buffering, or paused within
+  the 60 s resume grace — with `isPlaying:false` and the paused track's metadata so the watch can
+  resume it), else `"none"` — never `"external"`;
   the phone never reads another app's media session for the companion. `title`/`artist`/`album`
   and the RunBeat-only fields (`trackId`, `durationMs`, `positionMs`, `bpm`, `targetCadence`,
   `speedCorrection`, `playbackSpeed`) are sent for `"RunBeat"` only, omitted for `"none"`
@@ -117,6 +126,12 @@ Cadence samples are never streamed; only the 60 s mean, on button press.
   play/pause transition is picked up within ≤5 s). A repeating 1 s Timer wakes the CPU 60×/min
   even when the tick has nothing to do; while paused the tick only drives idle-exit / repaint /
   adjust-screen auto-pop checks (the auto-pop may then lag up to ~5 s past its 3 s mark).
+- **Pause resume grace (one-shot expiry push):** a paused RunBeat stays resumable from the watch
+  for 60 s (`GarminCommandRouter.PAUSE_RESUME_GRACE_MS`); the state flow emits nothing while
+  paused, so the manager schedules one delayed push at the grace boundary to flip the watch to
+  `source:"none"`. The push goes through the normal `pushState()` gates (aggregate connection +
+  per-device 30 s watch-app window), so a closed watch is never woken for it; the watch's own
+  ~30 s stale probe is the fallback if the delayed push misses its window.
 - **Watch repaint policy:** the tick repaints only when visible content changed (position,
   header freshness, ack line, cadence number). Paused and still = no repaint.
 - **Sensor policy:** the cadence sensor read runs only while music is playing; when paused

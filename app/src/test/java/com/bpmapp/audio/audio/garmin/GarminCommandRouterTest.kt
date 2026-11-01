@@ -38,11 +38,14 @@ import org.robolectric.annotation.Config
 
 /**
  * Unit tests for [GarminCommandRouter]: RunBeat-only command routing (all
- * commands are no-ops while RunBeat is not the active player), the
+ * commands except playlist_play are no-ops while RunBeat is not the active
+ * player; a real pause keeps the remote active for the 60 s resume grace,
+ * see [GarminCommandRouter.PAUSE_RESUME_GRACE_MS]), the
  * mark-not-for-running orchestration, and [GarminCommandRouter.currentState]
  * field mapping (source "RunBeat" when active, "none" otherwise — never
  * "external"). Repositories are mocked; volume goes through the real
- * (Robolectric-shadowed) AudioManager.
+ * (Robolectric-shadowed) AudioManager; the grace clock is the injectable
+ * router.nowMs, advanced by these tests directly.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -61,6 +64,9 @@ class GarminCommandRouterTest {
     private lateinit var speedCorrectionEnabled: MutableStateFlow<Boolean>
     private lateinit var playbackSpeed: MutableStateFlow<Float>
     private lateinit var shuffleEnabled: MutableStateFlow<Boolean>
+
+    // Fake monotonic clock backing router.nowMs (pause resume grace tests).
+    private var nowMs = 0L
 
     @Before
     fun setUp() {
@@ -95,6 +101,8 @@ class GarminCommandRouterTest {
             MediaItemFactory(),
             context,
         )
+        nowMs = 0L
+        router.nowMs = { nowMs }
     }
 
     private fun setExcludeNotForRunning(value: Boolean) {
@@ -126,6 +134,22 @@ class GarminCommandRouterTest {
             isPlaying = active,
             playbackState = if (active) Player.STATE_READY else Player.STATE_IDLE,
         )
+    }
+
+    // A REAL pause keeps STATE_READY (unlike setRunBeatActive(false), which
+    // simulates a stopped player with STATE_IDLE). Arming: poll once while
+    // playing so the router records its last-active timestamp, then pause.
+    private fun armPauseGrace() {
+        setRunBeatActive(true)
+        router.isRunBeatActive()
+        playerState.value = PlayerRepository.PlayerState(
+            isPlaying = false,
+            playbackState = Player.STATE_READY,
+        )
+    }
+
+    private fun expirePauseGrace() {
+        nowMs += GarminCommandRouter.PAUSE_RESUME_GRACE_MS + 1000L
     }
 
     private fun track(
@@ -177,12 +201,67 @@ class GarminCommandRouterTest {
         assertFalse(router.isRunBeatActive())
     }
 
-    // Paused with a loaded track: RunBeat is not the active player, so watch
-    // commands are no-ops (they must NOT reach any other app).
+    // A STOPPED player (STATE_IDLE) with a loaded track: not the active
+    // player, watch commands are no-ops (they must NOT reach any other
+    // app). A real pause is STATE_READY — see the grace tests below.
     @Test
-    fun isRunBeatActive_falseWhenPausedWithTrack() {
+    fun isRunBeatActive_falseWhenIdleWithTrack() {
         setRunBeatActive(false)
         currentTrack.value = track("t1", "Title", "140")
+        assertFalse(router.isRunBeatActive())
+    }
+
+    // ---------------------------------------------------------------
+    // Pause resume grace: a real pause (STATE_READY, track loaded, RunBeat
+    // played within the last minute) keeps the watch remote usable.
+    // ---------------------------------------------------------------
+
+    @Test
+    fun isRunBeatActive_trueWhenPausedWithinGrace() {
+        currentTrack.value = track("t1", "Title", "140")
+        armPauseGrace()
+        assertTrue(router.isRunBeatActive())
+    }
+
+    @Test
+    fun isRunBeatActive_falseWhenPausedAfterGraceExpires() {
+        currentTrack.value = track("t1", "Title", "140")
+        armPauseGrace()
+        expirePauseGrace()
+        assertFalse(router.isRunBeatActive())
+    }
+
+    // The grace needs a loaded track: paused without one there is nothing
+    // to resume.
+    @Test
+    fun isRunBeatActive_falseWhenPausedWithoutTrack() {
+        armPauseGrace()
+        currentTrack.value = null
+        assertFalse(router.isRunBeatActive())
+    }
+
+    // Playback that ENDED (track finished) is not a pause: inactive
+    // immediately, even within the grace window.
+    @Test
+    fun isRunBeatActive_falseWhenPlaybackEnded() {
+        currentTrack.value = track("t1", "Title", "140")
+        armPauseGrace()
+        playerState.value = PlayerRepository.PlayerState(
+            isPlaying = false,
+            playbackState = Player.STATE_ENDED,
+        )
+        assertFalse(router.isRunBeatActive())
+    }
+
+    // A loaded, never-played player gets no grace: "active" is anchored to
+    // the last poll that observed playback.
+    @Test
+    fun isRunBeatActive_falseWhenNeverPlayed() {
+        currentTrack.value = track("t1", "Title", "140")
+        playerState.value = PlayerRepository.PlayerState(
+            isPlaying = false,
+            playbackState = Player.STATE_READY,
+        )
         assertFalse(router.isRunBeatActive())
     }
 
@@ -284,12 +363,39 @@ class GarminCommandRouterTest {
         assertEquals("prev", ack.command)
     }
 
-    // A paused player with a loaded track is still "not active": transport
-    // commands stay no-ops, they must not leak to another app.
+    // A STOPPED player (STATE_IDLE) with a loaded track is still "not
+    // active": transport commands stay no-ops, they must not leak to
+    // another app. A real pause (STATE_READY) is resumable within the
+    // grace — see toggle_resumesPausedTrackWithinGrace below.
     @Test
-    fun toggle_isNoOpWhenPausedWithTrack() {
+    fun toggle_isNoOpWhenIdleWithTrack() {
         setRunBeatActive(false)
         currentTrack.value = track("t1", "Title", "140")
+
+        val ack = runBlocking { router.handleCommand(GarminCommand.Toggle) }
+
+        verify(playerRepository, never()).togglePlayPause()
+        assertFalse(ack.ok)
+    }
+
+    // Pause resume grace: within the minute after a pause the watch can
+    // resume RunBeat; after the grace the remote goes inert again.
+    @Test
+    fun toggle_resumesPausedTrackWithinGrace() {
+        currentTrack.value = track("t1", "Title", "140")
+        armPauseGrace()
+
+        val ack = runBlocking { router.handleCommand(GarminCommand.Toggle) }
+
+        verify(playerRepository).togglePlayPause()
+        assertTrue(ack.ok)
+    }
+
+    @Test
+    fun toggle_isNoOpAfterPauseGraceExpires() {
+        currentTrack.value = track("t1", "Title", "140")
+        armPauseGrace()
+        expirePauseGrace()
 
         val ack = runBlocking { router.handleCommand(GarminCommand.Toggle) }
 
@@ -801,10 +907,11 @@ class GarminCommandRouterTest {
         assertNull(state.title)
     }
 
-    // A paused player with a loaded track is not the active player: source
-    // "none", no stale track name — the watch shows "Nothing playing".
+    // A STOPPED player (STATE_IDLE) with a loaded track is not the active
+    // player: source "none", no stale track name — the watch shows
+    // "Nothing playing". A real pause is STATE_READY — see the grace tests.
     @Test
-    fun currentState_reportsNoneWhenPausedWithTrack() {
+    fun currentState_reportsNoneWhenIdleWithTrack() {
         setRunBeatActive(false)
         currentTrack.value = track("track-1", "Song Title", "140.5")
 
@@ -812,6 +919,35 @@ class GarminCommandRouterTest {
 
         assertEquals("none", state.source)
         assertFalse(state.isPlaying)
+        assertNull(state.trackId)
+        assertNull(state.title)
+    }
+
+    // Pause resume grace: within the minute after a pause the pushed state
+    // is the paused RunBeat track (source "RunBeat", isPlaying false) — the
+    // watch shows what is paused and toggle resumes it.
+    @Test
+    fun currentState_showsPausedTrackWithinGrace() {
+        currentTrack.value = track("track-1", "Song Title", "140.5")
+        armPauseGrace()
+
+        val state = router.currentState()
+
+        assertEquals("RunBeat", state.source)
+        assertFalse(state.isPlaying)
+        assertEquals("track-1", state.trackId)
+        assertEquals("Song Title", state.title)
+    }
+
+    @Test
+    fun currentState_reportsNoneAfterPauseGraceExpires() {
+        currentTrack.value = track("track-1", "Song Title", "140.5")
+        armPauseGrace()
+        expirePauseGrace()
+
+        val state = router.currentState()
+
+        assertEquals("none", state.source)
         assertNull(state.trackId)
         assertNull(state.title)
     }

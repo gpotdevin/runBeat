@@ -18,6 +18,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -53,6 +54,10 @@ import javax.inject.Singleton
  *    NEVER initiates contact with the watch (no wake message): the watch app
  *    connects only when the user starts it manually, which arms the window
  *    via its request_state handshake;
+ *  - one extra push when the pause resume grace expires (a paused RunBeat
+ *    stays resumable from the watch for
+ *    [GarminCommandRouter.PAUSE_RESUME_GRACE_MS]; see
+ *    [schedulePauseGraceExpiryPush]) — still only to an open watch;
  *  - answer a watch's request_state with one state push to that device (the
  *    watch sends it on app start and every ~5 s while playing),
  *    deduplicated against state pushes sent in the last few seconds so the
@@ -158,6 +163,13 @@ class GarminCompanionManager @Inject constructor(
     private val devices = LinkedHashMap<Long, IQDevice>()
     private val deviceStatuses = HashMap<Long, IQDevice.IQDeviceStatus>()
     private var statePushJob: Job? = null
+
+    /**
+     * One-shot push for the end of the pause resume grace (see
+     * [schedulePauseGraceExpiryPush]); cancelled by the next state change
+     * (e.g. the resume) and by [stopStatePush].
+     */
+    private var pauseGraceExpiryPushJob: Job? = null
 
     /**
      * Per-device monotonic time until which the RunBeat watch app is
@@ -526,6 +538,7 @@ class GarminCompanionManager @Inject constructor(
                 if (hasActiveWatchApp()) {
                     sendToWatch(GarminMessageCodec.encodeState(state), statePush = true)
                 }
+                schedulePauseGraceExpiryPush(state)
             }
         }
     }
@@ -533,6 +546,33 @@ class GarminCompanionManager @Inject constructor(
     private fun stopStatePush() {
         statePushJob?.cancel()
         statePushJob = null
+        pauseGraceExpiryPushJob?.cancel()
+        pauseGraceExpiryPushJob = null
+    }
+
+    /**
+     * One-shot push when the pause resume grace ends: while RunBeat is
+     * paused the state flow emits once (the pause itself, source "RunBeat",
+     * isPlaying false — the watch shows the paused track and toggle resumes
+     * it) and then nothing, so without this the watch would keep showing
+     * the paused track until its own ~30 s stale probe happened to ask.
+     * The delayed [pushState] re-evaluates [GarminCommandRouter.currentState]
+     * at the grace boundary — now "none" — so the watch UI flips at the
+     * one-minute mark. [pushState] still gates on the aggregate connection
+     * state and per-device watch-app activity, so a closed watch is never
+     * woken for it. Cancelled and re-armed by every state change (the
+     * resume cancels it) and by [stopStatePush].
+     */
+    private fun schedulePauseGraceExpiryPush(state: GarminWatchState) {
+        pauseGraceExpiryPushJob?.cancel()
+        pauseGraceExpiryPushJob = null
+        if (state.source != GarminCommandRouter.SOURCE_RUNBEAT || state.isPlaying) {
+            return
+        }
+        pauseGraceExpiryPushJob = scope.launch {
+            delay(GarminCommandRouter.PAUSE_RESUME_GRACE_MS)
+            pushState()
+        }
     }
 
     /**

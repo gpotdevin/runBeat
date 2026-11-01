@@ -79,7 +79,9 @@ sealed class GarminCommand {
  *    "artist":"...","album":"...","durationMs":213000,"positionMs":42000,
  *    "bpm":140.0,"targetCadence":172,"speedCorrection":true,"playbackSpeed":1.03,"volume":12,"shuffle":false}
  *
- * [source] is "RunBeat" when RunBeat is the active playback app, otherwise
+ * [source] is "RunBeat" when RunBeat is the active playback app (playing,
+ * buffering, or paused within the 60 s resume grace — see
+ * [GarminCommandRouter.PAUSE_RESUME_GRACE_MS]), otherwise
  * "none" (never "external": the phone does not read other apps' media
  * sessions for the watch). The RunBeat-only fields ([trackId], [durationMs],
  * [positionMs], [bpm], [targetCadence], [speedCorrection], [playbackSpeed])

@@ -4,6 +4,7 @@ package com.bpmapp.audio.audio.garmin
 
 import android.content.Context
 import android.media.AudioManager
+import android.os.SystemClock
 import androidx.media3.common.Player
 import com.bpmapp.audio.audio.MediaItemFactory
 import com.bpmapp.audio.audio.PlaylistRepository
@@ -20,12 +21,19 @@ import javax.inject.Singleton
  *  - transport commands (toggle/play/pause/next/prev), volume, cadence /
  *    speed-correction / shuffle / mark-not-for-running and seek all target
  *    [PlayerRepository] (or, for volume, the STREAM_MUSIC volume) and only
- *    while RunBeat is the active player: when RunBeat is not active, every
- *    watch command is a no-op (ack ok=false) — the phone never reads or
- *    drives other apps' media sessions or notifications for the watch;
+ *    while RunBeat is the active player — playing, buffering, or paused
+ *    for less than [PAUSE_RESUME_GRACE_MS] (the pause resume grace: the
+ *    watch remote stays usable across a pause and can resume it; after the
+ *    grace the remote goes inert). When RunBeat is not active, those
+ *    commands are no-ops (ack ok=false) — the phone never reads or drives
+ *    other apps' media sessions or notifications for the watch;
  *
  *  - volume is the global STREAM_MUSIC volume via [AudioManager], which
  *    applies to RunBeat like to any other player;
+ *
+ *  - playlist_play is NOT gated on the active check: picking a playlist is
+ *    an explicit "start this in RunBeat" action, the one way the watch can
+ *    start RunBeat playback from any state;
  *
  *  - request_state is not routed at all: the manager intercepts it as a
  *    link-layer request and answers it with a state push.
@@ -54,15 +62,55 @@ class GarminCommandRouter @Inject constructor(
         get() = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
     /**
+     * Monotonic clock for the pause resume grace ([isRunBeatActive]).
+     * Overridden by unit tests to advance time deterministically;
+     * production uses [SystemClock.elapsedRealtime] (immune to wall-clock
+     * changes).
+     */
+    internal var nowMs: () -> Long = { SystemClock.elapsedRealtime() }
+
+    /**
+     * [nowMs] of the last poll that observed RunBeat actively playing or
+     * buffering (null before the first poll); the anchor the pause resume
+     * grace counts from. Main-thread confined (see class KDoc).
+     */
+    private var lastActiveAtMs: Long? = null
+
+    /**
      * True when RunBeat is the app holding the phone's media stream right
      * now: playing, or buffering a track (buffering counts so a watch
-     * "next" during a gap still lands in RunBeat). While this is false,
-     * every watch command is a no-op: the watch remote controls RunBeat
-     * only, never another app.
+     * "next" during a gap still lands in RunBeat), or PAUSED with a track
+     * loaded for less than [PAUSE_RESUME_GRACE_MS] since the last active
+     * poll — the pause resume grace: a pause (from the watch or anywhere)
+     * keeps the watch remote usable for one minute, so the pushed state
+     * shows the paused track and toggle/play resume it; if nothing
+     * resumes playback within the grace, RunBeat goes inactive and the
+     * pushed source becomes "none". Only a real pause (STATE_READY) counts:
+     * playback that ended (STATE_ENDED) or a player that never played
+     * (STATE_IDLE) is inactive immediately. While this is false, every
+     * watch command except playlist_play is a no-op: the watch remote
+     * controls RunBeat only, never another app.
      */
     fun isRunBeatActive(): Boolean {
         val state = playerRepository.playerState.value
-        return state.isPlaying || state.playbackState == Player.STATE_BUFFERING
+        if (state.isPlaying || state.playbackState == Player.STATE_BUFFERING) {
+            lastActiveAtMs = nowMs()
+            return true
+        }
+        return isPausedWithinResumeGrace(state)
+    }
+
+    /**
+     * True while a pause is still inside the resume grace: the player is
+     * READY with a loaded track (a real pause — pausing keeps STATE_READY,
+     * stopping/ending does not) and the last poll that observed active
+     * playback is within [PAUSE_RESUME_GRACE_MS].
+     */
+    private fun isPausedWithinResumeGrace(state: PlayerRepository.PlayerState): Boolean {
+        if (state.playbackState != Player.STATE_READY) return false
+        if (playerRepository.currentTrack.value == null) return false
+        val lastActiveAt = lastActiveAtMs ?: return false
+        return nowMs() - lastActiveAt < PAUSE_RESUME_GRACE_MS
     }
 
     /**
@@ -214,8 +262,9 @@ class GarminCommandRouter @Inject constructor(
 
     /**
      * Builds the state message pushed to the watch. [GarminWatchState.source]
-     * is "RunBeat" only while RunBeat is the active player (playing or
-     * buffering, see [isRunBeatActive]); otherwise it is "none" and the
+     * is "RunBeat" only while RunBeat is the active player (playing,
+     * buffering, or paused within the resume grace, see [isRunBeatActive]);
+     * otherwise it is "none" and the
      * title/artist/album and all RunBeat-only fields (trackId, durationMs,
      * positionMs, bpm, targetCadence, speedCorrection, playbackSpeed) are
      * omitted (null), so the watch never shows a stale track name. The source
@@ -310,8 +359,15 @@ class GarminCommandRouter @Inject constructor(
         is GarminCommand.PlaylistPlay -> "playlist_play"
     }
 
-    private companion object {
+    companion object {
         const val SOURCE_RUNBEAT = "RunBeat"
         const val SOURCE_NONE = "none"
+
+        /**
+         * How long after a pause the watch can still resume RunBeat
+         * (see [isRunBeatActive]); after the grace the pushed source becomes
+         * "none" and watch commands are no-ops again.
+         */
+        const val PAUSE_RESUME_GRACE_MS = 60_000L
     }
 }

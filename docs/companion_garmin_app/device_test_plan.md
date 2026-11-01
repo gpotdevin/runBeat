@@ -45,6 +45,7 @@ Start. No GCM needed on this path. Full procedure: runbook.
 | 10 | Ack behavior | `cadence_*`, `speed_correction_toggle`, `mark_not_for_running` produce acks; transport/volume/request_state/seek do not (next state push confirms). `cadence_set` and `play` are protocol-level, not reachable from the UI |
 | 11 | Launch paths & battery | App-menu launch: direct, no stock app, back to watch face. Provider-flow launch: stock Music app hosts (flash + extra back — expected firmware behavior). 2-min idle with music paused → app goes inert (timers stopped, listener unregistered, `bye` sent) and exits itself. While paused the 1 Hz cadence tick performs no sensor read. App closed → phone sends NOTHING (no wake, no background service): verify no BLE traffic / no drain; app reconnects only when started manually |
 | 12 | Battery | Full day with music playing part of it: back to multi-day idle drain (phone must not push at a closed app — 30 s window) |
+| 13 | Pause resume grace (60 s) | Pause RunBeat (watch or phone): watch keeps showing the paused track; watch toggle/play resumes it. Wait > 60 s paused: watch flips to "Nothing playing" (source "none") and transport commands are ignored. Stop (STATE_IDLE) or track end gives NO grace — inactive immediately |
 
 ## Device notes
 - **venu2:** CIQ 5.0.0, round 416x416, ViewLoop OK (all 3 screens).
@@ -56,7 +57,7 @@ Start. No GCM needed on this path. Full procedure: runbook.
 One row per device run (P/F per checklist item). On a crash: note exact steps + watch-side logs
 via Garmin Express device logs.
 
-| Device | CIQ version | Firmware | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | Notes |
-|--------|-------------|----------|---|---|---|---|---|---|---|---|---|---|----|----|----|-------|
-| venu2  | 5.0.0       |          |   |   |   |   |   |   |   |   |   |   |    |    |    |       |
-| fr245  | 3.3.1       |          |   |   |   |   |   |   |   |   |   |   |    |    |    |       |
+| Device | CIQ version | Firmware | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | Notes |
+|--------|-------------|----------|---|---|---|---|---|---|---|---|---|---|---|----|----|----|----|-------|
+| venu2  | 5.0.0       |          |   |   |   |   |   |   |   |   |   |   |    |    |    |    |       |
+| fr245  | 3.3.1       |          |   |   |   |   |   |   |   |   |   |   |    |    |    |    |       |

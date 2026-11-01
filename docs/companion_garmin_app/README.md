@@ -10,13 +10,16 @@ Wire protocol (normative): [architecture.md](architecture.md). On-device checkli
 
 The watch controls **RunBeat only**: the phone never reads other apps' notifications or media
 sessions for the companion. When RunBeat is not the active player, watch transport/volume
-commands are ignored and the pushed `source` is `"none"` (no track metadata).
+commands are ignored and the pushed `source` is `"none"` (no track metadata). Exception — the
+pause resume grace: for 60 s after a pause, RunBeat stays "active", the watch shows the paused
+track and can resume it; after the grace the watch flips to `"none"` and commands are ignored
+again.
 
 ## Features (all six shipped)
 
 | # | Feature | How |
 |---|---------|-----|
-| 1 | Play / pause / next / prev | watch command → `PlayerRepository`; ignored when RunBeat isn't the active player |
+| 1 | Play / pause / next / prev | watch command → `PlayerRepository`; ignored when RunBeat isn't the active player. A paused RunBeat stays resumable from the watch for 60 s (pause resume grace) |
 | 2 | Target cadence ±, or = 60 s average | watch samples its own cadence 1 Hz into a 60-sample ring buffer; "use current" sends the mean → `setTargetCadence` (clamped 150–195) |
 | 3 | Speed-correction toggle | → `PlayerRepository.toggleSpeedCorrection()` |
 | 4 | Volume up/down | `AudioManager` STREAM_MUSIC; ignored when RunBeat isn't the active player |
