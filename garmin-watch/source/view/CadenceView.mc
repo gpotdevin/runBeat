@@ -26,7 +26,6 @@ class CadenceView extends BaseView {
     // and must not run in the onUpdate draw path — loaded once here).
     private var _strHeaderCadence as String;
     private var _strNoValue as String;
-    private var _strCurrentCaption as String;
     private var _strAvgCaption as String;
     private var _strTargetPrefix as String;
     private var _strSetTargetLabel as String;
@@ -43,7 +42,6 @@ class CadenceView extends BaseView {
         _cadenceBuffer = cadenceBuffer;
         _strHeaderCadence = WatchUi.loadResource(Rez.Strings.HeaderCadence) as String;
         _strNoValue = WatchUi.loadResource(Rez.Strings.NoValue) as String;
-        _strCurrentCaption = WatchUi.loadResource(Rez.Strings.CurrentCaption) as String;
         _strAvgCaption = WatchUi.loadResource(Rez.Strings.AvgCaption) as String;
         _strTargetPrefix = WatchUi.loadResource(Rez.Strings.TargetPrefix) as String;
         _strSetTargetLabel = WatchUi.loadResource(Rez.Strings.SetTargetLabel) as String;
@@ -77,12 +75,12 @@ class CadenceView extends BaseView {
         updateHeader(_strHeaderCadence, runBeat ? Graphics.COLOR_LT_GRAY : dim);
 
         // --- Center info block, vertically centered as a whole -------------
-        // Four lines: live cadence (big), CURRENT caption, AVG/60s, TARGET.
+        // Three lines: live cadence (big), AVG/60s, TARGET.
         // The block is centered on h/2, not its first line.
         var fhLarge = dc.getFontHeight(Graphics.FONT_LARGE);
         var fhTiny = dc.getFontHeight(Graphics.FONT_TINY);
         var gap = maxNum(2, (h * 0.012).toNumber()).toNumber();
-        var blockH = fhLarge + fhTiny * 3 + gap * 3;
+        var blockH = fhLarge + fhTiny * 2 + gap * 2;
         var y = ((h - blockH) / 2).toNumber();
 
         var live = _cadenceBuffer.last(now);
@@ -92,10 +90,6 @@ class CadenceView extends BaseView {
             Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
         y += fhLarge + gap;
 
-        dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
-        dc.drawText(w / 2, y + fhTiny / 2, Graphics.FONT_TINY, _strCurrentCaption,
-            Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
-        y += fhTiny + gap;
 
         var mean = _cadenceBuffer.mean(now);
         var meanText = mean == null ? _strNoValue : (mean as Float).format("%.0f");
