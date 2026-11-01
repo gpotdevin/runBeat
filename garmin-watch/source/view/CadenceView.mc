@@ -76,20 +76,22 @@ class CadenceView extends BaseView {
 
         updateHeader(_strHeaderCadence, runBeat ? Graphics.COLOR_LT_GRAY : dim);
 
-        // --- Center info block: current cadence, 60 s average, target ---
+        // --- Center info block: live cadence, 60 s average, target --------
+        // Three lines stacked in the vertical middle of the screen, between
+        // the top and bottom button rows.
         var live = _cadenceBuffer.last(now);
         var liveText = live == null ? _strNoValue : (live as Float).format("%.0f");
         dc.setColor(runBeat ? Graphics.COLOR_WHITE : dim, Graphics.COLOR_BLACK);
-        dc.drawText(w / 2, h * 0.28, Graphics.FONT_LARGE, liveText,
+        dc.drawText(w / 2, h * 0.44, Graphics.FONT_LARGE, liveText,
             Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
         dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
-        dc.drawText(w / 2, h * 0.36, Graphics.FONT_TINY, _strCurrentCaption,
+        dc.drawText(w / 2, h * 0.51, Graphics.FONT_TINY, _strCurrentCaption,
             Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
 
         var mean = _cadenceBuffer.mean(now);
         var meanText = mean == null ? _strNoValue : (mean as Float).format("%.0f");
         dc.setColor(runBeat ? Graphics.COLOR_LT_GRAY : dim, Graphics.COLOR_BLACK);
-        dc.drawText(w / 2, h * 0.46, Graphics.FONT_SMALL,
+        dc.drawText(w / 2, h * 0.58, Graphics.FONT_TINY,
             _strAvgCaption + " " + meanText,
             Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
 
@@ -98,21 +100,24 @@ class CadenceView extends BaseView {
             target = _strNoValue;
         }
         dc.setColor(runBeat ? Graphics.COLOR_GREEN : dim, Graphics.COLOR_BLACK);
-        dc.drawText(w / 2, h * 0.54, Graphics.FONT_SMALL,
+        dc.drawText(w / 2, h * 0.64, Graphics.FONT_TINY,
             _strTargetPrefix + " " + target,
             Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
 
         // --- Four quadrant buttons (RunBeat only) -------------------------
-        // On round screens the corners sit safely inside the bezel at
-        // ~28%/72% of width and ~68%/86% of height. Square screens get
-        // the same grid. Without RunBeat the hint replaces the buttons.
+        // True quadrants: top-left, top-right, bottom-left, bottom-right,
+        // centered at ~27%/73% width and ~30%/78% height. On a 416x416
+        // round screen the farthest button corner is ~64 px from the bezel
+        // (well inside the 208 px radius). Pill-shaped (corner radius =
+        // bH/2) so they read as organic on a round face. Without RunBeat
+        // the hint replaces the buttons.
         var bW = minNum(w * 0.38, 150).toNumber();
-        var bH = minNum(44, h * 0.11).toNumber();
+        var bH = minNum(42, h * 0.10).toNumber();
         if (bH < 28) { bH = 28; }
         var colL = (w * 0.27).toNumber();
         var colR = (w * 0.73).toNumber();
-        var rowT = (h * 0.68).toNumber();
-        var rowB = (h * 0.86).toNumber();
+        var rowT = (h * 0.30).toNumber();
+        var rowB = (h * 0.80).toNumber();
 
         if (runBeat) {
             _btnSetTarget = [colL - bW / 2, rowT - bH / 2, bW, bH];
@@ -132,7 +137,7 @@ class CadenceView extends BaseView {
             _btnTempo = null;
             _btnFixBpm = null;
             dc.setColor(dim, Graphics.COLOR_BLACK);
-            dc.drawText(w / 2, h * 0.77, Graphics.FONT_TINY,
+            dc.drawText(w / 2, h * 0.80, Graphics.FONT_TINY,
                 _strRunBeatOnlyHint,
                 Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
         }
@@ -149,7 +154,7 @@ class CadenceView extends BaseView {
         var bw = rect[2] as Number;
         var bh = rect[3] as Number;
         dc.setColor(Graphics.COLOR_DK_GRAY, Graphics.COLOR_BLACK);
-        dc.fillRoundedRectangle(x, y, bw, bh, bh / 4);
+        dc.fillRoundedRectangle(x, y, bw, bh, bh / 2);
         dc.setColor(textColor, Graphics.COLOR_BLACK);
         dc.drawText(x + bw / 2, y + bh / 2, Graphics.FONT_TINY,
             truncateToWidth(dc, text, Graphics.FONT_TINY, bw - 8),
