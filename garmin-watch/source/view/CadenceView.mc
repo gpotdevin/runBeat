@@ -4,14 +4,12 @@ import Toybox.System;
 import Toybox.WatchUi;
 
 // Cadence page (RunBeat only; greyed out when source != "RunBeat").
-// Big live 60-second average cadence, target cadence from phone state,
-// and three stacked action buttons — one per action, so it is obvious
-// where to tap:
-//   [SET TARGET]         opens the pushed target-cadence adjuster
-//                         (upper half +1 spm, lower half -1 spm)
-//   [USE AVG AS TARGET]  sends the live 60 s average as the target
-//   [TEMPO ON/OFF]       toggles speed correction (playback-tempo
-//                         adjustment)
+// Center: live cadence (big), 60 s average, target cadence.
+// Four quadrant buttons around the edges:
+//   top-left     [SET TARGET]       opens the pushed target-cadence adjuster
+//   top-right    [USE AVG AS TARGET] sends the live 60 s average as the target
+//   bottom-left  [TEMPO ON/OFF]     toggles speed correction
+//   bottom-right [FIX BPM]          sends cadence_avg for BPM back-calculation
 // Select also uses the current average as target; the menu keeps +1/-1,
 // use current and speed correction for button devices.
 class CadenceView extends BaseView {
@@ -28,6 +26,7 @@ class CadenceView extends BaseView {
     // and must not run in the onUpdate draw path — loaded once here).
     private var _strHeaderCadence as String;
     private var _strNoValue as String;
+    private var _strCurrentCaption as String;
     private var _strAvgCaption as String;
     private var _strTargetPrefix as String;
     private var _strSetTargetLabel as String;
@@ -44,6 +43,7 @@ class CadenceView extends BaseView {
         _cadenceBuffer = cadenceBuffer;
         _strHeaderCadence = WatchUi.loadResource(Rez.Strings.HeaderCadence) as String;
         _strNoValue = WatchUi.loadResource(Rez.Strings.NoValue) as String;
+        _strCurrentCaption = WatchUi.loadResource(Rez.Strings.CurrentCaption) as String;
         _strAvgCaption = WatchUi.loadResource(Rez.Strings.AvgCaption) as String;
         _strTargetPrefix = WatchUi.loadResource(Rez.Strings.TargetPrefix) as String;
         _strSetTargetLabel = WatchUi.loadResource(Rez.Strings.SetTargetLabel) as String;
@@ -69,59 +69,56 @@ class CadenceView extends BaseView {
         var h = dc.getHeight();
         var runBeat = _state.isRunBeatActive();
         var dim = Graphics.COLOR_DK_GRAY;
+        var now = System.getTimer();
 
         dc.setColor(Graphics.COLOR_BLACK, Graphics.COLOR_BLACK);
         dc.clear();
 
         updateHeader(_strHeaderCadence, runBeat ? Graphics.COLOR_LT_GRAY : dim);
 
-        // Big live 60-second average (greyed out unless RunBeat is playing).
-        var mean = _cadenceBuffer.mean(System.getTimer());
-        var meanText = mean == null ? _strNoValue : (mean as Float).format("%.0f");
+        // --- Center info block: current cadence, 60 s average, target ---
+        var live = _cadenceBuffer.last(now);
+        var liveText = live == null ? _strNoValue : (live as Float).format("%.0f");
         dc.setColor(runBeat ? Graphics.COLOR_WHITE : dim, Graphics.COLOR_BLACK);
-        dc.drawText(w / 2, h * 0.28, Graphics.FONT_LARGE, meanText,
+        dc.drawText(w / 2, h * 0.28, Graphics.FONT_LARGE, liveText,
             Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
-
         dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
-        dc.drawText(w / 2, h * 0.37, Graphics.FONT_TINY, _strAvgCaption,
+        dc.drawText(w / 2, h * 0.36, Graphics.FONT_TINY, _strCurrentCaption,
             Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
 
-        // Target cadence from the phone state.
+        var mean = _cadenceBuffer.mean(now);
+        var meanText = mean == null ? _strNoValue : (mean as Float).format("%.0f");
+        dc.setColor(runBeat ? Graphics.COLOR_LT_GRAY : dim, Graphics.COLOR_BLACK);
+        dc.drawText(w / 2, h * 0.46, Graphics.FONT_SMALL,
+            _strAvgCaption + " " + meanText,
+            Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
+
         var target = _state.targetCadenceText();
         if (target.length() == 0) {
             target = _strNoValue;
         }
-        dc.setColor(runBeat ? Graphics.COLOR_LT_GRAY : dim, Graphics.COLOR_BLACK);
-        dc.drawText(w / 2, h * 0.46, Graphics.FONT_SMALL,
+        dc.setColor(runBeat ? Graphics.COLOR_GREEN : dim, Graphics.COLOR_BLACK);
+        dc.drawText(w / 2, h * 0.54, Graphics.FONT_SMALL,
             _strTargetPrefix + " " + target,
             Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
 
-        // --- Three stacked action buttons (RunBeat only): one visible
-        // button per action, so it is obvious where to tap. The stack is
-        // sized to the space between the target line and the page
-        // indicator; without RunBeat the hint takes its place and taps
-        // fall through to select (which shows the same hint).
-        var fhSmall = dc.getFontHeight(Graphics.FONT_SMALL);
-        var gap = maxNum(4, minNum(8, h * 0.02)).toNumber();
-        var regionTop = maxNum(h * 0.57, h * 0.46 + fhSmall / 2 + 6).toNumber();
-        var regionBottom = h - 32;
-        var regionH = regionBottom - regionTop;
-        var bH = (regionH - gap * 3) / 4;
-        if (bH > 34) {
-            bH = 34;
-        }
-        bH = bH.toNumber();
-        var bW = minNum(w * 0.64, 300).toNumber();
-        var bLeft = (w - bW) / 2;
-        var totalH = bH * 4 + gap * 3;
-        var bTop = (regionTop + regionBottom - totalH) / 2;
-        bTop = bTop.toNumber();
+        // --- Four quadrant buttons (RunBeat only) -------------------------
+        // On round screens the corners sit safely inside the bezel at
+        // ~28%/72% of width and ~68%/86% of height. Square screens get
+        // the same grid. Without RunBeat the hint replaces the buttons.
+        var bW = minNum(w * 0.38, 150).toNumber();
+        var bH = minNum(44, h * 0.11).toNumber();
+        if (bH < 28) { bH = 28; }
+        var colL = (w * 0.27).toNumber();
+        var colR = (w * 0.73).toNumber();
+        var rowT = (h * 0.68).toNumber();
+        var rowB = (h * 0.86).toNumber();
 
         if (runBeat) {
-            _btnSetTarget = [bLeft, bTop, bW, bH];
-            _btnUseAvg = [bLeft, bTop + bH + gap, bW, bH];
-            _btnTempo = [bLeft, bTop + (bH + gap) * 2, bW, bH];
-            _btnFixBpm = [bLeft, bTop + (bH + gap) * 3, bW, bH];
+            _btnSetTarget = [colL - bW / 2, rowT - bH / 2, bW, bH];
+            _btnUseAvg    = [colR - bW / 2, rowT - bH / 2, bW, bH];
+            _btnTempo     = [colL - bW / 2, rowB - bH / 2, bW, bH];
+            _btnFixBpm    = [colR - bW / 2, rowB - bH / 2, bW, bH];
             drawActionButton(dc, _btnSetTarget, _strSetTargetLabel, Graphics.COLOR_LT_GRAY);
             drawActionButton(dc, _btnUseAvg, _strUseAvgAsTargetLabel, Graphics.COLOR_LT_GRAY);
             var tempoText = _strTempoLabel + " " +
@@ -135,7 +132,7 @@ class CadenceView extends BaseView {
             _btnTempo = null;
             _btnFixBpm = null;
             dc.setColor(dim, Graphics.COLOR_BLACK);
-            dc.drawText(w / 2, bTop + totalH / 2, Graphics.FONT_TINY,
+            dc.drawText(w / 2, h * 0.77, Graphics.FONT_TINY,
                 _strRunBeatOnlyHint,
                 Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
         }

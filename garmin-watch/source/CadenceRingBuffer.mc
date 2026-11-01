@@ -61,6 +61,38 @@ class CadenceRingBuffer {
         return sum / n;
     }
 
+    // Most recent sample not older than 2 s; null when none (not running / just started).
+    function last(now as Number) as Float? {
+        var bestTs = -1;
+        var bestVal = null;
+        for (var i = 0; i < _count; i++) {
+            var s = _slots[i];
+            if (s == null) {
+                continue;
+            }
+            var d = s as Dictionary;
+            var ts = d["timestamp"];
+            if (!(ts instanceof Number)) {
+                continue;
+            }
+            var t = ts as Number;
+            if (now - t > 2000) {
+                continue; // stale (>2 s old)
+            }
+            if (t > bestTs) {
+                bestTs = t;
+                bestVal = d["value"];
+            }
+        }
+        if (bestVal == null) {
+            return null;
+        }
+        if (bestVal instanceof Float) {
+            return bestVal as Float;
+        }
+        return (bestVal as Number) + 0.0;
+    }
+
     function size() as Number {
         return _count;
     }

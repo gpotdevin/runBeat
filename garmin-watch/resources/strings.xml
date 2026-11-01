@@ -21,6 +21,7 @@
 
     <!-- Cadence page. -->
     <string id="AvgCaption">AVG / 60 S</string>
+    <string id="CurrentCaption">CURRENT</string>
     <string id="TargetPrefix">TARGET</string>
 
     <!-- Cadence page buttons / volume screen. -->
