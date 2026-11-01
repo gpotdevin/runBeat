@@ -29,6 +29,8 @@ class MainView extends BaseView {
     private var _btnMark;   // Array? or null (null when not RunBeat)
     private var _btnPrev;   // Array? or null
     private var _btnNext;   // Array? or null
+    private var _btnBarPrev; // Array? or null (left half of progress bar row = prev)
+    private var _btnBarNext; // Array? or null (right half of progress bar row = next)
 
     // Cached resources (battery/CPU: loadResource() hits the file system
     // and must not run in the onUpdate draw path — loaded once here).
@@ -171,6 +173,18 @@ class MainView extends BaseView {
         // known duration (RunBeat not active) only the buttons are drawn.
         _btnPrev = [tPrevX, tY, tB, tB];
         _btnNext = [tNextX, tY, tB, tB];
+        // Progress-bar halves are the reliable prev/next tap zones: on
+        // round devices the right-edge ▶ button sits in the system BACK-
+        // gesture strip and its tap is never delivered, so the bar (center)
+        // carries the transport. Left half = prev, right half = next.
+        if (showProgress) {
+            var halfW = (barW / 2).toNumber();
+            _btnBarPrev = [barX, tY, halfW, tB];
+            _btnBarNext = [barX + halfW, tY, halfW, tB];
+        } else {
+            _btnBarPrev = null;
+            _btnBarNext = null;
+        }
         // No background fill: just big white line-drawn arrow triangles
         // centered in each button's hit area (no grey boxes).
         dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_BLACK);
@@ -254,6 +268,16 @@ class MainView extends BaseView {
                 _state.setAck(_strAckRunBeatOnly, true);
                 WatchUi.requestUpdate();
             }
+            return true;
+        }
+        // Progress-bar halves first: reliable center-zone transport (the
+        // right-edge ▶ button tap is swallowed by the system BACK strip).
+        if (_btnBarPrev != null && hitTest(_btnBarPrev, x, y)) {
+            _messages.sendPrev();
+            return true;
+        }
+        if (_btnBarNext != null && hitTest(_btnBarNext, x, y)) {
+            _messages.sendNext();
             return true;
         }
         if (hitTest(_btnPrev, x, y)) {

@@ -202,10 +202,10 @@ class WatchState {
     // Locally extrapolated playback position: the phone pushes positionMs
     // only every 5 s (5 s buckets) to keep BLE traffic low, so between
     // pushes the watch advances it itself while playing:
-    // positionMs + (now - positionTimestampMs). This keeps the progress bar
+    // at the actual playback speed and clamps to the track duration. This keeps the progress bar
     // and the m:ss caption smooth at the 1 Hz repaint rate; the next push
     // re-anchors any drift. Null when the position is unknown; never
-    // negative.
+    // negative, never past the duration.
     function effectivePositionMs(now as Number) as Number? {
         var v = positionMs;
         if (v == null) {
@@ -213,9 +213,21 @@ class WatchState {
         }
         var pos = v as Number;
         if (isPlaying && now > positionTimestampMs) {
-            pos += now - positionTimestampMs;
+            // Advance at the actual playback speed: ExoPlayer currentPosition
+            // moves at playbackSpeed x real time in media ms.
+            var speed = playbackSpeed;
+            var rate = (speed == null ? 1.0 : speed) as Float;
+            pos += ((now - positionTimestampMs) * rate).toNumber();
         }
-        return pos < 0 ? 0 : pos;
+        if (pos < 0) {
+            pos = 0;
+        }
+        // Clamp to the track duration so the bar and caption never overshoot.
+        var d = durationMs;
+        if (d != null && pos > (d as Number)) {
+            pos = d as Number;
+        }
+        return pos;
     }
 
     // Playback position as m:ss, extrapolated to `now` ("" when unknown).

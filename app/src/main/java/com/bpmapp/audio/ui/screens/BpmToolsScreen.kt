@@ -403,7 +403,7 @@ fun DetectBpmTab(viewModel: BpmToolsViewModel) {
                     modifier = Modifier.size(AppSpacing.sm)
                 )
                 Text(
-                    text = stringResource(R.string.bpmtools_speed_adjusted, String.format(Locale.getDefault(), "%.2fx", playbackSpeed)),
+                    text = stringResource(R.string.bpmtools_speed_adjusted, playbackSpeed),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onErrorContainer
                 )
@@ -520,7 +520,7 @@ fun DetectBpmTab(viewModel: BpmToolsViewModel) {
             },
             text = {
                 Text(
-                    text = stringResource(R.string.bpmtools_use_body, String.format(Locale.getDefault(), "%.2fx", playbackSpeed)),
+                    text = stringResource(R.string.bpmtools_use_body, playbackSpeed),
                     style = MaterialTheme.typography.bodyMedium
                 )
             },

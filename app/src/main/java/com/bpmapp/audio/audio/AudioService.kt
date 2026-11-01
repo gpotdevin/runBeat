@@ -8,6 +8,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.view.KeyEvent
 import android.os.Build
 import android.os.IBinder
 import android.app.Service.STOP_FOREGROUND_REMOVE
@@ -83,6 +84,7 @@ class AudioService : MediaSessionService() {
         
         // Initialize MediaSession for Bluetooth controls and notification
         mediaSession = MediaSession.Builder(this, exoPlayer)
+            .setCallback(AudioSessionCallback())
             .setSessionActivity(
                 PendingIntent.getActivity(
                     this, 
@@ -137,6 +139,28 @@ class AudioService : MediaSessionService() {
         // Return the existing MediaSession
         // Bluetooth controls are automatically handled through the player
         return mediaSession
+    }
+
+    /** Routes Bluetooth/headset skip commands through the repository so the custom shuffle order is honored (the ExoPlayer timeline holds a single item, so the default seekToNext is a no-op). */
+    private inner class AudioSessionCallback : MediaSession.Callback {
+        override fun onMediaButtonEvent(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            intent: Intent
+        ): Boolean {
+            val keyEvent = intent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT)
+            when (keyEvent?.keyCode) {
+                KeyEvent.KEYCODE_MEDIA_NEXT -> {
+                    playerRepository.playNext()
+                    return true
+                }
+                KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
+                    playerRepository.playPrevious()
+                    return true
+                }
+            }
+            return super.onMediaButtonEvent(session, controller, intent)
+        }
     }
 
     private fun createNotificationChannel() {
