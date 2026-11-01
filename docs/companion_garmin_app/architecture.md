@@ -12,20 +12,20 @@ Synced 2026-10-31 (battery: sensor read only while playing, 2-min idle exit). Fe
 │  Connect IQ app  │  ◀── state / ack (only while app open) ────────────  │  GarminCompanionManager│
 │  (Monkey C)      │                                                      │         │             │
 │  - cadence 1 Hz  │                                                      │  GarminCommandRouter ─┼─▶ PlayerRepository / TrackRepository (RunBeat active)
-│  - 60 s ring buf │                                                      │  MediaKeyDispatcher ───┴─▶ media key events + STREAM_MUSIC (external app)
+│  - 60 s ring buf │                                                      │                       │
 └──────────────────┘                                                      └───────────────────────┘
 ```
 All RunBeat control flows through the existing `PlayerRepository` singleton; the Garmin layer is
 a thin command adapter, never touches `ExoPlayer` directly. The exported `MediaSessionService`
-stays as fallback transport for basic controls.
+stays as fallback transport for basic controls. The watch controls RunBeat only: the phone never
+reads other apps' notifications or media sessions for the companion.
 
 ## Command routing (phone decides; the watch always sends the same commands)
 - RunBeat active → transport/cadence/speed-correction/mark/playlists go to `PlayerRepository` +
   `TrackRepository`; volume → `AudioManager` STREAM_MUSIC.
-- RunBeat not active → transport → external media session via `MediaSessionManager.getActiveSessions`
-  (requires notification access: `GarminMediaNotificationListener`), driving the playing session's
-  `MediaController.TransportControls`; fallback → `AudioManager.dispatchMediaKeyEvent(...)`.
-  Volume → `adjustStreamVolume(STREAM_MUSIC)`. `exoPlayer.volume` stays an in-app multiplier, untouched.
+- RunBeat not active → transport and volume commands from the watch are ignored, and `source` is
+  pushed as `"none"` (no track metadata is sent). `exoPlayer.volume` stays an in-app multiplier,
+  untouched.
 - RunBeat-only controls are greyed out on the watch when pushed `source != "RunBeat"`.
 
 ## Components
@@ -35,13 +35,10 @@ Phone (`audio/garmin/`, SDK-free in `main`; SDK wiring in the `garmin` flavor so
 | Component | Role |
 |-----------|------|
 | `GarminCompanionManager` (garmin flavor, Hilt @Singleton) | Connect IQ SDK shell: register IQ app (UUID `06c14376-0c60-4e4c-a977-e93364ace3eb`), decode via `GarminMessageCodec`, delegate to `GarminCommandRouter`, push `state`/`ack` only while the watch app is active; registers a second listener under `IQApp("")` in simulator-ADB mode (SDK 2.4.0 re-broadcasts tethered packets with an empty UUID) |
-| `GarminCommandRouter` | RunBeat-vs-external routing; builds `state`/`ack` payloads (`currentState()`) |
+| `GarminCommandRouter` | routes commands to RunBeat only (ignored when RunBeat is not the active player); builds `state`/`ack` payloads (`currentState()`) |
 | `GarminMessageCodec` | (de)serializes the protocol below; pure functions, unit-tested |
-| `MediaKeyDispatcher` | external-session `MediaController` transport (via `GarminMediaNotificationListener` notification access) + media-key fallback; STREAM_MUSIC volume |
-| `GarminMediaNotificationListener` | `NotificationListenerService` (manifest `BIND_NOTIFICATION_LISTENER_SERVICE`); enables `getActiveSessions` for other apps. User grants access from Settings |
 | `GarminWatchConnection` | process-wide `StateFlow` DISCONNECTED/CONNECTING/CONNECTED for the Settings screen |
 | `CadenceAverager` | 60-sample ring buffer; fallback only (the watch computes the mean) |
-| `ExternalPlaybackMonitor` | reads the active EXTERNAL media session's metadata + playback state via `MediaSessionManager.getActiveSessions` (same notification access as transport) → `source:"external"` state with title/artist/album, so the watch shows the other app's current track name |
 
 Watch (`garmin-watch/`, Monkey C, SDK 9.3.0, manifest type `audio-content-provider-app`
 (hybrid: also serves a direct app-menu launch via `getInitialView`; see "Launch paths"),
@@ -67,12 +64,12 @@ skipped, unknown commands decode to `null` and are logged + ignored.
 ### Watch → phone (commands)
 | Message | Payload | Phone action |
 |---------|---------|--------------|
-| `play` / `pause` / `toggle` / `next` / `prev` | — | RunBeat active: `PlayerRepository`; else media key event |
+| `play` / `pause` / `toggle` / `next` / `prev` | — | RunBeat active: `PlayerRepository`; ignored otherwise |
 | `cadence_set` | `{"cadence": 172}` | `setTargetCadence` (clamped 150–195). RunBeat only. Acked |
 | `cadence_delta` | `{"delta": ±1}` | increment/decrement. RunBeat only. Acked |
 | `cadence_use_current` | `{"cadence": <60 s mean computed on watch>}` | same as `cadence_set`. RunBeat only. Acked |
 | `speed_correction_toggle` | — | `toggleSpeedCorrection()`. RunBeat only. Acked |
-| `volume_delta` | `{"delta": ±1}` | `adjustStreamVolume(STREAM_MUSIC)`. Works for all apps. Not acked |
+| `volume_delta` | `{"delta": ±1}` | `adjustStreamVolume(STREAM_MUSIC)`. RunBeat active only; ignored otherwise. Not acked |
 | `seek` | `{"positionMs": N}` | RunBeat active: `seekTo(N)` (0 ≤ N ≤ 86 400 000); else ignored. Not acked — next state push confirms |
 | `request_state` | — | phone answers with one `state` push (3 s time-dedup on the phone). Sent on app start, every 20 s while playing (keepalive), and when the link looks stale — staleness threshold is 10 s while playing, 30 s while paused (see below) — with exponential backoff (5→60 s cap). Not acked |
 | `bye` | — | sent in `onStop`; phone drops the active window immediately. Never routed, no answer |
@@ -91,12 +88,11 @@ skipped, unknown commands decode to `null` and are logged + ignored.
   "playbackSpeed": 1.03, "volume": 12
 }
 ```
-- `source`: `"RunBeat"` when RunBeat is the active player, `"external"` when another app holds
-  the active media session (needs notification access; `title`/`artist`/`album`/`isPlaying` come
-  from that session), else `"none"`. RunBeat-only fields (`trackId`, `durationMs`,
-  `positionMs`, `bpm`, `targetCadence`, `speedCorrection`, `playbackSpeed`) are null/omitted
-  when `source != "RunBeat"`; `title`/`artist`/`album` are sent for `"RunBeat"` and
-  `"external"` alike, omitted for `"none"` (so no stale track name lingers on the watch).
+- `source`: `"RunBeat"` when RunBeat is the active player, else `"none"` — never `"external"`;
+  the phone never reads another app's media session for the companion. `title`/`artist`/`album`
+  and the RunBeat-only fields (`trackId`, `durationMs`, `positionMs`, `bpm`, `targetCadence`,
+  `speedCorrection`, `playbackSpeed`) are sent for `"RunBeat"` only, omitted for `"none"`
+  (so no stale track name lingers on the watch).
 - `positionMs` rounded down to 5 s buckets (≈1 push/5 s while playing); `volume` = STREAM_MUSIC index.
 - `{"type":"playlists","count":N,"id0":"...","name0":"...",...}` answers `playlist_list` (flat
   indexed fields — the watch parser skips nested arrays; cap 50).
@@ -162,18 +158,15 @@ remote UI — observed 2026-10-28). Control from the stock player also works via
 reverted: that type can never appear in the Music app / music shortcut at all.
 
 ## Feature flows
-1. **Transport:** command → router → `PlayerRepository` or media key → state push back.
+1. **Transport:** command → router → `PlayerRepository` → state push back. Ignored when RunBeat
+   is not the active player.
 2. **Cadence:** watch ± → `cadence_delta`; "use current" → watch computes 60 s mean →
    `cadence_use_current` → `setTargetCadence(mean)`; speed correction re-applies in the repository.
 3. **Speed correction:** toggle → `toggleSpeedCorrection()` → state push.
-4. **Volume:** `volume_delta` → STREAM_MUSIC ±1; current volume pushed in `state`.
+4. **Volume:** `volume_delta` → STREAM_MUSIC ±1 (ignored when RunBeat is not active); current
+   volume pushed in `state`.
 5. **Mark not-for-running:** `mark_not_for_running` → Room flag + immediate `playNext()` + ack;
    future queues exclude flagged tracks behind the settings toggle (default ON).
-6. **External apps:** same watch commands; phone routes to the external session's transport
-   controls (media-key fallback) / STREAM_MUSIC; the watch Main page shows the external app's
-   current track name/artist/album with `source:"external"` (falls back to the "External app"
-   label when the session has no metadata, "Nothing playing" when there is no external
-   session or notification access). RunBeat-only controls disabled.
 
 ## Connect IQ simulator (ADB tether) — gotchas (verified 2026-10-25/26/29)
 Staging procedure and division of labor: [simulator_runbook_2026-10-29.md](simulator_runbook_2026-10-29.md).

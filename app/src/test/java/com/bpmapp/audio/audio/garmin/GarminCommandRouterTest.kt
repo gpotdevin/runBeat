@@ -3,6 +3,7 @@
 package com.bpmapp.audio.audio.garmin
 
 import android.content.Context
+import android.media.AudioManager
 import android.os.Bundle
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
@@ -32,13 +33,16 @@ import org.mockito.kotlin.verify
 import org.mockito.kotlin.verifyNoInteractions
 import org.mockito.kotlin.whenever
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 /**
- * Unit tests for [GarminCommandRouter]: command routing in both modes
- * (RunBeat active / not active), volume always via the dispatcher, the
+ * Unit tests for [GarminCommandRouter]: RunBeat-only command routing (all
+ * commands are no-ops while RunBeat is not the active player), the
  * mark-not-for-running orchestration, and [GarminCommandRouter.currentState]
- * field mapping. Repositories and the dispatcher are mocked.
+ * field mapping (source "RunBeat" when active, "none" otherwise — never
+ * "external"). Repositories are mocked; volume goes through the real
+ * (Robolectric-shadowed) AudioManager.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -47,9 +51,8 @@ class GarminCommandRouterTest {
     private lateinit var playerRepository: PlayerRepository
     private lateinit var trackRepository: TrackRepository
     private lateinit var playlistRepository: PlaylistRepository
-    private lateinit var mediaKeyDispatcher: MediaKeyDispatcher
-    private lateinit var externalPlaybackMonitor: ExternalPlaybackMonitor
     private lateinit var context: Context
+    private lateinit var audioManager: AudioManager
     private lateinit var router: GarminCommandRouter
 
     private lateinit var playerState: MutableStateFlow<PlayerRepository.PlayerState>
@@ -64,10 +67,10 @@ class GarminCommandRouterTest {
         playerRepository = mock()
         trackRepository = mock()
         playlistRepository = mock()
-        mediaKeyDispatcher = mock()
-        externalPlaybackMonitor = mock()
-        whenever(externalPlaybackMonitor.currentExternalPlayback()).thenReturn(null)
         context = ApplicationProvider.getApplicationContext<Context>()
+        audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        // STREAM_MUSIC volume 7 (the shadow's default max is 7).
+        shadowOf(audioManager).setStreamVolume(7)
         // Start each test with a clean "AppSettings" prefs file; the
         // exclude-not-for-running default is ON.
         context.getSharedPreferences(SettingsKeys.PREFS_NAME, Context.MODE_PRIVATE)
@@ -84,14 +87,12 @@ class GarminCommandRouterTest {
         whenever(playerRepository.speedCorrectionEnabled).thenReturn(speedCorrectionEnabled)
         whenever(playerRepository.playbackSpeed).thenReturn(playbackSpeed)
         whenever(playerRepository.shuffleEnabled).thenReturn(shuffleEnabled)
-        whenever(mediaKeyDispatcher.currentVolume()).thenReturn(7)
+
         router = GarminCommandRouter(
             playerRepository,
             trackRepository,
             playlistRepository,
             MediaItemFactory(),
-            mediaKeyDispatcher,
-            externalPlaybackMonitor,
             context,
         )
     }
@@ -102,6 +103,12 @@ class GarminCommandRouterTest {
             .putBoolean(SettingsKeys.KEY_EXCLUDE_NOT_FOR_RUNNING_TRACKS, value)
             .commit()
     }
+
+    private fun setStreamVolume(volume: Int) {
+        shadowOf(audioManager).setStreamVolume(volume)
+    }
+
+    private fun streamVolume(): Int = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
 
     private fun libraryTrack(trackId: String, notForRunning: Boolean = false): Track =
         Track(
@@ -170,38 +177,13 @@ class GarminCommandRouterTest {
         assertFalse(router.isRunBeatActive())
     }
 
-    // Paused with a loaded track: RunBeat owns the track context (the watch
-    // keeps showing it) but does NOT hold the media stream — transport must
-    // route to media keys so other players stay controllable from the watch.
+    // Paused with a loaded track: RunBeat is not the active player, so watch
+    // commands are no-ops (they must NOT reach any other app).
     @Test
     fun isRunBeatActive_falseWhenPausedWithTrack() {
         setRunBeatActive(false)
         currentTrack.value = track("t1", "Title", "140")
         assertFalse(router.isRunBeatActive())
-    }
-
-    @Test
-    fun toggle_routesToMediaKeysWhenPausedWithTrack() {
-        setRunBeatActive(false)
-        currentTrack.value = track("t1", "Title", "140")
-
-        runBlocking { router.handleCommand(GarminCommand.Toggle) }
-
-        verify(mediaKeyDispatcher).toggle()
-        verify(playerRepository, never()).togglePlayPause()
-    }
-
-    // RunBeat-only settings are accepted while paused with a loaded track:
-    // the target cadence is adjustable without playing.
-    @Test
-    fun cadenceDelta_appliedWhenPausedWithTrack() {
-        setRunBeatActive(false)
-        currentTrack.value = track("t1", "Title", "140")
-
-        val ack = runBlocking { router.handleCommand(GarminCommand.CadenceDelta(1)) }
-
-        assertTrue(ack.ok)
-        verify(playerRepository).incrementTargetCadence()
     }
 
     // ---------------------------------------------------------------
@@ -213,7 +195,6 @@ class GarminCommandRouterTest {
         setRunBeatActive(true)
         val ack = runBlocking { router.handleCommand(GarminCommand.Toggle) }
         verify(playerRepository).togglePlayPause()
-        verify(mediaKeyDispatcher, never()).toggle()
         assertTrue(ack.ok)
         assertEquals("toggle", ack.command)
     }
@@ -223,7 +204,6 @@ class GarminCommandRouterTest {
         setRunBeatActive(true)
         val ack = runBlocking { router.handleCommand(GarminCommand.Play) }
         verify(playerRepository).play()
-        verify(mediaKeyDispatcher, never()).play()
         assertTrue(ack.ok)
         assertEquals("play", ack.command)
     }
@@ -233,7 +213,6 @@ class GarminCommandRouterTest {
         setRunBeatActive(true)
         val ack = runBlocking { router.handleCommand(GarminCommand.Pause) }
         verify(playerRepository).pause()
-        verify(mediaKeyDispatcher, never()).pause()
         assertTrue(ack.ok)
         assertEquals("pause", ack.command)
     }
@@ -243,7 +222,6 @@ class GarminCommandRouterTest {
         setRunBeatActive(true)
         val ack = runBlocking { router.handleCommand(GarminCommand.Next) }
         verify(playerRepository).playNext()
-        verify(mediaKeyDispatcher, never()).next()
         assertTrue(ack.ok)
         assertEquals("next", ack.command)
     }
@@ -253,79 +231,94 @@ class GarminCommandRouterTest {
         setRunBeatActive(true)
         val ack = runBlocking { router.handleCommand(GarminCommand.Prev) }
         verify(playerRepository).playPrevious()
-        verify(mediaKeyDispatcher, never()).previous()
         assertTrue(ack.ok)
         assertEquals("prev", ack.command)
     }
 
     // ---------------------------------------------------------------
-    // Transport commands — RunBeat not active (media keys)
+    // Transport commands — RunBeat not active: no-ops
     // ---------------------------------------------------------------
 
     @Test
-    fun toggle_routesToMediaKeyDispatcherWhenInactive() {
+    fun toggle_isNoOpWhenInactive() {
         setRunBeatActive(false)
         val ack = runBlocking { router.handleCommand(GarminCommand.Toggle) }
-        verify(mediaKeyDispatcher).toggle()
         verify(playerRepository, never()).togglePlayPause()
-        assertTrue(ack.ok)
+        assertFalse(ack.ok)
+        assertEquals("toggle", ack.command)
     }
 
     @Test
-    fun play_routesToMediaKeyDispatcherWhenInactive() {
+    fun play_isNoOpWhenInactive() {
         setRunBeatActive(false)
         val ack = runBlocking { router.handleCommand(GarminCommand.Play) }
-        verify(mediaKeyDispatcher).play()
         verify(playerRepository, never()).play()
-        assertTrue(ack.ok)
+        assertFalse(ack.ok)
+        assertEquals("play", ack.command)
     }
 
     @Test
-    fun pause_routesToMediaKeyDispatcherWhenInactive() {
+    fun pause_isNoOpWhenInactive() {
         setRunBeatActive(false)
         val ack = runBlocking { router.handleCommand(GarminCommand.Pause) }
-        verify(mediaKeyDispatcher).pause()
         verify(playerRepository, never()).pause()
-        assertTrue(ack.ok)
+        assertFalse(ack.ok)
+        assertEquals("pause", ack.command)
     }
 
     @Test
-    fun next_routesToMediaKeyDispatcherWhenInactive() {
+    fun next_isNoOpWhenInactive() {
         setRunBeatActive(false)
         val ack = runBlocking { router.handleCommand(GarminCommand.Next) }
-        verify(mediaKeyDispatcher).next()
         verify(playerRepository, never()).playNext()
-        assertTrue(ack.ok)
+        assertFalse(ack.ok)
+        assertEquals("next", ack.command)
     }
 
     @Test
-    fun prev_routesToMediaKeyDispatcherWhenInactive() {
+    fun prev_isNoOpWhenInactive() {
         setRunBeatActive(false)
         val ack = runBlocking { router.handleCommand(GarminCommand.Prev) }
-        verify(mediaKeyDispatcher).previous()
         verify(playerRepository, never()).playPrevious()
-        assertTrue(ack.ok)
+        assertFalse(ack.ok)
+        assertEquals("prev", ack.command)
+    }
+
+    // A paused player with a loaded track is still "not active": transport
+    // commands stay no-ops, they must not leak to another app.
+    @Test
+    fun toggle_isNoOpWhenPausedWithTrack() {
+        setRunBeatActive(false)
+        currentTrack.value = track("t1", "Title", "140")
+
+        val ack = runBlocking { router.handleCommand(GarminCommand.Toggle) }
+
+        verify(playerRepository, never()).togglePlayPause()
+        assertFalse(ack.ok)
     }
 
     // ---------------------------------------------------------------
-    // Volume — always via the dispatcher (STREAM_MUSIC)
+    // Volume — STREAM_MUSIC while RunBeat is active, no-op otherwise
     // ---------------------------------------------------------------
 
     @Test
-    fun volumeDelta_usesDispatcherWhenActive() {
+    fun volumeDelta_adjustsStreamVolumeWhenActive() {
         setRunBeatActive(true)
+        setStreamVolume(5)
         val ack = runBlocking { router.handleCommand(GarminCommand.VolumeDelta(1)) }
-        verify(mediaKeyDispatcher).adjustStreamVolume(1)
+        assertEquals(6, streamVolume())
         assertTrue(ack.ok)
         assertEquals("volume_delta", ack.command)
     }
 
     @Test
-    fun volumeDelta_usesDispatcherWhenInactive() {
+    fun volumeDelta_isNoOpWhenInactive() {
         setRunBeatActive(false)
-        val ack = runBlocking { router.handleCommand(GarminCommand.VolumeDelta(-1)) }
-        verify(mediaKeyDispatcher).adjustStreamVolume(-1)
-        assertTrue(ack.ok)
+        setStreamVolume(5)
+        val ack = runBlocking { router.handleCommand(GarminCommand.VolumeDelta(1)) }
+        assertEquals(5, streamVolume())
+        assertFalse(ack.ok)
+        assertEquals("volume_delta", ack.command)
     }
 
     // ---------------------------------------------------------------
@@ -520,13 +513,6 @@ class GarminCommandRouterTest {
         setRunBeatActive(true)
         val ack = runBlocking { router.handleCommand(GarminCommand.Seek(42000L)) }
         verify(playerRepository).seekTo(42000L)
-        // An absolute seek has no media-key equivalent: nothing is dispatched.
-        verify(mediaKeyDispatcher, never()).toggle()
-        verify(mediaKeyDispatcher, never()).play()
-        verify(mediaKeyDispatcher, never()).pause()
-        verify(mediaKeyDispatcher, never()).next()
-        verify(mediaKeyDispatcher, never()).previous()
-        verify(mediaKeyDispatcher, never()).adjustStreamVolume(any())
         assertTrue(ack.ok)
         assertEquals("seek", ack.command)
     }
@@ -536,12 +522,6 @@ class GarminCommandRouterTest {
         setRunBeatActive(false)
         val ack = runBlocking { router.handleCommand(GarminCommand.Seek(42000L)) }
         verify(playerRepository, never()).seekTo(any())
-        verify(mediaKeyDispatcher, never()).toggle()
-        verify(mediaKeyDispatcher, never()).play()
-        verify(mediaKeyDispatcher, never()).pause()
-        verify(mediaKeyDispatcher, never()).next()
-        verify(mediaKeyDispatcher, never()).previous()
-        verify(mediaKeyDispatcher, never()).adjustStreamVolume(any())
         assertFalse(ack.ok)
         assertEquals("seek", ack.command)
     }
@@ -549,7 +529,7 @@ class GarminCommandRouterTest {
     @Test
     fun requestState_isNotRoutedAsAPlaybackCommand() {
         // The manager intercepts request_state before the router; if one ever
-        // slipped through, it must not touch the player or the media keys.
+        // slipped through, it must not touch the player.
         setRunBeatActive(true)
         val ack = runBlocking { router.handleCommand(GarminCommand.RequestState) }
         verify(playerRepository, never()).seekTo(any())
@@ -558,8 +538,6 @@ class GarminCommandRouterTest {
         verify(playerRepository, never()).pause()
         verify(playerRepository, never()).playNext()
         verify(playerRepository, never()).playPrevious()
-        verify(mediaKeyDispatcher, never()).toggle()
-        verify(mediaKeyDispatcher, never()).adjustStreamVolume(any())
         assertEquals("request_state", ack.command)
     }
 
@@ -687,11 +665,10 @@ class GarminCommandRouterTest {
     @Test
     fun playlistList_isNotRoutedAsAPlaybackCommand() {
         // The manager intercepts playlist_list before the router; if one ever
-        // slipped through, it must not touch the player or the media keys.
+        // slipped through, it must not touch the player.
         val ack = runBlocking { router.handleCommand(GarminCommand.PlaylistList) }
         verify(playerRepository, never()).loadPlaylist(any())
         verify(playerRepository, never()).play()
-        verify(mediaKeyDispatcher, never()).toggle()
         assertEquals("playlist_list", ack.command)
     }
 
@@ -706,6 +683,7 @@ class GarminCommandRouterTest {
         val playlists = runBlocking { router.currentPlaylists() }
 
         assertEquals(listOf("id-1" to "Chill", "id-2" to "Run"), playlists)
+
     }
 
     // ---------------------------------------------------------------
@@ -805,12 +783,11 @@ class GarminCommandRouterTest {
         assertNull(state.targetCadence)
         assertNull(state.speedCorrection)
         assertNull(state.playbackSpeed)
-        // The title is RunBeat-only too: it is omitted when RunBeat is not
-        // active so the watch does not show a stale RunBeat title with
-        // source "none".
+        // The title is omitted when RunBeat is not active so the watch does
+        // not show a stale RunBeat title with source "none".
         assertNull(state.title)
         assertEquals(7, state.volume)
-        // Shuffle is a RunBeat-only field: false when not owned.
+        // Shuffle is a RunBeat-only field: false when not active.
         assertFalse(state.shuffle)
     }
 
@@ -824,118 +801,19 @@ class GarminCommandRouterTest {
         assertNull(state.title)
     }
 
-    // ---------------------------------------------------------------
-    // currentState — external app playing (source "external")
-    // ---------------------------------------------------------------
-
+    // A paused player with a loaded track is not the active player: source
+    // "none", no stale track name — the watch shows "Nothing playing".
     @Test
-    fun currentState_reportsExternalTrackWhenExternalAppPlaying() {
-        setRunBeatActive(false)
-        whenever(externalPlaybackMonitor.currentExternalPlayback()).thenReturn(
-            ExternalPlayback(
-                packageName = "com.spotify.music",
-                title = "External Song",
-                artist = "External Artist",
-                album = "External Album",
-                isPlaying = true,
-            )
-        )
-
-        val state = router.currentState()
-
-        assertEquals("external", state.source)
-        assertTrue(state.isPlaying)
-        assertEquals("External Song", state.title)
-        assertEquals("External Artist", state.artist)
-        assertEquals("External Album", state.album)
-        // RunBeat-only fields stay null for an external source.
-        assertNull(state.trackId)
-        assertNull(state.durationMs)
-        assertNull(state.positionMs)
-        assertNull(state.bpm)
-        assertNull(state.targetCadence)
-        assertNull(state.speedCorrection)
-        assertNull(state.playbackSpeed)
-        assertEquals(7, state.volume)
-    }
-
-    @Test
-    fun currentState_reportsExternalPausedWithoutLosingTrackName() {
-        // Paused external app: still source "external" with the track name,
-        // isPlaying false — the watch shows the track with a play icon.
-        setRunBeatActive(false)
-        whenever(externalPlaybackMonitor.currentExternalPlayback()).thenReturn(
-            ExternalPlayback(
-                packageName = "com.qobuz.app",
-                title = "Paused Song",
-                artist = null,
-                album = null,
-                isPlaying = false,
-            )
-        )
-
-        val state = router.currentState()
-
-        assertEquals("external", state.source)
-        assertFalse(state.isPlaying)
-        assertEquals("Paused Song", state.title)
-        assertNull(state.artist)
-        assertNull(state.album)
-    }
-
-    @Test
-    fun currentState_externalWithoutTitle_stillReportsExternalSource() {
-        // An external session without metadata (e.g. a podcast app): the
-        // watch falls back to the plain "External app" label.
-        setRunBeatActive(false)
-        whenever(externalPlaybackMonitor.currentExternalPlayback()).thenReturn(
-            ExternalPlayback(
-                packageName = "com.podcast.app",
-                title = null,
-                artist = null,
-                album = null,
-                isPlaying = true,
-            )
-        )
-
-        val state = router.currentState()
-
-        assertEquals("external", state.source)
-        assertTrue(state.isPlaying)
-        assertNull(state.title)
-    }
-
-    @Test
-    fun currentState_externalWinsOverStaleRunBeatTrack() {
-        // RunBeat paused with a loaded track is "owned" and keeps source
-        // "RunBeat"; only when RunBeat has no track at all does the external
-        // session get reported. Here RunBeat has nothing loaded.
-        setRunBeatActive(false)
-        currentTrack.value = null
-        whenever(externalPlaybackMonitor.currentExternalPlayback()).thenReturn(
-            ExternalPlayback("com.spotify.music", "Other Song", null, null, true)
-        )
-
-        val state = router.currentState()
-
-        assertEquals("external", state.source)
-        assertEquals("Other Song", state.title)
-        assertNull(state.trackId)
-    }
-
-    // A paused player with a loaded track stays source "RunBeat" — the
-    // watch keeps displaying the current track, exactly as the app does.
-    @Test
-    fun currentState_keepsTrackWhilePausedWithTrack() {
+    fun currentState_reportsNoneWhenPausedWithTrack() {
         setRunBeatActive(false)
         currentTrack.value = track("track-1", "Song Title", "140.5")
 
         val state = router.currentState()
 
-        assertEquals("RunBeat", state.source)
+        assertEquals("none", state.source)
         assertFalse(state.isPlaying)
-        assertEquals("track-1", state.trackId)
-        assertEquals("Song Title", state.title)
+        assertNull(state.trackId)
+        assertNull(state.title)
     }
 
     @Test
@@ -964,5 +842,17 @@ class GarminCommandRouterTest {
         assertNull(state.title)
         assertNull(state.bpm)
         assertEquals(7, state.volume)
+    }
+
+    // The source pushed to the watch is "RunBeat" or "none" — never
+    // "external": the phone does not read other apps' media sessions.
+    @Test
+    fun currentState_sourceIsNeverExternal() {
+        setRunBeatActive(true)
+        currentTrack.value = track("track-1", "Song Title", "140")
+        assertEquals("RunBeat", router.currentState().source)
+
+        setRunBeatActive(false)
+        assertEquals("none", router.currentState().source)
     }
 }

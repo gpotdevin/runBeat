@@ -404,7 +404,7 @@ class GarminMessageCodecTest {
     fun encodeStateAlwaysEmitsShuffleAndDefaultsToFalse() {
         val obj = JSONObject(
             GarminMessageCodec.encodeState(
-                GarminWatchState(source = "external", isPlaying = true, volume = 7)
+                GarminWatchState(source = "none", isPlaying = false, volume = 7)
             )
         )
         assertTrue(obj.has("shuffle"))
@@ -451,22 +451,23 @@ class GarminMessageCodecTest {
     }
 
     @Test
-    fun encodeStateOmitsUnknownRunBeatOnlyFields() {
-        // source != "RunBeat": RunBeat-only fields are omitted, per the protocol.
+    fun encodeStateOmitsRunBeatOnlyFieldsWhenSourceIsNone() {
+        // source "none": title/artist/album and all RunBeat-only fields are
+        // omitted, per the protocol (source is "RunBeat" or "none" only).
         val encoded = GarminMessageCodec.encodeState(
-            GarminWatchState(source = "external", isPlaying = true, volume = 7)
+            GarminWatchState(source = "none", isPlaying = false, volume = 7)
         )
         val obj = JSONObject(encoded)
         assertEquals("state", obj.getString("type"))
-        assertEquals("external", obj.getString("source"))
-        assertTrue(obj.getBoolean("isPlaying"))
+        assertEquals("none", obj.getString("source"))
+        assertFalse(obj.getBoolean("isPlaying"))
         assertEquals(7, obj.getInt("volume"))
         for (key in listOf("trackId", "title", "artist", "album", "durationMs", "positionMs", "bpm", "targetCadence", "speedCorrection", "playbackSpeed")) {
             assertFalse("$key should be omitted: $encoded", obj.has(key))
         }
         // Decoding the sparse message yields nulls for the omitted fields.
         assertEquals(
-            GarminWatchState(source = "external", isPlaying = true, volume = 7),
+            GarminWatchState(source = "none", isPlaying = false, volume = 7),
             GarminMessageCodec.decodeState(encoded)
         )
     }

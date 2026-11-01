@@ -3,9 +3,9 @@ import Toybox.WatchUi;
 
 // Pushed volume adjuster: upper half of the screen +1, lower half -1,
 // center displays the current phone volume. Volume is the global
-// STREAM_MUSIC volume — it works for RunBeat and external apps alike,
-// so the screen is never source-gated. Auto-pops 3 s after the last
-// tap (AdjustScreenView).
+// STREAM_MUSIC volume; the phone ignores the command when RunBeat is
+// not the active player, so the screen is never source-gated.
+// Auto-pops 3 s after the last tap (AdjustScreenView).
 class VolumeSetView extends AdjustScreenView {
 
     // Cached resources (loadResource() hits the file system; these hooks

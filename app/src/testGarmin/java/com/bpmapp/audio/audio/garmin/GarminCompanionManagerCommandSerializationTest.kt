@@ -7,6 +7,7 @@ import android.os.Bundle
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
+import androidx.test.core.app.ApplicationProvider
 import com.bpmapp.audio.audio.MediaItemFactory
 import com.bpmapp.audio.audio.PlayerRepository
 import com.bpmapp.audio.audio.TrackRepository
@@ -23,6 +24,8 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -64,7 +67,6 @@ class GarminCompanionManagerCommandSerializationTest {
 
     private lateinit var playerRepository: PlayerRepository
     private lateinit var trackRepository: TrackRepository
-    private lateinit var mediaKeyDispatcher: MediaKeyDispatcher
     private lateinit var manager: GarminCompanionManager
 
     private lateinit var playerState: MutableStateFlow<PlayerRepository.PlayerState>
@@ -85,7 +87,6 @@ class GarminCompanionManagerCommandSerializationTest {
         Dispatchers.setMain(testDispatcher)
         playerRepository = mock()
         trackRepository = mock()
-        mediaKeyDispatcher = mock()
         playerState = MutableStateFlow(
             PlayerRepository.PlayerState(isPlaying = true, playbackState = Player.STATE_READY)
         )
@@ -95,7 +96,7 @@ class GarminCompanionManagerCommandSerializationTest {
         whenever(playerRepository.targetCadence).thenReturn(MutableStateFlow(172f))
         whenever(playerRepository.speedCorrectionEnabled).thenReturn(MutableStateFlow(true))
         whenever(playerRepository.playbackSpeed).thenReturn(MutableStateFlow(1.0f))
-        whenever(mediaKeyDispatcher.currentVolume()).thenReturn(7)
+        whenever(playerRepository.shuffleEnabled).thenReturn(MutableStateFlow(false))
         // playNext advances the track, like the real player does.
         doAnswer {
             currentTrack.value = track("track-2", "Second Song", "140")
@@ -105,9 +106,7 @@ class GarminCompanionManagerCommandSerializationTest {
             trackRepository,
             mock(),
             MediaItemFactory(),
-            mediaKeyDispatcher,
-            mock(),
-            mock(),
+            ApplicationProvider.getApplicationContext(),
         )
         manager = GarminCompanionManager(mock<Context>(), playerRepository, router, testDispatcher)
     }
@@ -249,6 +248,52 @@ class GarminCompanionManagerCommandSerializationTest {
             assertEquals(1, sentMessages.size)
 
             // Stop the state-push collector and reset the global connection state.
+            manager.shutdown()
+        }
+    }
+
+    @Test
+    fun requestState_whenRunBeatNotActive_pushesSourceNone() {
+        // RunBeat idle: the pushed state must carry source "none" (never
+        // "external") and omit the track fields.
+        val connectIQ = mock<ConnectIQ>()
+        val sentMessages = mutableListOf<Pair<IQDevice, String>>()
+        val device = IQDevice(1L, "Forerunner")
+        val app = IQApp(GarminCompanionManager.IQ_APP_ID)
+
+        Mockito.mockStatic(ConnectIQ::class.java).use { mocked ->
+            mocked.`when`<ConnectIQ> { ConnectIQ.getInstance(any(), any()) }.thenReturn(connectIQ)
+            doAnswer { invocation ->
+                sentMessages.add(
+                    invocation.getArgument<IQDevice>(0) to invocation.getArgument<String>(2)
+                )
+                null
+            }.whenever(connectIQ).sendMessage(any(), any(), any(), any())
+
+            manager.onDeviceStatusChanged(device, IQDevice.IQDeviceStatus.CONNECTED)
+            testDispatcher.scheduler.runCurrent()
+
+            playerState.value = PlayerRepository.PlayerState(
+                isPlaying = false,
+                playbackState = Player.STATE_IDLE,
+            )
+            currentTrack.value = track("track-1", "Stale Song", "140")
+
+            manager.onMessageReceived(
+                device,
+                app,
+                listOf("{\"type\":\"request_state\"}"),
+                ConnectIQ.IQMessageStatus.SUCCESS,
+            )
+            testDispatcher.scheduler.runCurrent()
+
+            assertEquals(1, sentMessages.size)
+            val state = GarminMessageCodec.decodeState(sentMessages[0].second)
+            assertEquals("none", state?.source)
+            assertFalse(state!!.isPlaying)
+            assertNull(state.title)
+            assertNull(state.trackId)
+
             manager.shutdown()
         }
     }

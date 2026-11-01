@@ -3,6 +3,7 @@
 package com.bpmapp.audio.audio.garmin
 
 import android.content.Context
+import android.media.AudioManager
 import androidx.media3.common.Player
 import com.bpmapp.audio.audio.MediaItemFactory
 import com.bpmapp.audio.audio.PlaylistRepository
@@ -13,17 +14,19 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Routes commands coming from the Garmin watch, per the routing table in
- * docs/companion_garmin_app/architecture.md:
+ * Routes commands coming from the Garmin watch to RunBeat only, per the
+ * routing table in docs/companion_garmin_app/architecture.md:
  *
- *  - transport commands (toggle/play/pause/next/prev) go to [PlayerRepository]
- *    when RunBeat is the active playback app, otherwise to [MediaKeyDispatcher]
- *    (media key events reach the app currently holding media focus);
- *  - volume always goes to [MediaKeyDispatcher] (STREAM_MUSIC works for RunBeat
- *    and external apps alike);
- *  - cadence / speed-correction / mark-not-for-running / seek are
- *    RunBeat-only and are rejected (ack ok=false) when RunBeat is not
- *    active;
+ *  - transport commands (toggle/play/pause/next/prev), volume, cadence /
+ *    speed-correction / shuffle / mark-not-for-running and seek all target
+ *    [PlayerRepository] (or, for volume, the STREAM_MUSIC volume) and only
+ *    while RunBeat is the active player: when RunBeat is not active, every
+ *    watch command is a no-op (ack ok=false) — the phone never reads or
+ *    drives other apps' media sessions or notifications for the watch;
+ *
+ *  - volume is the global STREAM_MUSIC volume via [AudioManager], which
+ *    applies to RunBeat like to any other player;
+ *
  *  - request_state is not routed at all: the manager intercepts it as a
  *    link-layer request and answers it with a state push.
  *
@@ -35,8 +38,8 @@ import javax.inject.Singleton
  * [currentState] from the Connect IQ SDK callbacks, which are delivered on the
  * main thread. The suspending mark path calls Room's suspend API directly, so
  * the UPDATE runs on Room's query executor without blocking any thread;
- * PlayerRepository is main-thread confined and MediaKeyDispatcher only
- * touches AudioManager.
+ * PlayerRepository is main-thread confined and the volume path only touches
+ * AudioManager.
  */
 @Singleton
 class GarminCommandRouter @Inject constructor(
@@ -44,18 +47,18 @@ class GarminCommandRouter @Inject constructor(
     private val trackRepository: TrackRepository,
     private val playlistRepository: PlaylistRepository,
     private val mediaItemFactory: MediaItemFactory,
-    private val mediaKeyDispatcher: MediaKeyDispatcher,
-    private val externalPlaybackMonitor: ExternalPlaybackMonitor,
     @ApplicationContext private val context: Context,
 ) {
+
+    private val audioManager: AudioManager
+        get() = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
     /**
      * True when RunBeat is the app holding the phone's media stream right
      * now: playing, or buffering a track (buffering counts so a watch
-     * "next" during a gap still lands in RunBeat rather than in another
-     * app). Transport commands route to [PlayerRepository] only in this
-     * state — a loaded-but-PAUSED track must NOT capture them, or the
-     * watch could no longer control other players (Spotify, podcasts, ...).
+     * "next" during a gap still lands in RunBeat). While this is false,
+     * every watch command is a no-op: the watch remote controls RunBeat
+     * only, never another app.
      */
     fun isRunBeatActive(): Boolean {
         val state = playerRepository.playerState.value
@@ -63,55 +66,47 @@ class GarminCommandRouter @Inject constructor(
     }
 
     /**
-     * True when RunBeat owns the "current track" context: only while it is
-     * the ACTIVE player (playing or buffering — see [isRunBeatActive]).
-     * A merely loaded-but-PAUSED track does NOT count: when another app
-     * (VLC, a podcast player, ...) is playing, the watch must show that
-     * app's track (source "external"), not RunBeat's stale title.
-     */
-    private fun isRunBeatOwned(): Boolean {
-        return isRunBeatActive()
-    }
-
-    /**
      * Routes one watch command and returns the ack to push back to the watch.
+     * Commands are no-ops (ack ok=false) when RunBeat is not the active
+     * player.
      */
     suspend fun handleCommand(cmd: GarminCommand): GarminAck {
         val active = isRunBeatActive()
-        val owned = isRunBeatOwned()
         return when (cmd) {
             is GarminCommand.Toggle -> {
-                if (active) playerRepository.togglePlayPause() else mediaKeyDispatcher.toggle()
-                GarminAck(cmd.wireType(), ok = true)
+                if (active) playerRepository.togglePlayPause()
+                GarminAck(cmd.wireType(), ok = active)
             }
             is GarminCommand.Play -> {
-                if (active) playerRepository.play() else mediaKeyDispatcher.play()
-                GarminAck(cmd.wireType(), ok = true)
+                if (active) playerRepository.play()
+                GarminAck(cmd.wireType(), ok = active)
             }
             is GarminCommand.Pause -> {
-                if (active) playerRepository.pause() else mediaKeyDispatcher.pause()
-                GarminAck(cmd.wireType(), ok = true)
+                if (active) playerRepository.pause()
+                GarminAck(cmd.wireType(), ok = active)
             }
             is GarminCommand.Next -> {
-                if (active) playerRepository.playNext() else mediaKeyDispatcher.next()
-                GarminAck(cmd.wireType(), ok = true)
+                if (active) playerRepository.playNext()
+                GarminAck(cmd.wireType(), ok = active)
             }
             is GarminCommand.Prev -> {
-                if (active) playerRepository.playPrevious() else mediaKeyDispatcher.previous()
-                GarminAck(cmd.wireType(), ok = true)
+                if (active) playerRepository.playPrevious()
+                GarminAck(cmd.wireType(), ok = active)
             }
-            // Volume is the global STREAM_MUSIC volume: it applies to RunBeat
-            // and to external apps alike, so it is never routed to the player.
+            // Volume is the global STREAM_MUSIC volume; it only applies while
+            // RunBeat is the active player (the watch controls RunBeat only).
             is GarminCommand.VolumeDelta -> {
-                mediaKeyDispatcher.adjustStreamVolume(cmd.delta)
-                GarminAck(cmd.wireType(), ok = true)
+                if (active) {
+                    audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, cmd.delta, 0)
+                }
+                GarminAck(cmd.wireType(), ok = active)
             }
             is GarminCommand.CadenceSet -> {
                 // Defensive: the codec filters non-finite values, but never
                 // forward NaN/Infinity to PlayerRepository.
                 if (!cmd.cadence.isFinite()) {
                     GarminAck(cmd.wireType(), ok = false)
-                } else if (owned) {
+                } else if (active) {
                     playerRepository.setTargetCadence(cmd.cadence)
                     GarminAck(cmd.wireType(), ok = true)
                 } else {
@@ -122,7 +117,7 @@ class GarminCommandRouter @Inject constructor(
             is GarminCommand.CadenceUseCurrent -> {
                 if (!cmd.cadence.isFinite()) {
                     GarminAck(cmd.wireType(), ok = false)
-                } else if (owned) {
+                } else if (active) {
                     playerRepository.setTargetCadence(cmd.cadence)
                     GarminAck(cmd.wireType(), ok = true)
                 } else {
@@ -130,7 +125,7 @@ class GarminCommandRouter @Inject constructor(
                 }
             }
             is GarminCommand.CadenceDelta -> {
-                if (owned) {
+                if (active) {
                     when {
                         cmd.delta > 0 -> playerRepository.incrementTargetCadence()
                         cmd.delta < 0 -> playerRepository.decrementTargetCadence()
@@ -141,30 +136,27 @@ class GarminCommandRouter @Inject constructor(
                 }
             }
             is GarminCommand.SpeedCorrectionToggle -> {
-                if (owned) {
+                if (active) {
                     playerRepository.toggleSpeedCorrection()
                     GarminAck(cmd.wireType(), ok = true)
                 } else {
                     GarminAck(cmd.wireType(), ok = false)
                 }
             }
-            // Shuffle is a RunBeat-only setting: there is no media-key
-            // equivalent for an app-local shuffle mode.
             is GarminCommand.ShuffleToggle -> {
-                if (owned) {
+                if (active) {
                     playerRepository.toggleShuffle()
                     GarminAck(cmd.wireType(), ok = true)
                 } else {
                     GarminAck(cmd.wireType(), ok = false)
                 }
             }
-            is GarminCommand.MarkNotForRunning -> markCurrentTrackNotForRunning(owned, cmd)
-            // Absolute seek is RunBeat-only: there is no media-key
-            // equivalent for an absolute position. The ack is returned for
+            is GarminCommand.MarkNotForRunning -> markCurrentTrackNotForRunning(active, cmd)
+            // Absolute seek is RunBeat-only. The ack is returned for
             // symmetry, but the manager does not send it — the following
             // state push (with the new positionMs) confirms the seek.
             is GarminCommand.Seek -> {
-                if (owned) {
+                if (active) {
                     playerRepository.seekTo(cmd.positionMs)
                     GarminAck(cmd.wireType(), ok = true)
                 } else {
@@ -223,17 +215,14 @@ class GarminCommandRouter @Inject constructor(
     /**
      * Builds the state message pushed to the watch. [GarminWatchState.source]
      * is "RunBeat" only while RunBeat is the active player (playing or
-     * buffering). When RunBeat is not actively playing — even if a track
-     * is loaded but paused — the external media session is consulted (via
-     * [ExternalPlaybackMonitor], needs notification access): source is
-     * "external" with the other app's title/artist/album and isPlaying when
-     * an external session exists, "none" otherwise.
-     * The RunBeat-only fields (trackId, durationMs, positionMs, bpm,
-     * targetCadence, speedCorrection, playbackSpeed) are null unless RunBeat
-     * owns the context; the codec omits null fields from the wire message.
-     * title/artist/album are sent for "RunBeat" and "external" alike and are
-     * omitted for "none", so the watch never shows a stale track name.
-     * [GarminWatchState.durationMs] is the track's
+     * buffering, see [isRunBeatActive]); otherwise it is "none" and the
+     * title/artist/album and all RunBeat-only fields (trackId, durationMs,
+     * positionMs, bpm, targetCadence, speedCorrection, playbackSpeed) are
+     * omitted (null), so the watch never shows a stale track name. The source
+     * is never "external": the phone does not read other apps' media sessions
+     * for the watch.
+     *
+     * For "RunBeat", [GarminWatchState.durationMs] is the track's
      * `extras.durationMs`, falling back to
      * [PlayerRepository.PlayerState.duration];
      * [GarminWatchState.positionMs] is the current position rounded down to
@@ -242,19 +231,11 @@ class GarminCommandRouter @Inject constructor(
      * GarminCompanionManager.watchStateFlow).
      */
     fun currentState(): GarminWatchState {
-        val owned = isRunBeatOwned()
-        if (!owned) {
-            // RunBeat is not the player: report what an external app is
-            // playing (track name included), or "none" when no external
-            // media session is available.
-            val external = externalPlaybackMonitor.currentExternalPlayback()
+        if (!isRunBeatActive()) {
             return GarminWatchState(
-                source = if (external != null) SOURCE_EXTERNAL else SOURCE_NONE,
-                isPlaying = external?.isPlaying ?: false,
-                title = external?.title,
-                artist = external?.artist,
-                album = external?.album,
-                volume = mediaKeyDispatcher.currentVolume(),
+                source = SOURCE_NONE,
+                isPlaying = false,
+                volume = currentVolume(),
             )
         }
         val track = playerRepository.currentTrack.value
@@ -276,10 +257,13 @@ class GarminCommandRouter @Inject constructor(
             targetCadence = playerRepository.targetCadence.value,
             speedCorrection = playerRepository.speedCorrectionEnabled.value,
             playbackSpeed = playerRepository.playbackSpeed.value,
-            volume = mediaKeyDispatcher.currentVolume(),
+            volume = currentVolume(),
             shuffle = playerRepository.shuffleEnabled.value,
         )
     }
+
+    /** Current STREAM_MUSIC media volume (AudioManager index). */
+    private fun currentVolume(): Int = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
 
     /**
      * Flags the current track "not for running" and skips it immediately
@@ -328,7 +312,6 @@ class GarminCommandRouter @Inject constructor(
 
     private companion object {
         const val SOURCE_RUNBEAT = "RunBeat"
-        const val SOURCE_EXTERNAL = "external"
         const val SOURCE_NONE = "none"
     }
 }

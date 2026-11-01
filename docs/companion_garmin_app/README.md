@@ -8,17 +8,20 @@ Wire protocol (normative): [architecture.md](architecture.md). On-device checkli
 [device_test_plan.md](device_test_plan.md). Simulator procedure:
 [simulator_runbook_2026-10-29.md](simulator_runbook_2026-10-29.md).
 
+The watch controls **RunBeat only**: the phone never reads other apps' notifications or media
+sessions for the companion. When RunBeat is not the active player, watch transport/volume
+commands are ignored and the pushed `source` is `"none"` (no track metadata).
+
 ## Features (all six shipped)
 
 | # | Feature | How |
 |---|---------|-----|
-| 1 | Play / pause / next / prev | watch command → `PlayerRepository`; when RunBeat isn't the player, forwarded as media key events |
+| 1 | Play / pause / next / prev | watch command → `PlayerRepository`; ignored when RunBeat isn't the active player |
 | 2 | Target cadence ±, or = 60 s average | watch samples its own cadence 1 Hz into a 60-sample ring buffer; "use current" sends the mean → `setTargetCadence` (clamped 150–195) |
 | 3 | Speed-correction toggle | → `PlayerRepository.toggleSpeedCorrection()` |
-| 4 | Volume up/down | `AudioManager` STREAM_MUSIC — global media volume, works for every app |
+| 4 | Volume up/down | `AudioManager` STREAM_MUSIC; ignored when RunBeat isn't the active player |
 | 5 | Mark track "not for running" | sets `Track.notForRunning` in Room (migration 6→7) **and skips immediately**; excluded from future queues behind a settings toggle (default ON). Wording: "does not feel right to run on", not a quality rating |
-| 6 | Control other music apps | With notification access granted (`GarminMediaNotificationListener`), transport → `MediaSessionManager.getActiveSessions` → playing external session's `MediaController.TransportControls`; fallback → `AudioManager.dispatchMediaKeyEvent` (unreliable on some builds). Volume → STREAM_MUSIC, permission-free. The external app's current track name/artist/album is read from the same session's metadata (`ExternalPlaybackMonitor`) and shown on the watch Main page as `source:"external"`; without notification access the watch shows "Nothing playing" |
-| 7 | Play a library playlist | Watch Playlists page (4th ViewLoop page) lists the phone's playlists (`playlist_list` → one `playlists` push); tap a row → `playlist_play` → phone loads the queue (not-for-running filter applied) and plays |
+| 6 | Play a library playlist | Watch Playlists page (4th ViewLoop page) lists the phone's playlists (`playlist_list` → one `playlists` push); tap a row → `playlist_play` → phone loads the queue (not-for-running filter applied) and plays |
 
 ## Confirmed decisions
 
@@ -55,7 +58,6 @@ Wire protocol (normative): [architecture.md](architecture.md). On-device checkli
 - Watch app: `garmin-watch/` — Connect IQ SDK 9.3.0, 16 product ids, IQ app UUID
   `06c14376-0c60-4e4c-a977-e93364ace3eb`, permissions `Communications` + `Sensor`
 - Phone Garmin layer: `app/src/main/java/com/bpmapp/audio/audio/garmin/` (SDK-free: codec,
-  router, media-key dispatcher) and `app/src/garmin/java/...` (SDK wiring:
-  `GarminCompanionManager`)
+  router) and `app/src/garmin/java/...` (SDK wiring: `GarminCompanionManager`)
 - Build scripts, developer key, per-device `.prg` outputs: outside the repo at
   `/c/Users/guill/dev/tools/garmin-build/`

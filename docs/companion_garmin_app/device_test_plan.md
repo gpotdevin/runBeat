@@ -39,7 +39,7 @@ Start. No GCM needed on this path. Full procedure: runbook.
 | 4 | Speed-correction toggle | Watch shows the state; RunBeat applies it |
 | 5 | Volume up/down | First screen shows current volume; phone STREAM_MUSIC changes |
 | 6 | Mark current track not-for-running | Track skipped immediately; flag stored; filter toggle ON by default → excluded next session |
-| 7 | External-app mode (Spotify/Qobuz/audiobook) | With notification access: Main page shows the external app's current track name/artist/album (header "External app"); transport controls the external session (media-key fallback); volume works. Without notification access: "Nothing playing" |
+| 7 | Another music app playing (Spotify/Qobuz/audiobook) | Source shows "none", no track metadata; watch transport/volume commands are ignored (the other app's playback and volume are unchanged). No notification-access grant needed |
 | 8 | Phone unreachable | Disable BT / force-stop RunBeat → "Phone not connected"; recovers on its own |
 | 9 | Navigation | 3 screens via vertical swipe (ViewLoop); tap = select; `M` = per-screen menu; horizontal swipe on page 1 = seek ±15 s. fr245 (CIQ 3.3.1) is Main-only |
 | 10 | Ack behavior | `cadence_*`, `speed_correction_toggle`, `mark_not_for_running` produce acks; transport/volume/request_state/seek do not (next state push confirms). `cadence_set` and `play` are protocol-level, not reachable from the UI |

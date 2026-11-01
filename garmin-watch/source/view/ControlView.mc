@@ -4,9 +4,10 @@ import Toybox.WatchUi;
 
 // Controls page: the volume entry. One big drawn button shows the
 // current volume and opens the pushed volume adjuster (upper half +,
-// lower half -, auto-return). Volume is the global STREAM_MUSIC volume —
-// it works for RunBeat and external apps alike, so nothing here is
-// source-gated. Select does the same as the button (tap = select).
+// lower half -, auto-return). Volume is the global STREAM_MUSIC volume;
+// the phone ignores the command when RunBeat is not the active player,
+// so nothing here is source-gated. Select does the same as the button
+// (tap = select).
 class ControlView extends BaseView {
 
     // Drawn button rect [x, y, w, h] from the last onUpdate (tap hit-testing).
@@ -112,9 +113,9 @@ class ControlViewMenuDelegate extends WatchUi.MenuInputDelegate {
 
     function onMenuItem(item as Symbol) as Void {
         switch (item) {
-            // Volume always works: STREAM_MUSIC applies to RunBeat and
-            // external apps alike. For non-touch devices without access
-            // to the pushed adjuster.
+            // Volume is sent unconditionally: the phone ignores it when
+            // RunBeat is not the active player. For non-touch devices
+            // without access to the pushed adjuster.
             case :volume_down:
                 _messages.sendVolumeDelta(-1);
                 break;

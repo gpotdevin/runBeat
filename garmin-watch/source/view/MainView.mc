@@ -6,9 +6,10 @@ import Toybox.System;
 
 import Toybox.WatchUi;
 
-// Screen 1 — music-control remote. Works for RunBeat AND external apps.
+// Screen 1 — music-control remote for RunBeat (the phone ignores the
+// commands when RunBeat is not the active player).
 // Top to bottom: header (source label / connection status), a big shuffle
-// toggle icon (RunBeat only; gray for external players), artist / album,
+// toggle icon (RunBeat only; gray when RunBeat is not active), artist / album,
 // then a transport row (◀ prev
 // button, progress bar with an m:ss caption, ▶ next button), the track
 // title in a large font, and the "Exclude" button at the very bottom.
@@ -35,7 +36,6 @@ class MainView extends BaseView {
     private var _strMarkNotForRunning as String;
     private var _strAppName as String;
     private var _strNoPlayback as String;
-    private var _strExternalApp as String;
     private var _strAckRunBeatOnly as String;
 
     function initialize(state, messages) {
@@ -44,7 +44,6 @@ class MainView extends BaseView {
         _strMarkNotForRunning = WatchUi.loadResource(Rez.Strings.MenuMarkNotForRunning) as String;
         _strAppName = WatchUi.loadResource(Rez.Strings.AppName) as String;
         _strNoPlayback = WatchUi.loadResource(Rez.Strings.NoPlayback) as String;
-        _strExternalApp = WatchUi.loadResource(Rez.Strings.ExternalApp) as String;
         _strAckRunBeatOnly = WatchUi.loadResource(Rez.Strings.AckRunBeatOnly) as String;
     }
 
@@ -135,10 +134,10 @@ class MainView extends BaseView {
 
         // --- Shuffle toggle icon (top of the screen) -----------------------
         // RunBeat-only feature: WHITE when shuffle is off, GREEN when on;
-        // dimmed gray for external players (tapping it there shows the
-        // "RunBeat only" ack). Tapping the icon sends the toggle; tapping
-        // anywhere else still toggles play/pause. The hit rect is padded
-        // well beyond the drawn icon (min 56x56) so taps land reliably.
+        // dimmed gray when RunBeat is not active (tapping it there shows
+        // the "RunBeat only" ack). Tapping the icon sends the toggle;
+        // tapping anywhere else still toggles play/pause. The hit rect is
+        // padded well beyond the drawn icon (min 56x56) so taps land reliably.
         var iconHit = maxNum(56, iconH).toNumber();
         _btnShuffle = [((w - iconHit) / 2).toNumber(), (iconCY - iconHit / 2).toNumber(), iconHit, iconHit];
         if (!runBeat) {
@@ -162,21 +161,6 @@ class MainView extends BaseView {
             dc.drawText(w / 2, yAlbum, Graphics.FONT_TINY,
                 truncateToWidth(dc, album, Graphics.FONT_TINY, textWidthAt(dc, yAlbum, 0.84)),
                 Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
-        } else if (_state.artist.length() > 0 || _state.album.length() > 0) {
-            // No RunBeat track: an external app (source "external") still
-            // shows its artist / album when known.
-            if (_state.artist.length() > 0) {
-                dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_BLACK);
-                dc.drawText(w / 2, yArtist, Graphics.FONT_SMALL,
-                    truncateToWidth(dc, _state.artist, Graphics.FONT_SMALL, textWidthAt(dc, yArtist, 0.84)),
-                    Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
-            }
-            if (_state.album.length() > 0) {
-                dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
-                dc.drawText(w / 2, yAlbum, Graphics.FONT_TINY,
-                    truncateToWidth(dc, _state.album, Graphics.FONT_TINY, textWidthAt(dc, yAlbum, 0.84)),
-                    Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
-            }
         }
 
         // --- Transport row: ◀ prev | progress bar | next ▶ (~0.55 h) ------
@@ -184,7 +168,7 @@ class MainView extends BaseView {
         // "next track" via :swipe_right never reaches onHorizontalSwipe().
         // Tappable buttons are the reliable transport on touch devices.
         // The progress bar is drawn BETWEEN the two buttons; without a
-        // known duration (external player) only the buttons are drawn.
+        // known duration (RunBeat not active) only the buttons are drawn.
         _btnPrev = [tPrevX, tY, tB, tB];
         _btnNext = [tNextX, tY, tB, tB];
         // No background fill: just big white line-drawn arrow triangles
@@ -226,27 +210,19 @@ class MainView extends BaseView {
                 truncateToWidth(dc, title, Graphics.FONT_LARGE, textWidthAt(dc, yTitle, 0.80)),
                 Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
         } else {
-            // No RunBeat track: an external app (source "external") still
-            // shows its current track name; otherwise the source label only.
-            var extTitle = _state.title;
-            if (extTitle.length() > 0) {
-                dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_BLACK);
-                dc.drawText(w / 2, yTitle, Graphics.FONT_LARGE,
-                    truncateToWidth(dc, extTitle, Graphics.FONT_LARGE, textWidthAt(dc, yTitle, 0.80)),
-                    Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
-            } else {
-                dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
-                dc.drawText(w / 2, yTitle, Graphics.FONT_LARGE,
-                    truncateToWidth(dc, sourceLabelText(), Graphics.FONT_LARGE, textWidthAt(dc, yTitle, 0.80)),
-                    Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
-            }
+            // RunBeat not active: no track name, just the source label
+            // ("Nothing playing" for source "none").
+            dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
+            dc.drawText(w / 2, yTitle, Graphics.FONT_LARGE,
+                truncateToWidth(dc, sourceLabelText(), Graphics.FONT_LARGE, textWidthAt(dc, yTitle, 0.80)),
+                Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
         }
 
         // --- "Exclude" button (bottom-most, ~0.85 h; touch devices have no MENU key) --
         // Same proven rendering as ControlView's volume button: one rounded
         // rect (radius 16) with a white FONT_LARGE label centered in it.
         // All geometry is Number - mixed Float/Number args break rendering.
-        // RunBeat-only command: not drawn at all for external players.
+        // RunBeat-only command: not drawn at all when RunBeat is not active.
         if (runBeat) {
             _btnMark = [bLeft, bTop, bW, bH];
             dc.setColor(Graphics.COLOR_GREEN, Graphics.COLOR_BLACK);
@@ -295,7 +271,8 @@ class MainView extends BaseView {
         return false;
     }
 
-    // Select/ENTER = play/pause (works for RunBeat and external apps).
+    // Select/ENTER = play/pause (the phone ignores it when RunBeat is not
+    // the active player).
     function onSelectPressed() as Void {
         _messages.sendToggle();
     }
@@ -317,14 +294,7 @@ class MainView extends BaseView {
         if (_state.source.equals("RunBeat")) {
             return _strAppName;
         }
-        if (_state.source.length() == 0 || _state.source.equals("none")) {
-            return _strNoPlayback;
-        }
-        if (_state.source.equals("external")) {
-            return _strExternalApp;
-        }
-        // External app name pushed by the phone (optional notification access).
-        return _state.source;
+        return _strNoPlayback;
     }
 
     private function sourceLabelColor() as Number {

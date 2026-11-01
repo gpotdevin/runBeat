@@ -69,7 +69,7 @@ interactive prompt — use `powershell -NoProfile -Command`.
    first (`sim-win.ps1 dismiss <dialogHwnd>`). Menu ids: Start=6033, Release=6034, Kill App=6005,
    Background Events=6131, Phone App Message=6135.
 8. **Verify the link** (phone side only): filtered logcat
-   (`adb logcat -s GarminCompanionManager:V GarminCommandRouter:V MediaKeyDispatcher:V PlayerRepository:V ConnectIQ-AdbConnection:V AndroidRuntime:E *:S`)
+   (`adb logcat -s GarminCompanionManager:V GarminCommandRouter:V PlayerRepository:V ConnectIQ-AdbConnection:V AndroidRuntime:E *:S`)
    → `Simulator connected` then `Garmin watch connected`; `grep -i 1CD5 /proc/net/tcp6` shows
    ESTABLISHED (`01`) on 127.0.0.1:7381. While playing: `Wrote N bytes` ~1/s, `Received 48` every 5 s.
 9. **Start a logcat capture before the test**, keep it running.

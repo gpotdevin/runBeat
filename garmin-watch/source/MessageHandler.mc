@@ -25,8 +25,8 @@ import Toybox.WatchUi;
 //   {"type":"state","source":"RunBeat","isPlaying":true,"trackId":"...","title":"...",
 //    "artist":"...","album":"...","durationMs":213000,"positionMs":42000,
 //    "bpm":140.0,"targetCadence":172,"speedCorrection":true,"shuffle":false,"playbackSpeed":1.03,"volume":12}
-//     - title/artist/album: track metadata, sent for source "RunBeat" and
-//       "external" (the other app's current track); omitted for "none";
+//     - title/artist/album: track metadata, sent for source "RunBeat";
+//       omitted for "none";
 //     - durationMs/positionMs: track length and playback position in ms
 //       (positionMs rounded down to 5 s buckets by the phone; the watch
 //       extrapolates it locally while playing), RunBeat only;
@@ -210,7 +210,7 @@ class MessageHandler {
             s.speedCorrection = speedCorrection as Boolean;
         }
         // Shuffle is a RunBeat-only feature, but parsed regardless: the
-        // phone sends false when the source is external.
+        // phone sends false when the source is "none".
         var shuffle = dict["shuffle"];
         if (shuffle instanceof Boolean) {
             s.shuffle = shuffle as Boolean;
@@ -219,27 +219,18 @@ class MessageHandler {
         s.volume = optionalFloat(dict, "volume");
 
         if (!s.source.equals("RunBeat")) {
-            // RunBeat-only fields are omitted for other sources; drop stale
+            // RunBeat-only fields are omitted for source "none"; drop stale
             // values so nothing RunBeat-specific lingers on screen.
             s.trackId = "";
+            s.title = "";
+            s.artist = "";
+            s.album = "";
             s.durationMs = null;
             s.positionMs = null;
             s.bpm = null;
             s.targetCadence = null;
             s.speedCorrection = false;
             s.playbackSpeed = null;
-            if (s.source.equals("external")) {
-                // An external app's track name is part of the push when the
-                // phone knows it; a field absent from the push means "no
-                // value" — clear it so no stale name lingers.
-                s.title = stringOrEmpty(dict, "title");
-                s.artist = stringOrEmpty(dict, "artist");
-                s.album = stringOrEmpty(dict, "album");
-            } else {
-                s.title = "";
-                s.artist = "";
-                s.album = "";
-            }
         }
 
         s.markMessageReceived();
@@ -369,13 +360,6 @@ class MessageHandler {
             }
         }
         return result;
-    }
-
-    // The string value of dict[key], or "" when the key is absent or not a
-    // string (used for external-source fields: absent means "no value").
-    private function stringOrEmpty(dict as Dictionary, key as String) as String {
-        var v = dict[key];
-        return v instanceof String ? v as String : "";
     }
 
     private function optionalFloat(dict as Dictionary, key as String) as Float? {

@@ -55,8 +55,8 @@ class BaseView extends WatchUi.View {
     // the volume, the lower half lowers it, the center displays the
     // current value; it auto-returns 3 s after the last tap (driven by
     // the app's 1 Hz tick through WatchState.adjustScreen). Volume is
-    // the global STREAM_MUSIC volume: it works for RunBeat and external
-    // apps alike, so no source gating here.
+    // the global STREAM_MUSIC volume; the phone ignores the command when
+    // RunBeat is not the active player, so no source gating here.
     function pushVolumeAdjustScreen() as Void {
         var view = new VolumeSetView(_state);
         view.arm();

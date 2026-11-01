@@ -79,15 +79,14 @@ sealed class GarminCommand {
  *    "artist":"...","album":"...","durationMs":213000,"positionMs":42000,
  *    "bpm":140.0,"targetCadence":172,"speedCorrection":true,"playbackSpeed":1.03,"volume":12,"shuffle":false}
  *
- * [source] is "RunBeat" when RunBeat is the active playback app, "external"
- * when another app holds the active media session (requires notification
- * access; title/artist/album/isPlaying come from that session's metadata),
- * otherwise "none". The RunBeat-only fields ([trackId], [durationMs],
+ * [source] is "RunBeat" when RunBeat is the active playback app, otherwise
+ * "none" (never "external": the phone does not read other apps' media
+ * sessions for the watch). The RunBeat-only fields ([trackId], [durationMs],
  * [positionMs], [bpm], [targetCadence], [speedCorrection], [playbackSpeed])
- * are null unless RunBeat owns the context; [title], [artist], [album] are
- * sent for "RunBeat" and "external" alike. Null fields are omitted from the
- * wire message. [shuffle] is the RunBeat shuffle state (false for
- * "external"/"none").
+ * are null unless RunBeat is the active player; [title], [artist], [album]
+ * are sent only for "RunBeat" and omitted for "none". Null fields are omitted
+ * from the wire message. [shuffle] is the RunBeat shuffle state (false for
+ * "none").
  * [positionMs] is rounded down to 5-second buckets by the phone
  * (currentPosition / 5000 * 5000) so the push rate stays at ~1/5s while
  * playing; the watch extrapolates the position locally between pushes.

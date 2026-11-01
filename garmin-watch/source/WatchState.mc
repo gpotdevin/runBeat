@@ -13,7 +13,7 @@ class WatchState {
     static const ACK_VISIBLE_MS = 2500;
 
     // --- playback state (from "state" messages) ---
-    var source as String = "none";      // "RunBeat" | "external" | external app name | "none"
+    var source as String = "none";      // "RunBeat" | "none"
     var isPlaying as Boolean = false;
     var trackId as String = "";
     var title as String = "";
@@ -27,7 +27,7 @@ class WatchState {
     var bpm as Float? = null;
     var targetCadence as Float? = null;
     var speedCorrection as Boolean = false;
-    var shuffle as Boolean = false;    // shuffle mode on (RunBeat only; phone sends false for external)
+    var shuffle as Boolean = false;    // shuffle mode on (RunBeat only; false for "none")
     var playbackSpeed as Float? = null;
     var volume as Float? = null;        // AudioManager STREAM_MUSIC index
 

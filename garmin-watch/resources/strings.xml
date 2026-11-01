@@ -9,7 +9,6 @@
     <string id="PlaylistsHeader">PLAYLISTS</string>
 
     <!-- Main page. -->
-    <string id="ExternalApp">External app</string>
     <string id="NoPlayback">Nothing playing</string>
     <string id="NoPlaylists">No playlists</string>
     <string id="PhoneNotConnected">Phone not connected</string>

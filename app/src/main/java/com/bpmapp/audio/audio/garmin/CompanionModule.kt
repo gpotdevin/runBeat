@@ -2,14 +2,11 @@
 
 package com.bpmapp.audio.audio.garmin
 
-import android.content.Context
-import android.media.AudioManager
 import dagger.BindsOptionalOf
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
-import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import java.util.Optional
 import javax.inject.Singleton
@@ -40,12 +37,6 @@ abstract class CompanionModule {
             starter: Optional<GarminCompanionStarter>,
         ): CompanionInitializer =
             if (starter.isPresent) starter.get() else NoopCompanionInitializer
-
-        @Provides
-        @Singleton
-        @JvmStatic
-        fun provideMediaKeyDispatcher(@ApplicationContext context: Context): MediaKeyDispatcher =
-            MediaKeyDispatcher(context, context.getSystemService(Context.AUDIO_SERVICE) as AudioManager)
     }
 }
 
