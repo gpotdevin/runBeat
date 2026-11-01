@@ -11,6 +11,7 @@ import Toybox.WatchUi;
 //   {"type":"cadence_delta","delta":1} or {"delta":-1}
 //   {"type":"cadence_use_current","cadence":172}
 //   {"type":"speed_correction_toggle"}
+//   {"type":"shuffle_toggle"}
 //   {"type":"volume_delta","delta":1} or {"delta":-1}
 //   {"type":"mark_not_for_running"}
 //   {"type":"request_state"}            (no payload, no ack; the phone answers
@@ -23,11 +24,13 @@ import Toybox.WatchUi;
 // Phone -> watch:
 //   {"type":"state","source":"RunBeat","isPlaying":true,"trackId":"...","title":"...",
 //    "artist":"...","album":"...","durationMs":213000,"positionMs":42000,
-//    "bpm":140.0,"targetCadence":172,"speedCorrection":true,"playbackSpeed":1.03,"volume":12}
-//     - artist/album: track metadata (required when source == "RunBeat");
+//    "bpm":140.0,"targetCadence":172,"speedCorrection":true,"shuffle":false,"playbackSpeed":1.03,"volume":12}
+//     - title/artist/album: track metadata, sent for source "RunBeat" and
+//       "external" (the other app's current track); omitted for "none";
 //     - durationMs/positionMs: track length and playback position in ms
-//       (positionMs rounded down to whole seconds by the phone);
-//     - both are null/omitted when source != "RunBeat" or unknown.
+//       (positionMs rounded down to 5 s buckets by the phone; the watch
+//       extrapolates it locally while playing), RunBeat only;
+//     - RunBeat-only fields are null/omitted when source != "RunBeat".
 //   {"type":"ack","command":"mark_not_for_running","ok":true}
 //   {"type":"playlists","count":N,"id0":"...","name0":"...",...}
 //     - flat indexed fields (the parser skips nested arrays/objects);
@@ -76,6 +79,10 @@ class MessageHandler {
 
     function sendSpeedCorrectionToggle() as Void {
         sendJson("{\"type\":\"speed_correction_toggle\"}");
+    }
+
+    function sendShuffleToggle() as Void {
+        sendJson("{\"type\":\"shuffle_toggle\"}");
     }
 
     function sendVolumeDelta(delta as Number) as Void {
@@ -156,13 +163,16 @@ class MessageHandler {
         // label when this message un-stales the link — repaint even if the
         // state content is unchanged.
         var wasStale = s.isStale(now);
-        // Snapshot of every rendered field except positionMs: while playing
-        // the phone pushes ~1/s and only positionMs advances, and painting
-        // those pushes immediately would double the repaint rate on top of
+        // Snapshot of every RENDERED field except positionMs: while playing
+        // the phone pushes ~1/5s and only positionMs advances, and painting
+        // those pushes immediately would add repaints on top of
         // the 1 Hz tick. A position-only push is deferred to the tick.
-        var before = [s.source, s.isPlaying, s.trackId, s.title, s.artist,
-            s.album, s.durationMs, s.bpm, s.targetCadence, s.speedCorrection,
-            s.playbackSpeed, s.volume];
+        // bpm/trackId/playbackSpeed are deliberately excluded: no view
+        // renders them (WatchState.bpmText/playbackSpeedText are dead code),
+        // so changes to them must not trigger a repaint.
+        var before = [s.source, s.isPlaying, s.title, s.artist,
+            s.album, s.durationMs, s.targetCadence, s.speedCorrection,
+            s.shuffle, s.volume];
         var source = dict["source"];
         if (source instanceof String) {
             s.source = source as String;
@@ -189,34 +199,53 @@ class MessageHandler {
         }
         s.durationMs = optionalNumber(dict, "durationMs");
         s.positionMs = optionalNumber(dict, "positionMs");
+        // Anchor for local position extrapolation (WatchState
+        // .effectivePositionMs): the phone pushes position in 5 s buckets,
+        // the watch advances it between pushes while playing.
+        s.positionTimestampMs = now;
         s.bpm = optionalFloat(dict, "bpm");
         s.targetCadence = optionalFloat(dict, "targetCadence");
         var speedCorrection = dict["speedCorrection"];
         if (speedCorrection instanceof Boolean) {
             s.speedCorrection = speedCorrection as Boolean;
         }
+        // Shuffle is a RunBeat-only feature, but parsed regardless: the
+        // phone sends false when the source is external.
+        var shuffle = dict["shuffle"];
+        if (shuffle instanceof Boolean) {
+            s.shuffle = shuffle as Boolean;
+        }
         s.playbackSpeed = optionalFloat(dict, "playbackSpeed");
         s.volume = optionalFloat(dict, "volume");
 
         if (!s.source.equals("RunBeat")) {
-            // RunBeat-only fields are omitted or null for other sources; drop
-            // stale values so nothing RunBeat-specific lingers on screen.
+            // RunBeat-only fields are omitted for other sources; drop stale
+            // values so nothing RunBeat-specific lingers on screen.
             s.trackId = "";
-            s.title = "";
-            s.artist = "";
-            s.album = "";
             s.durationMs = null;
             s.positionMs = null;
             s.bpm = null;
             s.targetCadence = null;
             s.speedCorrection = false;
             s.playbackSpeed = null;
+            if (s.source.equals("external")) {
+                // An external app's track name is part of the push when the
+                // phone knows it; a field absent from the push means "no
+                // value" — clear it so no stale name lingers.
+                s.title = stringOrEmpty(dict, "title");
+                s.artist = stringOrEmpty(dict, "artist");
+                s.album = stringOrEmpty(dict, "album");
+            } else {
+                s.title = "";
+                s.artist = "";
+                s.album = "";
+            }
         }
 
         s.markMessageReceived();
-        var after = [s.source, s.isPlaying, s.trackId, s.title, s.artist,
-            s.album, s.durationMs, s.bpm, s.targetCadence, s.speedCorrection,
-            s.playbackSpeed, s.volume];
+        var after = [s.source, s.isPlaying, s.title, s.artist,
+            s.album, s.durationMs, s.targetCadence, s.speedCorrection,
+            s.shuffle, s.volume];
         if (wasStale || !statesEqual(before, after)) {
             WatchUi.requestUpdate();
         } else {
@@ -340,6 +369,13 @@ class MessageHandler {
             }
         }
         return result;
+    }
+
+    // The string value of dict[key], or "" when the key is absent or not a
+    // string (used for external-source fields: absent means "no value").
+    private function stringOrEmpty(dict as Dictionary, key as String) as String {
+        var v = dict[key];
+        return v instanceof String ? v as String : "";
     }
 
     private function optionalFloat(dict as Dictionary, key as String) as Float? {

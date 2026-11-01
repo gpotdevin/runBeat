@@ -2,6 +2,7 @@ package com.bpmapp.audio.ui
 
 import android.Manifest
 import android.content.Context
+import android.net.Uri
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -179,11 +180,11 @@ fun LibraryScreen(
     onAddToUpcoming: (Track) -> Unit = {},
     onAddToUpcomingBatch: (List<Track>) -> Unit = {},
     targetCadence: Int = 172,
-    viewModel: LibraryViewModel? = null
+    libraryViewModel: LibraryViewModel? = null
 ) {
     // Use the provided (Activity-scoped) ViewModel so library filters persist across
     // navigation. Fall back to a destination-scoped instance when none is supplied.
-    val viewModel = viewModel ?: hiltViewModel()
+    val viewModel = libraryViewModel ?: hiltViewModel()
     val cadenceMatcher = remember { CadenceMatcher() }
     
     // Tab state
@@ -214,6 +215,7 @@ fun LibraryScreen(
     val filteredBaseTracks by viewModel.filteredTracks.collectAsState(emptyList())
     val favoriteTracks by viewModel.favoriteTracks.collectAsState(emptyList())
     val hasScannedLibrary by viewModel.hasScannedLibrary.collectAsState()
+    val scanOfferDismissed by viewModel.scanOfferDismissed.collectAsState()
     val playlists by viewModel.playlists.collectAsState(emptyList())
     val playlistTrackMap by viewModel.playlistTrackMap.collectAsState(emptyMap())
     
@@ -249,12 +251,13 @@ fun LibraryScreen(
     var playlistNameInput by remember { mutableStateOf("") }
     var playlistBeingRenamed by remember { mutableStateOf<Playlist?>(null) }
     var playlistBeingDeleted by remember { mutableStateOf<Playlist?>(null) }
+    var playlistPendingExport by remember { mutableStateOf<Playlist?>(null) }
     var showAddToPlaylistDialog by remember { mutableStateOf(false) }
     var targetTrackIds by remember { mutableStateOf<List<String>>(emptyList()) }
     
     // Check if we need to show scan library dialog on first launch
     LaunchedEffect(Unit) {
-        if (filteredBaseTracks.isEmpty() && !hasScannedLibrary) {
+        if (filteredBaseTracks.isEmpty() && !hasScannedLibrary && !scanOfferDismissed) {
             showScanLibraryOfferDialog = true
         }
     }
@@ -302,6 +305,27 @@ fun LibraryScreen(
             pendingFileWriteAction?.invoke()
         }
         pendingFileWriteAction = null
+    }
+
+    // SAF launcher for exporting a playlist to an M3U file. The suggested
+    // filename is set from the pending playlist when launching.
+    val scope = rememberCoroutineScope()
+    val m3uExportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("audio/x-mpegurl")
+    ) { uri: Uri? ->
+        val playlist = playlistPendingExport
+        playlistPendingExport = null
+        if (uri != null && playlist != null) {
+            scope.launch {
+                val result = viewModel.exportPlaylistToM3u(playlist.id, uri)
+                snackbarHostState.showSnackbar(
+                    context.getString(
+                        if (result.isSuccess) R.string.playlist_export_success
+                        else R.string.playlist_export_failed
+                    )
+                )
+            }
+        }
     }
     
     /**
@@ -1209,21 +1233,6 @@ fun LibraryScreen(
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         textAlign = TextAlign.Center
                                     )
-                                    Button(
-                                        onClick = {
-                                            if (hasPermission) {
-                                                viewModel.scanSystemLibrary()
-                                            } else {
-                                                showPermissionDialog = true
-                                            }
-                                        },
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = MaterialTheme.colorScheme.primary,
-                                            contentColor = MaterialTheme.colorScheme.onPrimary
-                                        )
-                                    ) {
-                                        Text(stringResource(R.string.library_scan_now))
-                                    }
                                 } else {
                                     Icon(
                                         imageVector = Icons.Filled.FilterList,
@@ -1242,6 +1251,25 @@ fun LibraryScreen(
                                          color = MaterialTheme.colorScheme.onSurfaceVariant,
                                          textAlign = TextAlign.Center
                                      )
+                                }
+                                // Scan shortcut only shown when library was
+                                // never scanned; re-scan stays in the overflow menu.
+                                if (!hasScannedLibrary) {
+                                    Button(
+                                        onClick = {
+                                            if (hasPermission) {
+                                                viewModel.scanSystemLibrary()
+                                            } else {
+                                                showPermissionDialog = true
+                                            }
+                                        },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = MaterialTheme.colorScheme.primary,
+                                            contentColor = MaterialTheme.colorScheme.onPrimary
+                                        )
+                                    ) {
+                                        Text(stringResource(R.string.library_scan_now))
+                                    }
                                 }
                             }
                         }
@@ -1274,6 +1302,17 @@ fun LibraryScreen(
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         textAlign = TextAlign.Center
                                     )
+                                } else {
+                                    Text(
+                                        text = stringResource(R.string.library_try_adjusting),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
+                                // Scan shortcut only shown when library was
+                                // never scanned; re-scan stays in the overflow menu.
+                                if (!hasScannedLibrary) {
                                     Button(
                                         onClick = {
                                             if (hasPermission) {
@@ -1289,13 +1328,6 @@ fun LibraryScreen(
                                     ) {
                                         Text(stringResource(R.string.library_scan_now))
                                     }
-                                } else {
-                                    Text(
-                                        text = stringResource(R.string.library_try_adjusting),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        textAlign = TextAlign.Center
-                                    )
                                 }
                             }
                         }
@@ -1380,7 +1412,11 @@ onAddToPlaylist = {
                     },
                     onCreatePlaylist = { showCreatePlaylistDialog = true },
                     onRenamePlaylist = { playlist -> playlistBeingRenamed = playlist },
-                    onDeletePlaylist = { playlist -> playlistBeingDeleted = playlist }
+                    onDeletePlaylist = { playlist -> playlistBeingDeleted = playlist },
+                    onExportPlaylist = { playlist ->
+                        playlistPendingExport = playlist
+                        m3uExportLauncher.launch("${playlist.name}.m3u")
+                    }
                 )
             }
 
@@ -1480,7 +1516,12 @@ onAddToPlaylist = {
             },
             dismissButton = {
                 Button(
-                    onClick = { showScanLibraryOfferDialog = false }
+                    onClick = {
+                        // "Not Now": dismiss permanently so the offer does not
+                        // reappear on the next visit to this screen.
+                        viewModel.dismissScanOffer()
+                        showScanLibraryOfferDialog = false
+                    }
                 ) {
                     Text(stringResource(R.string.library_scan_offer_cancel))
                 }
@@ -1910,7 +1951,8 @@ fun PlaylistsContent(
     onRemoveTrack: (Playlist, Track) -> Unit,
     onCreatePlaylist: () -> Unit,
     onRenamePlaylist: (Playlist) -> Unit,
-    onDeletePlaylist: (Playlist) -> Unit
+    onDeletePlaylist: (Playlist) -> Unit,
+    onExportPlaylist: (Playlist) -> Unit
 ) {
     var expandedPlaylistId by remember { mutableStateOf<String?>(null) }
     
@@ -1977,6 +2019,7 @@ fun PlaylistsContent(
                         onPlay = { onPlayPlaylist(playlistTracks[playlist.id].orEmpty()) },
                         onRename = { onRenamePlaylist(playlist) },
                         onDelete = { onDeletePlaylist(playlist) },
+                        onExport = { onExportPlaylist(playlist) },
                         onRemoveTrack = { track -> onRemoveTrack(playlist, track) },
                         onTrackSelected = onTrackSelected,
                         onToggleFavorite = onToggleFavorite
@@ -1996,6 +2039,7 @@ fun PlaylistItem(
     onPlay: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit,
+    onExport: () -> Unit,
     onRemoveTrack: (Track) -> Unit,
     onTrackSelected: (Track) -> Unit,
     onToggleFavorite: (Track) -> Unit
@@ -2047,6 +2091,14 @@ fun PlaylistItem(
                         tint = MaterialTheme.colorScheme.primary
                     )
                 }
+                IconButton(onClick = onExport, modifier = Modifier.touchTarget()) {
+                    Icon(
+                        imageVector = Icons.Filled.Download,
+                        contentDescription = stringResource(R.string.playlist_export_m3u),
+                        modifier = Modifier.size(22.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
                 IconButton(onClick = onRename, modifier = Modifier.touchTarget()) {
                     Icon(
                         imageVector = Icons.Filled.Edit,
@@ -2074,7 +2126,8 @@ fun PlaylistItem(
                         modifier = Modifier.padding(AppSpacing.sm)
                     )
                 } else {
-                    tracks.forEach { track ->
+                    Column {
+                        tracks.forEach { track ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -2120,6 +2173,7 @@ fun PlaylistItem(
                                     tint = MaterialTheme.colorScheme.error
                                 )
                             }
+                        }
                         }
                     }
                 }
@@ -2235,7 +2289,6 @@ fun FilterChip(
     }
     
     val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
 
     val selectedStateText = stringResource(if (selected) R.string.filter_chip_selected else R.string.filter_chip_not_selected)
     val chipContentDesc = stringResource(R.string.filter_chip_desc, label, selectedStateText)

@@ -48,6 +48,7 @@ class GarminCommandRouterTest {
     private lateinit var trackRepository: TrackRepository
     private lateinit var playlistRepository: PlaylistRepository
     private lateinit var mediaKeyDispatcher: MediaKeyDispatcher
+    private lateinit var externalPlaybackMonitor: ExternalPlaybackMonitor
     private lateinit var context: Context
     private lateinit var router: GarminCommandRouter
 
@@ -56,6 +57,7 @@ class GarminCommandRouterTest {
     private lateinit var targetCadence: MutableStateFlow<Float>
     private lateinit var speedCorrectionEnabled: MutableStateFlow<Boolean>
     private lateinit var playbackSpeed: MutableStateFlow<Float>
+    private lateinit var shuffleEnabled: MutableStateFlow<Boolean>
 
     @Before
     fun setUp() {
@@ -63,6 +65,8 @@ class GarminCommandRouterTest {
         trackRepository = mock()
         playlistRepository = mock()
         mediaKeyDispatcher = mock()
+        externalPlaybackMonitor = mock()
+        whenever(externalPlaybackMonitor.currentExternalPlayback()).thenReturn(null)
         context = ApplicationProvider.getApplicationContext<Context>()
         // Start each test with a clean "AppSettings" prefs file; the
         // exclude-not-for-running default is ON.
@@ -73,11 +77,13 @@ class GarminCommandRouterTest {
         targetCadence = MutableStateFlow(172f)
         speedCorrectionEnabled = MutableStateFlow(true)
         playbackSpeed = MutableStateFlow(1.0f)
+        shuffleEnabled = MutableStateFlow(false)
         whenever(playerRepository.playerState).thenReturn(playerState)
         whenever(playerRepository.currentTrack).thenReturn(currentTrack)
         whenever(playerRepository.targetCadence).thenReturn(targetCadence)
         whenever(playerRepository.speedCorrectionEnabled).thenReturn(speedCorrectionEnabled)
         whenever(playerRepository.playbackSpeed).thenReturn(playbackSpeed)
+        whenever(playerRepository.shuffleEnabled).thenReturn(shuffleEnabled)
         whenever(mediaKeyDispatcher.currentVolume()).thenReturn(7)
         router = GarminCommandRouter(
             playerRepository,
@@ -85,6 +91,7 @@ class GarminCommandRouterTest {
             playlistRepository,
             MediaItemFactory(),
             mediaKeyDispatcher,
+            externalPlaybackMonitor,
             context,
         )
     }
@@ -430,6 +437,28 @@ class GarminCommandRouterTest {
     }
 
     // ---------------------------------------------------------------
+    // Shuffle toggle — RunBeat only
+    // ---------------------------------------------------------------
+
+    @Test
+    fun shuffleToggle_togglesShuffleWhenActive() {
+        setRunBeatActive(true)
+        val ack = runBlocking { router.handleCommand(GarminCommand.ShuffleToggle) }
+        verify(playerRepository).toggleShuffle()
+        assertTrue(ack.ok)
+        assertEquals("shuffle_toggle", ack.command)
+    }
+
+    @Test
+    fun shuffleToggle_rejectedWhenInactive() {
+        setRunBeatActive(false)
+        val ack = runBlocking { router.handleCommand(GarminCommand.ShuffleToggle) }
+        verify(playerRepository, never()).toggleShuffle()
+        assertFalse(ack.ok)
+        assertEquals("shuffle_toggle", ack.command)
+    }
+
+    // ---------------------------------------------------------------
     // Mark not for running — RunBeat only, skips immediately
     // ---------------------------------------------------------------
 
@@ -690,6 +719,7 @@ class GarminCommandRouterTest {
         targetCadence.value = 180f
         speedCorrectionEnabled.value = false
         playbackSpeed.value = 1.03f
+        shuffleEnabled.value = true
 
         val state = router.currentState()
 
@@ -702,6 +732,7 @@ class GarminCommandRouterTest {
         assertFalse(state.speedCorrection!!)
         assertEquals(1.03f, state.playbackSpeed!!, 0.001f)
         assertEquals(7, state.volume)
+        assertTrue(state.shuffle)
     }
 
     @Test
@@ -729,8 +760,8 @@ class GarminCommandRouterTest {
         assertEquals("Song Album", state.album)
         // durationMs comes from the track's extras.durationMs.
         assertEquals(213000L, state.durationMs)
-        // positionMs is the player position rounded down to whole seconds.
-        assertEquals(42000L, state.positionMs)
+        // positionMs is the player position rounded down to 5 s buckets.
+        assertEquals(40000L, state.positionMs)
     }
 
     @Test
@@ -753,7 +784,8 @@ class GarminCommandRouterTest {
 
         // No extras.durationMs: fall back to PlayerState.duration.
         assertEquals(180000L, state.durationMs)
-        assertEquals(1000L, state.positionMs)
+        // 1500 ms rounds down to the 0 s bucket.
+        assertEquals(0L, state.positionMs)
     }
 
     @Test
@@ -778,6 +810,8 @@ class GarminCommandRouterTest {
         // source "none".
         assertNull(state.title)
         assertEquals(7, state.volume)
+        // Shuffle is a RunBeat-only field: false when not owned.
+        assertFalse(state.shuffle)
     }
 
     @Test
@@ -788,6 +822,105 @@ class GarminCommandRouterTest {
 
         assertEquals("none", state.source)
         assertNull(state.title)
+    }
+
+    // ---------------------------------------------------------------
+    // currentState — external app playing (source "external")
+    // ---------------------------------------------------------------
+
+    @Test
+    fun currentState_reportsExternalTrackWhenExternalAppPlaying() {
+        setRunBeatActive(false)
+        whenever(externalPlaybackMonitor.currentExternalPlayback()).thenReturn(
+            ExternalPlayback(
+                packageName = "com.spotify.music",
+                title = "External Song",
+                artist = "External Artist",
+                album = "External Album",
+                isPlaying = true,
+            )
+        )
+
+        val state = router.currentState()
+
+        assertEquals("external", state.source)
+        assertTrue(state.isPlaying)
+        assertEquals("External Song", state.title)
+        assertEquals("External Artist", state.artist)
+        assertEquals("External Album", state.album)
+        // RunBeat-only fields stay null for an external source.
+        assertNull(state.trackId)
+        assertNull(state.durationMs)
+        assertNull(state.positionMs)
+        assertNull(state.bpm)
+        assertNull(state.targetCadence)
+        assertNull(state.speedCorrection)
+        assertNull(state.playbackSpeed)
+        assertEquals(7, state.volume)
+    }
+
+    @Test
+    fun currentState_reportsExternalPausedWithoutLosingTrackName() {
+        // Paused external app: still source "external" with the track name,
+        // isPlaying false — the watch shows the track with a play icon.
+        setRunBeatActive(false)
+        whenever(externalPlaybackMonitor.currentExternalPlayback()).thenReturn(
+            ExternalPlayback(
+                packageName = "com.qobuz.app",
+                title = "Paused Song",
+                artist = null,
+                album = null,
+                isPlaying = false,
+            )
+        )
+
+        val state = router.currentState()
+
+        assertEquals("external", state.source)
+        assertFalse(state.isPlaying)
+        assertEquals("Paused Song", state.title)
+        assertNull(state.artist)
+        assertNull(state.album)
+    }
+
+    @Test
+    fun currentState_externalWithoutTitle_stillReportsExternalSource() {
+        // An external session without metadata (e.g. a podcast app): the
+        // watch falls back to the plain "External app" label.
+        setRunBeatActive(false)
+        whenever(externalPlaybackMonitor.currentExternalPlayback()).thenReturn(
+            ExternalPlayback(
+                packageName = "com.podcast.app",
+                title = null,
+                artist = null,
+                album = null,
+                isPlaying = true,
+            )
+        )
+
+        val state = router.currentState()
+
+        assertEquals("external", state.source)
+        assertTrue(state.isPlaying)
+        assertNull(state.title)
+    }
+
+    @Test
+    fun currentState_externalWinsOverStaleRunBeatTrack() {
+        // RunBeat paused with a loaded track is "owned" and keeps source
+        // "RunBeat"; only when RunBeat has no track at all does the external
+        // session get reported. Here RunBeat has nothing loaded.
+        setRunBeatActive(false)
+        currentTrack.value = null
+        whenever(externalPlaybackMonitor.currentExternalPlayback()).thenReturn(
+            ExternalPlayback("com.spotify.music", "Other Song", null, null, true)
+        )
+
+        val state = router.currentState()
+
+        assertEquals("external", state.source)
+        assertEquals("Other Song", state.title)
+        assertNull(state.trackId)
     }
 
     // A paused player with a loaded track stays source "RunBeat" — the

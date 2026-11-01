@@ -10,12 +10,14 @@ import Toybox.WatchUi;
 // caption. The screen pops back to the page it was opened from 3 s
 // after the last interaction.
 //
-// The auto-pop is driven by the app's existing 1 Hz cadence tick
-// (RunBeatCompanionApp.onCadenceTick -> checkAutoPop) via the
+// The auto-pop is driven by the app's existing adaptive cadence tick
+// (1 Hz while playing, 5 s while paused;
+// RunBeatCompanionApp.onCadenceTick -> checkAutoPop) via the
 // WatchState.adjustScreen slot: CIQ hosts expose very few concurrent
 // Timers (default 3; "an error will occur if too many timers are set")
 // and the app already runs two repeating ones, so this screen must NOT
-// start a Timer of its own.
+// start a Timer of its own. While paused the pop check runs at the 5 s
+// idle rate, so the auto-return can lag up to ~5 s past the 3 s mark.
 class AdjustScreenView extends WatchUi.View {
 
     var _state;                  // WatchState
@@ -66,9 +68,11 @@ class AdjustScreenView extends WatchUi.View {
         disarm();
     }
 
-    // Called by the app's 1 Hz tick while this screen is the active one
-    // (WatchState.adjustScreen is set by the pushing page and cleared in
-    // disarm()). Pops 3 s after the last interaction.
+    // Called by the app's adaptive tick (1 Hz playing / 5 s paused) while
+    // this screen is the active one (WatchState.adjustScreen is set by the
+    // pushing page and cleared in disarm()). Pops 3 s after the last
+    // interaction (checked at the tick rate, so up to ~5 s late while
+    // paused).
     function checkAutoPop() as Void {
         if (_armed && System.getTimer() - _lastTap >= 3000) {
             disarm();

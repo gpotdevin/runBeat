@@ -20,6 +20,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem
 import com.bpmapp.audio.audio.BpmResolver
 import com.bpmapp.audio.audio.CadenceMatcher
+import com.bpmapp.audio.audio.M3uExporter
 import com.bpmapp.audio.audio.MediaItemFactory
 import com.bpmapp.audio.audio.MetadataEditor
 import com.bpmapp.audio.audio.PlayerRepository
@@ -322,6 +323,21 @@ class LibraryViewModel @Inject constructor(
         _hasScannedLibrary.value = value
     }
 
+    // Persisted flag: the user dismissed the "scan library" offer dialog and
+    // should not be asked again. Stored in the same "runbeat" prefs file.
+    private val _scanOfferDismissed = MutableStateFlow(
+        prefs.getBoolean("scan_offer_dismissed", false)
+    )
+    val scanOfferDismissed: StateFlow<Boolean> = _scanOfferDismissed.asStateFlow()
+
+    /**
+     * Permanently dismiss the scan library offer dialog ("Not Now").
+     */
+    fun dismissScanOffer() {
+        prefs.edit().putBoolean("scan_offer_dismissed", true).apply()
+        _scanOfferDismissed.value = true
+    }
+
     // Persisted setting: exclude tracks marked "not for running" from the play
     // queue (default ON). Stored in the "AppSettings" SharedPreferences, the
     // same file the Settings screen toggle writes to.
@@ -531,13 +547,16 @@ class LibraryViewModel @Inject constructor(
                 } else {
                     Log.i(TAG, "Scanned $count tracks from system library")
                 }
-                
+
+                // Only mark the library as scanned when the scan completed
+                // without throwing; a failed scan must not suppress the offer.
+                setHasScannedLibrary(true)
+
             } catch (e: Exception) {
                 _errorMessage.value = context.getString(R.string.error_failed_scan_library, e.message ?: "")
                 Log.e(TAG, "System library scan error", e)
             } finally {
                 _isLoading.value = false
-                setHasScannedLibrary(true)
             }
         }
     }
@@ -852,6 +871,30 @@ class LibraryViewModel @Inject constructor(
             } catch (e: Exception) {
                 _errorMessage.value = context.getString(R.string.error_failed_delete_playlist, e.message ?: "")
                 Log.e(TAG, "Playlist deletion error", e)
+            }
+        }
+    }
+
+    /**
+     * Export a playlist to an M3U file at the given (SAF) target URI.
+     * Tracks are taken from [playlistTrackMap], which is already ordered by position.
+     */
+    suspend fun exportPlaylistToM3u(playlistId: String, targetUri: Uri): Result<Unit> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val tracks = playlistTrackMap.value[playlistId].orEmpty()
+                val playlistName = playlists.value.firstOrNull { it.id == playlistId }?.name
+                    ?: playlistId
+                val content = M3uExporter.buildM3uContent(playlistName, tracks)
+                context.contentResolver.openOutputStream(targetUri)?.use { output ->
+                    output.write(content.toByteArray(Charsets.UTF_8))
+                    output.flush()
+                } ?: return@withContext Result.failure(IllegalStateException("Could not open output stream for $targetUri"))
+                Log.d(TAG, "Exported playlist $playlistName (${tracks.size} tracks) to $targetUri")
+                Result.success(Unit)
+            } catch (e: Exception) {
+                Log.e(TAG, "M3U export error", e)
+                Result.failure(e)
             }
         }
     }

@@ -16,9 +16,16 @@ class PlaylistsView extends BaseView {
     // Drawn row rects [x, y, w, h] from the last onUpdate (tap hit-testing).
     private var _rowRects;   // Array of Array
 
+    // Cached resources (battery/CPU: loadResource() hits the file system
+    // and must not run in the onUpdate draw path — loaded once here).
+    private var _strPlaylistsHeader as String;
+    private var _strNoPlaylists as String;
+
     function initialize(state, messages) {
         BaseView.initialize(state, messages);
         _rowRects = [];
+        _strPlaylistsHeader = WatchUi.loadResource(Rez.Strings.PlaylistsHeader) as String;
+        _strNoPlaylists = WatchUi.loadResource(Rez.Strings.NoPlaylists) as String;
     }
 
     function onLayout(dc as Dc) as Void {
@@ -29,9 +36,11 @@ class PlaylistsView extends BaseView {
         }
     }
 
-    // Page shown: refresh the playlist list from the phone (link-layer
-    // message — no ack, the answer is the playlists push itself).
+    // Page shown: resume app periodic work (BaseView hook), then refresh
+    // the playlist list from the phone (link-layer message — no ack, the
+    // answer is the playlists push itself).
     function onShow() as Void {
+        BaseView.onShow();
         _messages.sendPlaylistList();
     }
 
@@ -43,7 +52,7 @@ class PlaylistsView extends BaseView {
         dc.setColor(Graphics.COLOR_BLACK, Graphics.COLOR_BLACK);
         dc.clear();
 
-        updateHeader(WatchUi.loadResource(Rez.Strings.PlaylistsHeader) as String, Graphics.COLOR_LT_GRAY);
+        updateHeader(_strPlaylistsHeader, Graphics.COLOR_LT_GRAY);
 
         var count = _state.playlistCount;
         // Every coordinate passed to fillRoundedRectangle/drawText is
@@ -60,7 +69,7 @@ class PlaylistsView extends BaseView {
         if (count == 0) {
             dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
             dc.drawText((w / 2).toNumber(), (h / 2).toNumber(), Graphics.FONT_SMALL,
-                WatchUi.loadResource(Rez.Strings.NoPlaylists) as String,
+                _strNoPlaylists,
                 Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
         } else {
             var regionTop = maxNum((h * 0.14).toNumber(), (headerBottom + 6).toNumber()).toNumber();

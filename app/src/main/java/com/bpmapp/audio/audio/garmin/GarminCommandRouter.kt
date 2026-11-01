@@ -45,6 +45,7 @@ class GarminCommandRouter @Inject constructor(
     private val playlistRepository: PlaylistRepository,
     private val mediaItemFactory: MediaItemFactory,
     private val mediaKeyDispatcher: MediaKeyDispatcher,
+    private val externalPlaybackMonitor: ExternalPlaybackMonitor,
     @ApplicationContext private val context: Context,
 ) {
 
@@ -62,15 +63,14 @@ class GarminCommandRouter @Inject constructor(
     }
 
     /**
-     * True when RunBeat owns the "current track" context: playing,
-     * buffering, or paused with a track loaded. In this state the watch
-     * keeps displaying the current track (source "RunBeat", isPlaying
-     * false — exactly as the phone app shows it while paused), and the
-     * RunBeat-only commands are accepted: the target cadence and the
-     * speed-correction toggle are settings, adjustable while paused.
+     * True when RunBeat owns the "current track" context: only while it is
+     * the ACTIVE player (playing or buffering — see [isRunBeatActive]).
+     * A merely loaded-but-PAUSED track does NOT count: when another app
+     * (VLC, a podcast player, ...) is playing, the watch must show that
+     * app's track (source "external"), not RunBeat's stale title.
      */
     private fun isRunBeatOwned(): Boolean {
-        return isRunBeatActive() || playerRepository.currentTrack.value != null
+        return isRunBeatActive()
     }
 
     /**
@@ -148,6 +148,16 @@ class GarminCommandRouter @Inject constructor(
                     GarminAck(cmd.wireType(), ok = false)
                 }
             }
+            // Shuffle is a RunBeat-only setting: there is no media-key
+            // equivalent for an app-local shuffle mode.
+            is GarminCommand.ShuffleToggle -> {
+                if (owned) {
+                    playerRepository.toggleShuffle()
+                    GarminAck(cmd.wireType(), ok = true)
+                } else {
+                    GarminAck(cmd.wireType(), ok = false)
+                }
+            }
             is GarminCommand.MarkNotForRunning -> markCurrentTrackNotForRunning(owned, cmd)
             // Absolute seek is RunBeat-only: there is no media-key
             // equivalent for an absolute position. The ack is returned for
@@ -212,50 +222,62 @@ class GarminCommandRouter @Inject constructor(
 
     /**
      * Builds the state message pushed to the watch. [GarminWatchState.source]
-     * is "RunBeat" while RunBeat owns the current-track context (playing,
-     * buffering, or paused with a track loaded — the watch keeps showing
-     * the track while paused, exactly as the app does), "none" otherwise
-     * (external now-playing metadata is out of scope: no notification listener).
-     * The RunBeat-only fields (trackId, title, artist, album, durationMs,
-     * positionMs, bpm, targetCadence, speedCorrection, playbackSpeed) are
-     * null unless RunBeat owns the context; the codec omits null fields from
-     * the wire message. In particular the title is omitted otherwise so the
-     * watch does not show a stale RunBeat title with source "none".
+     * is "RunBeat" only while RunBeat is the active player (playing or
+     * buffering). When RunBeat is not actively playing — even if a track
+     * is loaded but paused — the external media session is consulted (via
+     * [ExternalPlaybackMonitor], needs notification access): source is
+     * "external" with the other app's title/artist/album and isPlaying when
+     * an external session exists, "none" otherwise.
+     * The RunBeat-only fields (trackId, durationMs, positionMs, bpm,
+     * targetCadence, speedCorrection, playbackSpeed) are null unless RunBeat
+     * owns the context; the codec omits null fields from the wire message.
+     * title/artist/album are sent for "RunBeat" and "external" alike and are
+     * omitted for "none", so the watch never shows a stale track name.
      * [GarminWatchState.durationMs] is the track's
      * `extras.durationMs`, falling back to
      * [PlayerRepository.PlayerState.duration];
      * [GarminWatchState.positionMs] is the current position rounded down to
-     * whole seconds so the state push stays at ~1/s while playing.
+     * 5-second buckets so the state push stays at ~1/5s while playing (the
+     * watch extrapolates between pushes; must match the rounding in
+     * GarminCompanionManager.watchStateFlow).
      */
     fun currentState(): GarminWatchState {
         val owned = isRunBeatOwned()
+        if (!owned) {
+            // RunBeat is not the player: report what an external app is
+            // playing (track name included), or "none" when no external
+            // media session is available.
+            val external = externalPlaybackMonitor.currentExternalPlayback()
+            return GarminWatchState(
+                source = if (external != null) SOURCE_EXTERNAL else SOURCE_NONE,
+                isPlaying = external?.isPlaying ?: false,
+                title = external?.title,
+                artist = external?.artist,
+                album = external?.album,
+                volume = mediaKeyDispatcher.currentVolume(),
+            )
+        }
         val track = playerRepository.currentTrack.value
         val extras = track?.mediaMetadata?.extras
         return GarminWatchState(
-            source = if (owned) SOURCE_RUNBEAT else SOURCE_NONE,
+            source = SOURCE_RUNBEAT,
             isPlaying = playerRepository.playerState.value.isPlaying,
-            trackId = if (owned) extras?.getString("trackId") else null,
-            title = if (owned) track?.mediaMetadata?.title?.toString() else null,
-            artist = if (owned) track?.mediaMetadata?.artist?.toString() else null,
-            album = if (owned) track?.mediaMetadata?.albumTitle?.toString() else null,
-            durationMs = if (owned) {
-                extras?.getLong("durationMs")?.takeIf { it > 0 }
-                    ?: playerRepository.playerState.value.duration.takeIf { it > 0 }
-            } else {
-                null
-            },
-            // Rounded down to whole seconds so the manager's
-            // distinctUntilChanged emits ~1/s while playing.
-            positionMs = if (owned) {
-                playerRepository.playerState.value.currentPosition / 1000L * 1000L
-            } else {
-                null
-            },
-            bpm = if (owned) extras?.getString("bpm")?.toFloatOrNull() else null,
-            targetCadence = if (owned) playerRepository.targetCadence.value else null,
-            speedCorrection = if (owned) playerRepository.speedCorrectionEnabled.value else null,
-            playbackSpeed = if (owned) playerRepository.playbackSpeed.value else null,
+            trackId = extras?.getString("trackId"),
+            title = track?.mediaMetadata?.title?.toString(),
+            artist = track?.mediaMetadata?.artist?.toString(),
+            album = track?.mediaMetadata?.albumTitle?.toString(),
+            durationMs = extras?.getLong("durationMs")?.takeIf { it > 0 }
+                ?: playerRepository.playerState.value.duration.takeIf { it > 0 },
+            // Rounded down to 5 s buckets so the manager's
+            // distinctUntilChanged emits ~1/5s while playing; the watch
+            // extrapolates the position locally between pushes.
+            positionMs = playerRepository.playerState.value.currentPosition / 5000L * 5000L,
+            bpm = extras?.getString("bpm")?.toFloatOrNull(),
+            targetCadence = playerRepository.targetCadence.value,
+            speedCorrection = playerRepository.speedCorrectionEnabled.value,
+            playbackSpeed = playerRepository.playbackSpeed.value,
             volume = mediaKeyDispatcher.currentVolume(),
+            shuffle = playerRepository.shuffleEnabled.value,
         )
     }
 
@@ -289,6 +311,7 @@ class GarminCommandRouter @Inject constructor(
         is GarminCommand.CadenceDelta -> "cadence_delta"
         is GarminCommand.CadenceUseCurrent -> "cadence_use_current"
         GarminCommand.SpeedCorrectionToggle -> "speed_correction_toggle"
+        GarminCommand.ShuffleToggle -> "shuffle_toggle"
         is GarminCommand.VolumeDelta -> "volume_delta"
         GarminCommand.MarkNotForRunning -> "mark_not_for_running"
         // RequestState never reaches the router (the manager intercepts it);
@@ -305,6 +328,7 @@ class GarminCommandRouter @Inject constructor(
 
     private companion object {
         const val SOURCE_RUNBEAT = "RunBeat"
+        const val SOURCE_EXTERNAL = "external"
         const val SOURCE_NONE = "none"
     }
 }

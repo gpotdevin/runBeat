@@ -23,9 +23,34 @@ class CadenceView extends BaseView {
     private var _btnUseAvg;        // Array? or null
     private var _btnTempo;         // Array? or null
 
+    // Cached resources (battery/CPU: loadResource() hits the file system
+    // and must not run in the onUpdate draw path — loaded once here).
+    private var _strHeaderCadence as String;
+    private var _strNoValue as String;
+    private var _strAvgCaption as String;
+    private var _strTargetPrefix as String;
+    private var _strSetTargetLabel as String;
+    private var _strUseAvgAsTargetLabel as String;
+    private var _strTempoLabel as String;
+    private var _strOn as String;
+    private var _strOff as String;
+    private var _strRunBeatOnlyHint as String;
+    private var _strNoCadenceHint as String;
+
     function initialize(state, messages, cadenceBuffer) {
         BaseView.initialize(state, messages);
         _cadenceBuffer = cadenceBuffer;
+        _strHeaderCadence = WatchUi.loadResource(Rez.Strings.HeaderCadence) as String;
+        _strNoValue = WatchUi.loadResource(Rez.Strings.NoValue) as String;
+        _strAvgCaption = WatchUi.loadResource(Rez.Strings.AvgCaption) as String;
+        _strTargetPrefix = WatchUi.loadResource(Rez.Strings.TargetPrefix) as String;
+        _strSetTargetLabel = WatchUi.loadResource(Rez.Strings.SetTargetLabel) as String;
+        _strUseAvgAsTargetLabel = WatchUi.loadResource(Rez.Strings.UseAvgAsTargetLabel) as String;
+        _strTempoLabel = WatchUi.loadResource(Rez.Strings.TempoLabel) as String;
+        _strOn = WatchUi.loadResource(Rez.Strings.On) as String;
+        _strOff = WatchUi.loadResource(Rez.Strings.Off) as String;
+        _strRunBeatOnlyHint = WatchUi.loadResource(Rez.Strings.RunBeatOnlyHint) as String;
+        _strNoCadenceHint = WatchUi.loadResource(Rez.Strings.NoCadenceHint) as String;
     }
 
     function onLayout(dc as Dc) as Void {
@@ -45,27 +70,27 @@ class CadenceView extends BaseView {
         dc.setColor(Graphics.COLOR_BLACK, Graphics.COLOR_BLACK);
         dc.clear();
 
-        updateHeader(WatchUi.loadResource(Rez.Strings.HeaderCadence) as String, runBeat ? Graphics.COLOR_LT_GRAY : dim);
+        updateHeader(_strHeaderCadence, runBeat ? Graphics.COLOR_LT_GRAY : dim);
 
         // Big live 60-second average (greyed out unless RunBeat is playing).
         var mean = _cadenceBuffer.mean(System.getTimer());
-        var meanText = mean == null ? WatchUi.loadResource(Rez.Strings.NoValue) as String : (mean as Float).format("%.0f");
+        var meanText = mean == null ? _strNoValue : (mean as Float).format("%.0f");
         dc.setColor(runBeat ? Graphics.COLOR_WHITE : dim, Graphics.COLOR_BLACK);
         dc.drawText(w / 2, h * 0.28, Graphics.FONT_LARGE, meanText,
             Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
 
         dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
-        dc.drawText(w / 2, h * 0.37, Graphics.FONT_TINY, WatchUi.loadResource(Rez.Strings.AvgCaption) as String,
+        dc.drawText(w / 2, h * 0.37, Graphics.FONT_TINY, _strAvgCaption,
             Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
 
         // Target cadence from the phone state.
         var target = _state.targetCadenceText();
         if (target.length() == 0) {
-            target = WatchUi.loadResource(Rez.Strings.NoValue) as String;
+            target = _strNoValue;
         }
         dc.setColor(runBeat ? Graphics.COLOR_LT_GRAY : dim, Graphics.COLOR_BLACK);
         dc.drawText(w / 2, h * 0.46, Graphics.FONT_SMALL,
-            WatchUi.loadResource(Rez.Strings.TargetPrefix) as String + " " + target,
+            _strTargetPrefix + " " + target,
             Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
 
         // --- Three stacked action buttons (RunBeat only): one visible
@@ -93,14 +118,10 @@ class CadenceView extends BaseView {
             _btnSetTarget = [bLeft, bTop, bW, bH];
             _btnUseAvg = [bLeft, bTop + bH + gap, bW, bH];
             _btnTempo = [bLeft, bTop + (bH + gap) * 2, bW, bH];
-            drawActionButton(dc, _btnSetTarget,
-                WatchUi.loadResource(Rez.Strings.SetTargetLabel) as String,
-                Graphics.COLOR_LT_GRAY);
-            drawActionButton(dc, _btnUseAvg,
-                WatchUi.loadResource(Rez.Strings.UseAvgAsTargetLabel) as String,
-                Graphics.COLOR_LT_GRAY);
-            var tempoText = WatchUi.loadResource(Rez.Strings.TempoLabel) as String + " " +
-                (_state.speedCorrection ? WatchUi.loadResource(Rez.Strings.On) as String : WatchUi.loadResource(Rez.Strings.Off) as String);
+            drawActionButton(dc, _btnSetTarget, _strSetTargetLabel, Graphics.COLOR_LT_GRAY);
+            drawActionButton(dc, _btnUseAvg, _strUseAvgAsTargetLabel, Graphics.COLOR_LT_GRAY);
+            var tempoText = _strTempoLabel + " " +
+                (_state.speedCorrection ? _strOn : _strOff);
             drawActionButton(dc, _btnTempo, tempoText,
                 _state.speedCorrection ? Graphics.COLOR_GREEN : Graphics.COLOR_LT_GRAY);
         } else {
@@ -109,7 +130,7 @@ class CadenceView extends BaseView {
             _btnTempo = null;
             dc.setColor(dim, Graphics.COLOR_BLACK);
             dc.drawText(w / 2, bTop + totalH / 2, Graphics.FONT_TINY,
-                WatchUi.loadResource(Rez.Strings.RunBeatOnlyHint) as String,
+                _strRunBeatOnlyHint,
                 Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
         }
 
@@ -175,7 +196,7 @@ class CadenceView extends BaseView {
     // may proceed.
     private function runBeatGuard() as Boolean {
         if (!_state.isRunBeatActive()) {
-            _state.setAck(WatchUi.loadResource(Rez.Strings.RunBeatOnlyHint) as String, true);
+            _state.setAck(_strRunBeatOnlyHint, true);
             WatchUi.requestUpdate();
             return false;
         }
@@ -186,14 +207,14 @@ class CadenceView extends BaseView {
     // only, and only when a usable mean exists.
     function useCurrentAsTarget() as Void {
         if (!_state.isRunBeatActive()) {
-            _state.setAck(WatchUi.loadResource(Rez.Strings.RunBeatOnlyHint) as String, true);
+            _state.setAck(_strRunBeatOnlyHint, true);
             WatchUi.requestUpdate();
             return;
         }
         var mean = _cadenceBuffer.mean(System.getTimer());
         if (mean == null) {
             // No usable cadence in the last 60 s (not running / just started).
-            _state.setAck(WatchUi.loadResource(Rez.Strings.NoCadenceHint) as String, true);
+            _state.setAck(_strNoCadenceHint, true);
             WatchUi.requestUpdate();
             return;
         }

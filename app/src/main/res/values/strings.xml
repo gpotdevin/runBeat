@@ -214,6 +214,10 @@
     <string name="playlists_play_desc">Play playlist</string>
     <string name="playlists_rename_desc">Rename playlist</string>
     <string name="playlists_delete_desc">Delete playlist</string>
+    <string name="playlists_export_desc">Export playlist</string>
+    <string name="playlist_export_m3u">Export to M3U</string>
+    <string name="playlist_export_success">Playlist exported</string>
+    <string name="playlist_export_failed">Export failed</string>
     <string name="playlists_no_tracks">No tracks in this playlist</string>
     <string name="playlists_toggle_favorite">Toggle favorite</string>
     <string name="playlists_remove_from">Remove from playlist</string>

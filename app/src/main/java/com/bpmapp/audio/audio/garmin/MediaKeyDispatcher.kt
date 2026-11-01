@@ -70,8 +70,17 @@ class MediaKeyDispatcher(
     fun maxVolume(): Int = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
 
     private fun dispatch(keyCode: Int, viaSession: (MediaController) -> Unit) {
-        if (dispatchToExternalSession(viaSession)) return
-        dispatchKeyEvent(keyCode)
+        // Try the media-session route first. Only when NO external session
+        // accepted the command do we fall back to a raw media key event: some
+        // apps (e.g. Qobuz) register a visible session yet ignore
+        // TransportControls, while still responding to key events. The key
+        // event must NOT be sent when the session route already succeeded:
+        // AudioManager delivers it to the current media-button focus holder,
+        // which can be RunBeat's own (still registered, paused) session —
+        // sending both would toggle the external player AND resume RunBeat.
+        if (!dispatchToExternalSession(viaSession)) {
+            dispatchKeyEvent(keyCode)
+        }
     }
 
     /**

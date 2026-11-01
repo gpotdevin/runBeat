@@ -15,6 +15,7 @@ import org.json.JSONObject
  *   {"type":"cadence_delta","delta":1}
  *   {"type":"cadence_use_current","cadence":172}
  *   {"type":"speed_correction_toggle"}
+ *   {"type":"shuffle_toggle"}
  *   {"type":"volume_delta","delta":1}
  *   {"type":"mark_not_for_running"}
  *   {"type":"request_state"}
@@ -33,6 +34,9 @@ sealed class GarminCommand {
     data class CadenceDelta(val delta: Int) : GarminCommand()
     data class CadenceUseCurrent(val cadence: Float) : GarminCommand()
     data object SpeedCorrectionToggle : GarminCommand()
+
+    /** Toggles shuffle playback in RunBeat (RunBeat-only, no media-key equivalent). */
+    data object ShuffleToggle : GarminCommand()
     data class VolumeDelta(val delta: Int) : GarminCommand()
     data object MarkNotForRunning : GarminCommand()
 
@@ -73,18 +77,21 @@ sealed class GarminCommand {
  * Playback state pushed from the phone to the watch:
  *   {"type":"state","source":"RunBeat","isPlaying":true,"trackId":"...","title":"...",
  *    "artist":"...","album":"...","durationMs":213000,"positionMs":42000,
- *    "bpm":140.0,"targetCadence":172,"speedCorrection":true,"playbackSpeed":1.03,"volume":12}
+ *    "bpm":140.0,"targetCadence":172,"speedCorrection":true,"playbackSpeed":1.03,"volume":12,"shuffle":false}
  *
- * [source] is "RunBeat" when RunBeat is the active playback app, otherwise
- * "none". "external" (or the external app's name) is a reserved protocol
- * value, not currently emitted: the phone ships without the optional
- * ExternalPlaybackMonitor notification listener. The RunBeat-only fields
- * ([trackId], [title], [artist], [album], [durationMs], [positionMs],
- * [bpm], [targetCadence], [speedCorrection], [playbackSpeed]) are
- * null when unknown / not applicable and are omitted from the wire message.
- * [positionMs] is rounded down to whole seconds by the phone
- * (currentPosition / 1000 * 1000) so the push rate stays at ~1/s while
- * playing. [volume] is the current STREAM_MUSIC media volume (AudioManager
+ * [source] is "RunBeat" when RunBeat is the active playback app, "external"
+ * when another app holds the active media session (requires notification
+ * access; title/artist/album/isPlaying come from that session's metadata),
+ * otherwise "none". The RunBeat-only fields ([trackId], [durationMs],
+ * [positionMs], [bpm], [targetCadence], [speedCorrection], [playbackSpeed])
+ * are null unless RunBeat owns the context; [title], [artist], [album] are
+ * sent for "RunBeat" and "external" alike. Null fields are omitted from the
+ * wire message. [shuffle] is the RunBeat shuffle state (false for
+ * "external"/"none").
+ * [positionMs] is rounded down to 5-second buckets by the phone
+ * (currentPosition / 5000 * 5000) so the push rate stays at ~1/5s while
+ * playing; the watch extrapolates the position locally between pushes.
+ * [volume] is the current STREAM_MUSIC media volume (AudioManager
  * index).
  */
 data class GarminWatchState(
@@ -101,6 +108,7 @@ data class GarminWatchState(
     val speedCorrection: Boolean? = null,
     val playbackSpeed: Float? = null,
     val volume: Int = 0,
+    val shuffle: Boolean = false,
 )
 
 /**
@@ -147,6 +155,7 @@ object GarminMessageCodec {
     private const val KEY_SPEED_CORRECTION = "speedCorrection"
     private const val KEY_PLAYBACK_SPEED = "playbackSpeed"
     private const val KEY_VOLUME = "volume"
+    private const val KEY_SHUFFLE = "shuffle"
     private const val KEY_PLAYLIST_ID = "playlistId"
     private const val KEY_COUNT = "count"
 
@@ -159,6 +168,7 @@ object GarminMessageCodec {
     private const val TYPE_CADENCE_DELTA = "cadence_delta"
     private const val TYPE_CADENCE_USE_CURRENT = "cadence_use_current"
     private const val TYPE_SPEED_CORRECTION_TOGGLE = "speed_correction_toggle"
+    private const val TYPE_SHUFFLE_TOGGLE = "shuffle_toggle"
     private const val TYPE_VOLUME_DELTA = "volume_delta"
     private const val TYPE_MARK_NOT_FOR_RUNNING = "mark_not_for_running"
     private const val TYPE_REQUEST_STATE = "request_state"
@@ -166,7 +176,6 @@ object GarminMessageCodec {
     private const val TYPE_SEEK = "seek"
     private const val TYPE_STATE = "state"
     private const val TYPE_ACK = "ack"
-    private const val TYPE_WAKE = "wake"
     private const val TYPE_PLAYLIST_LIST = "playlist_list"
     private const val TYPE_PLAYLIST_PLAY = "playlist_play"
     private const val TYPE_PLAYLISTS = "playlists"
@@ -202,6 +211,7 @@ object GarminMessageCodec {
             TYPE_CADENCE_USE_CURRENT -> obj.optFiniteFloatOrNull(KEY_CADENCE)
                 ?.let { GarminCommand.CadenceUseCurrent(it) }
             TYPE_SPEED_CORRECTION_TOGGLE -> GarminCommand.SpeedCorrectionToggle
+            TYPE_SHUFFLE_TOGGLE -> GarminCommand.ShuffleToggle
             TYPE_VOLUME_DELTA -> obj.optDeltaOrNull(KEY_DELTA)
                 ?.let { GarminCommand.VolumeDelta(it) }
             TYPE_MARK_NOT_FOR_RUNNING -> GarminCommand.MarkNotForRunning
@@ -238,6 +248,7 @@ object GarminMessageCodec {
             .putCadence(KEY_CADENCE, command.cadence)
             .toString()
         is GarminCommand.SpeedCorrectionToggle -> typed(TYPE_SPEED_CORRECTION_TOGGLE)
+        is GarminCommand.ShuffleToggle -> typed(TYPE_SHUFFLE_TOGGLE)
         is GarminCommand.VolumeDelta -> JSONObject()
             .put(KEY_TYPE, TYPE_VOLUME_DELTA)
             .put(KEY_DELTA, command.delta)
@@ -278,6 +289,7 @@ object GarminMessageCodec {
             speedCorrection = obj.optNullableBoolean(KEY_SPEED_CORRECTION),
             playbackSpeed = obj.optFloatOrNull(KEY_PLAYBACK_SPEED),
             volume = obj.optInt(KEY_VOLUME, 0),
+            shuffle = obj.optBoolean(KEY_SHUFFLE, false),
         )
     }
 
@@ -299,6 +311,7 @@ object GarminMessageCodec {
         state.playbackSpeed?.takeIf { it.isFinite() }
             ?.let { obj.put(KEY_PLAYBACK_SPEED, it.toDouble()) }
         obj.put(KEY_VOLUME, state.volume)
+        obj.put(KEY_SHUFFLE, state.shuffle)
         return obj.toString()
     }
 
@@ -316,16 +329,6 @@ object GarminMessageCodec {
         .put(KEY_COMMAND, ack.command)
         .put(KEY_OK, ack.ok)
         .toString()
-
-    /**
-     * Encodes the wake message ({"type":"wake"}), sent by the phone when
-     * playback starts while no watch app is active. The watch handles it in
-     * its background service (Background.registerForPhoneAppMessageEvent):
-     * a launch-confirmation dialog opens the remote without the app having
-     * to run (or poll) meanwhile. The watch-side parser matches the exact
-     * substring "type":"wake", so the wire format must not gain whitespace.
-     */
-    fun encodeWake(): String = typed(TYPE_WAKE)
 
     // ---------------------------------------------------------------
     // Phone -> watch (playlists)
@@ -364,10 +367,6 @@ object GarminMessageCodec {
         }
         return GarminPlaylists(playlists)
     }
-
-    /** True when the message is a wake message (test/helper symmetry). */
-    fun isWake(json: String): Boolean =
-        parse(json)?.optString(KEY_TYPE) == TYPE_WAKE
 
     // ---------------------------------------------------------------
     // Helpers

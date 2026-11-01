@@ -1,3 +1,4 @@
+import Toybox.Application;
 import Toybox.Graphics;
 import Toybox.Math;
 import Toybox.Lang;
@@ -13,10 +14,41 @@ class BaseView extends WatchUi.View {
     var _state;                 // WatchState
     var _messages;              // MessageHandler
 
+    // Cached resources (battery/CPU: WatchUi.loadResource() hits the file
+    // system and must not run in the onUpdate draw path — resources are
+    // constant, so they are loaded once here).
+    private var _strConnecting as String;
+    private var _strPhoneNotConnected as String;
+
     function initialize(state, messages) {
         View.initialize();
         _state = state;
         _messages = messages;
+        _strConnecting = WatchUi.loadResource(Rez.Strings.Connecting) as String;
+        _strPhoneNotConnected = WatchUi.loadResource(Rez.Strings.PhoneNotConnected) as String;
+    }
+
+    // Visibility hooks (battery): while no page is visible (backlight off,
+    // app covered, another view pushed) the app suspends all periodic
+    // work (cadence sampler + 5 s state timer) via
+    // RunBeatCompanionApp.onAppVisible; it resumes on return. Subclasses
+    // overriding onShow must call BaseView.onShow() (PlaylistsView does).
+    function onShow() as Void {
+        // A page is visible again (initial show, page change, or an overlay
+        // popped): no menu is on top anymore.
+        _state.menuOpen = false;
+        notifyVisibility(true);
+    }
+
+    function onHide() as Void {
+        notifyVisibility(false);
+    }
+
+    private function notifyVisibility(visible as Boolean) as Void {
+        var app = Application.getApp();
+        if (app instanceof RunBeatCompanionApp) {
+            (app as RunBeatCompanionApp).onAppVisible(visible);
+        }
     }
 
     // Opens the pushed volume adjuster: upper half of the screen raises
@@ -52,9 +84,9 @@ class BaseView extends WatchUi.View {
     // All three pages inherit this.
     function updateHeader(normalText as String, normalColor as Number) as Void {
         if (!_state.hasConnected()) {
-            setHeaderLabel(WatchUi.loadResource(Rez.Strings.Connecting) as String, Graphics.COLOR_YELLOW);
+            setHeaderLabel(_strConnecting, Graphics.COLOR_YELLOW);
         } else if (_state.isStale(System.getTimer())) {
-            setHeaderLabel(WatchUi.loadResource(Rez.Strings.PhoneNotConnected) as String, Graphics.COLOR_YELLOW);
+            setHeaderLabel(_strPhoneNotConnected, Graphics.COLOR_YELLOW);
         } else {
             setHeaderLabel(normalText, normalColor);
         }

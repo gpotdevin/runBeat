@@ -13,21 +13,30 @@ class CadenceSetView extends AdjustScreenView {
 
     private var _cadenceBuffer;   // CadenceRingBuffer
 
+    // Cached resources (loadResource() hits the file system; these hooks
+    // run from the onUpdate draw path — loaded once here).
+    private var _strNoValue as String;
+    private var _strTargetPrefix as String;
+    private var _strAvgCaption as String;
+
     function initialize(state, cadenceBuffer) {
         AdjustScreenView.initialize(state);
         _cadenceBuffer = cadenceBuffer;
+        _strNoValue = WatchUi.loadResource(Rez.Strings.NoValue) as String;
+        _strTargetPrefix = WatchUi.loadResource(Rez.Strings.TargetPrefix) as String;
+        _strAvgCaption = WatchUi.loadResource(Rez.Strings.AvgCaption) as String;
     }
 
     function valueText() as String {
         var target = _state.targetCadenceText();
         if (target.length() == 0) {
-            return WatchUi.loadResource(Rez.Strings.NoValue) as String;
+            return _strNoValue;
         }
         return target;
     }
 
     function captionText() as String {
-        return WatchUi.loadResource(Rez.Strings.TargetPrefix) as String;
+        return _strTargetPrefix;
     }
 
     function secondaryText() as String {
@@ -35,7 +44,7 @@ class CadenceSetView extends AdjustScreenView {
         if (mean == null) {
             return "";
         }
-        return WatchUi.loadResource(Rez.Strings.AvgCaption) as String + " " + (mean as Float).format("%.0f");
+        return _strAvgCaption + " " + (mean as Float).format("%.0f");
     }
 
     // Optimistic bump: the displayed target moves by delta right away

@@ -1,106 +1,34 @@
 # Build Instructions
 
-This project builds with the Gradle wrapper; no global Gradle install is required.
+Gradle wrapper only — no global Gradle install needed.
 
 ## Prerequisites
+- JDK 17, Android SDK platform `android-36`, build tools `34.0.0` (pinned in `app/build.gradle`)
+- Android NDK `26.1.10909125` + CMake (for the vendored `aubio` native module)
+- `cp local.properties.template local.properties` and fill in `sdk.dir`, `ndk.dir`, `java.home`
 
-- **JDK 17** (the project targets Java/Kotlin `JVM 17`)
-- **Android SDK** with platforms `android-36`
-- **Android SDK build tools** `34.0.0` (pinned via `buildToolsVersion` in `app/build.gradle`)
-- **Android NDK** version `26.1.10909125` (required for the `aubio` native module)
-- **CMake** (used by the `aubio` native build)
-
-## Environment setup
-
-1. Clone the repository:
-
-   ```bash
-   git clone https://github.com/gpotdevin/runBeat.git
-   cd runBeat
-   ```
-
-2. Create `local.properties` pointing at your SDK/NDK. A template is provided:
-
-   ```bash
-   cp local.properties.template local.properties
-   ```
-
-   then fill in `sdk.dir`, `ndk.dir`, and `java.home` as needed.
-
-3. (Optional) Set up CI-like signing environment variables — see
-   [Signing a release](#signing-a-release).
-
-## Build the app
-
-Debug APK:
-
+## Commands
 ```bash
-./gradlew :app:assembleDebug
+./gradlew :app:assembleDebug        # debug APK → app/build/outputs/apk/debug/
+./gradlew :app:bundleRelease        # release AAB → app/build/outputs/bundle/release/
+./gradlew :app:installDebug         # install on device
+./gradlew testDebugUnitTest         # unit tests
+./gradlew lintDebug                 # lint
+./gradlew connectedAndroidTest      # instrumented tests (device/emulator)
+./gradlew :aubio:assembleRelease :soundtouch-android:assembleRelease   # native module changes
 ```
-
-Release Android App Bundle (AAB):
-
-```bash
-./gradlew :app:bundleRelease
-```
-
-Output locations:
-
-- Debug APK: `app/build/outputs/apk/debug/app-debug.apk`
-- Release bundle: `app/build/outputs/bundle/release/app-release.aab`
-
-## Install on a device
-
-```bash
-./gradlew :app:installDebug
-```
-
-## Tests and lint
-
-```bash
-./gradlew testDebugUnitTest        # JUnit unit tests
-./gradlew lintDebug                # Android Lint
-./gradlew connectedAndroidTest     # Instrumented tests (requires device/emulator)
-```
+Flavors: `fdroid` (default, F-Droid build: `:app:assembleFdroidRelease`) and `garmin`
+(`:app:assembleGarminDebug`).
 
 ## Signing a release
-
-Release builds are signed from environment variables (so no secrets live in the
-repo). The signing configuration in `app/build.gradle` reads:
-
-| Variable | Description |
-|----------|-------------|
-| `BPM_RELEASE_STORE_FILE` | Path to the release keystore |
-| `BPM_RELEASE_STORE_PASSWORD` | Keystore password |
-| `BPM_RELEASE_KEY_ALIAS` | Key alias |
-| `BPM_RELEASE_KEY_PASSWORD` | Key password |
-
-```bash
-export BPM_RELEASE_STORE_FILE=/path/to/bpm-release.keystore
-export BPM_RELEASE_STORE_PASSWORD=your_store_password
-export BPM_RELEASE_KEY_ALIAS=RunBeat_app
-export BPM_RELEASE_KEY_PASSWORD=your_key_password
-./gradlew :app:bundleRelease
-```
-
-Never commit a keystore or signing secrets.
+Release builds sign from environment variables (no secrets in the repo):
+`BPM_RELEASE_STORE_FILE`, `BPM_RELEASE_STORE_PASSWORD`, `BPM_RELEASE_KEY_ALIAS`,
+`BPM_RELEASE_KEY_PASSWORD` → `./gradlew :app:bundleRelease`. Never commit a keystore.
 
 ## Native modules
-
-`aubio` and `soundtouch-android` are vendored copies (not git submodules) of
-upstream projects — see `aubio/README.md` and `soundtouch-android/README.md`.
-Changes to their C++/native sources require a full rebuild of those modules:
-
-```bash
-./gradlew :aubio:assembleRelease :soundtouch-android:assembleRelease
-```
+`aubio/` and `soundtouch-android/` are vendored copies (not submodules); C++ changes need a full
+rebuild of those modules (command above).
 
 ## Versioning
-
-`versionCode` is read from `build-counter.txt` at the repository root;
-`versionName` is set in `app/build.gradle`.
-
-`build-counter.txt` is a **manually incremented** counter — it is not derived
-from the git commit count. It must be bumped for each release, and it is the
-single source of truth for `versionCode` (F-Droid's `UpdateCheckData` also
-reads it).
+`versionCode` = `build-counter.txt` (repo root, manually incremented once per release — single
+source of truth, also read by F-Droid's `UpdateCheckData`); `versionName` in `app/build.gradle`.

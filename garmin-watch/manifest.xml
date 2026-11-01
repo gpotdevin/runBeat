@@ -12,11 +12,20 @@
                 name="@Strings.AppName"
                 entry="RunBeatCompanionApp"
                 launcherIcon="@Drawables.LauncherIcon">
-
+ 
     <iq:products>
         <!-- Forerunner 245 Music / 255 Music / 265 / 955 / 965
              (audio-content-provider apps need on-watch music support:
              the plain fr245/fr255 are NOT valid targets for this type). -->
+        <!-- Hybrid launch (2026-10-31): this type is what makes RunBeat
+             appear in Music -> Music Providers and reachable from the music
+             shortcut, like Spotify. getInitialView() still serves the
+             direct app-menu launch; getPlaybackConfigurationView() serves
+             the provider flow. In the provider flow the stock Music app is
+             the host (brief flash on launch, extra back press) — that is
+             firmware behavior, no API can remove it. RunBeat plays no audio
+             on the watch; control from the stock player also works via the
+             phone's "Phone" media source (MediaSession metadata). -->
         <iq:product id="fr245m"/>
         <iq:product id="fr255m"/>
         <iq:product id="fr265"/>
@@ -45,11 +54,9 @@
         <iq:uses-permission id="Communications"/>
         <!-- Accelerometer-based cadence sampling. -->
         <iq:uses-permission id="Sensor"/>
-        <!-- Background service: re-activation. registerForPhoneAppMessageEvent
-             wakes the app's background process when the phone sends
-             {"type":"wake"} (playback started, no watch app open) — the
-             background shows the launch dialog without the app running. -->
-        <iq:uses-permission id="Background"/>
+        <!-- NOTE: no Background permission — the app never runs in the
+             background and the phone never wakes it (battery): it connects
+             only when the user starts it manually. -->
         <!-- NOTE: no Media permission — music always plays on the phone, the
              watch only sends messages. -->
         <!-- NOTE: no FitContributor — this app is not a data field. -->

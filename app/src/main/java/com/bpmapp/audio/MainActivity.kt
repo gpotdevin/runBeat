@@ -52,7 +52,6 @@ import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowForward
-import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.ToggleOff
 import androidx.compose.material.icons.filled.ToggleOn
 import androidx.compose.material.icons.filled.DragHandle
@@ -94,6 +93,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import kotlinx.coroutines.flow.firstOrNull
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -116,6 +116,7 @@ import com.bpmapp.audio.ui.theme.bpmColor
 import com.bpmapp.audio.ui.theme.speedFactorColor
 import com.bpmapp.audio.ui.theme.touchTarget
 import com.bpmapp.audio.util.PermissionUtils
+import com.bpmapp.audio.viewmodel.LibraryViewModel
 import com.bpmapp.audio.viewmodel.PlayerViewModel
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -134,7 +135,12 @@ class MainActivity : ComponentActivity() {
     lateinit var playerRepository: PlayerRepository
 
     private val notificationPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
-    private val mediaPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    private val mediaPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) autoScanRequested = true
+    }
+
+    // Set when media permission is granted (startup or interactively); consumed by the auto-scan LaunchedEffect
+    private var autoScanRequested = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -144,16 +150,17 @@ class MainActivity : ComponentActivity() {
 
         requestNotificationPermissionIfNeeded()
         requestMediaPermissionIfNeeded()
-        
+        if (PermissionUtils.hasReadMediaAudioPermission(this)) autoScanRequested = true
+
         enableEdgeToEdge()
-        
+
         setContent {
             BpmAppTheme {
                 val context = LocalContext.current
                 val prefs = remember { context.getSharedPreferences("AppSettings", Context.MODE_PRIVATE) }
                 var showIntro by remember { mutableStateOf(!prefs.getBoolean("intro_seen", false)) }
                 val snackbarHostState = remember { SnackbarHostState() }
-                
+
                 Box(modifier = Modifier.fillMaxSize()) {
                     Surface(
                         modifier = Modifier.fillMaxSize(),
@@ -161,6 +168,18 @@ class MainActivity : ComponentActivity() {
                     ) {
                         val navController = rememberNavController()
                         val libraryViewModel: com.bpmapp.audio.viewmodel.LibraryViewModel = hiltViewModel()
+
+                        // Auto-scan the system music library on startup when enabled in Settings,
+                        // permission is granted, the library was never scanned, and it is empty.
+                        LaunchedEffect(autoScanRequested) {
+                            if (!autoScanRequested) return@LaunchedEffect
+                            if (!prefs.getBoolean("auto_scan_on_startup", true)) return@LaunchedEffect
+                            val runbeatPrefs = context.getSharedPreferences("runbeat", Context.MODE_PRIVATE)
+                            if (runbeatPrefs.getBoolean("has_scanned_library", false)) return@LaunchedEffect
+                            if (!PermissionUtils.hasReadMediaAudioPermission(context)) return@LaunchedEffect
+                            val tracks = libraryViewModel.allTracks.firstOrNull() ?: emptyList()
+                            if (tracks.isEmpty()) libraryViewModel.scanSystemLibrary()
+                        }
                         
                         Scaffold(
                             bottomBar = {
@@ -258,6 +277,7 @@ class MainActivity : ComponentActivity() {
         if (PermissionUtils.hasReadMediaAudioPermission(this)) return
         mediaPermissionLauncher.launch(PermissionUtils.requiredReadMediaAudioPermission())
     }
+
 }
 
 
@@ -331,7 +351,7 @@ fun PlayerScreenWrapper(
                     libraryViewModel.resolveBmpsForTracksIfNeeded(tracks)
                 },
                 targetCadence = targetCadence,
-                viewModel = libraryViewModel
+                libraryViewModel = libraryViewModel
             )
         } else {
             // Check if we have a track to load
@@ -419,7 +439,7 @@ fun LibraryScreenWrapper(
                 libraryViewModel.resolveBmpsForTracksIfNeeded(tracks)
             },
             targetCadence = targetCadence,
-            viewModel = libraryViewModel
+            libraryViewModel = libraryViewModel
         )
     }
 }
@@ -549,7 +569,6 @@ fun PlayerScreen(
             position = currentPosition,
             onPlay = { playerRepository.play() },
             onPause = { playerRepository.pause() },
-            onStop = { playerRepository.stop() },
             onPrevious = { playerRepository.playPrevious() },
             onNext = { playerRepository.playNext() },
             onSeek = { newPosition -> playerRepository.seekTo(newPosition) },
@@ -786,7 +805,6 @@ fun PlaybackControlsSection(
     position: Long,
     onPlay: () -> Unit,
     onPause: () -> Unit,
-    onStop: () -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onSeek: (Long) -> Unit,
@@ -845,7 +863,7 @@ fun PlaybackControlsSection(
                     .height(8.dp) // Thicker track
             )
             
-            // Playback controls: Previous, Play/Pause, Stop, Next
+            // Playback controls: Previous, Play/Pause, Next
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.Center,
@@ -885,25 +903,7 @@ fun PlaybackControlsSection(
                 }
                 
                 Spacer(modifier = Modifier.width(AppSpacing.xxs))
-                
-                // Stop button
-                IconButton(
-                    onClick = onStop,
-                    modifier = Modifier.size(48.dp),
-                    colors = IconButtonDefaults.iconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                        contentColor = MaterialTheme.colorScheme.error
-                    )
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Stop,
-                        contentDescription = stringResource(R.string.stop),
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-                
-                Spacer(modifier = Modifier.width(AppSpacing.xxs))
-                
+
                 // Next button
                 IconButton(
                     onClick = onNext,

@@ -7,6 +7,7 @@ import android.os.Bundle
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
+import com.bpmapp.audio.audio.MediaItemFactory
 import com.bpmapp.audio.audio.PlayerRepository
 import com.bpmapp.audio.audio.TrackRepository
 import com.garmin.android.connectiq.ConnectIQ
@@ -99,7 +100,15 @@ class GarminCompanionManagerCommandSerializationTest {
         doAnswer {
             currentTrack.value = track("track-2", "Second Song", "140")
         }.whenever(playerRepository).playNext()
-        val router = GarminCommandRouter(playerRepository, trackRepository, mediaKeyDispatcher)
+        val router = GarminCommandRouter(
+            playerRepository,
+            trackRepository,
+            mock(),
+            MediaItemFactory(),
+            mediaKeyDispatcher,
+            mock(),
+            mock(),
+        )
         manager = GarminCompanionManager(mock<Context>(), playerRepository, router, testDispatcher)
     }
 
@@ -226,8 +235,8 @@ class GarminCompanionManagerCommandSerializationTest {
             assertEquals("Song Artist", state.artist)
             assertEquals("Song Album", state.album)
             assertEquals(213000L, state.durationMs)
-            // Rounded down to whole seconds by the phone.
-            assertEquals(42000L, state.positionMs)
+            // Rounded down to 5 s buckets by the phone.
+            assertEquals(40000L, state.positionMs)
 
             // A request_state from a device that is not connected is not answered.
             manager.onMessageReceived(

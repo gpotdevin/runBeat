@@ -81,6 +81,10 @@ class GarminMessageCodecTest {
             GarminCommand.MarkNotForRunning,
             GarminMessageCodec.decodeCommand("{\"type\":\"mark_not_for_running\"}")
         )
+        assertEquals(
+            GarminCommand.ShuffleToggle,
+            GarminMessageCodec.decodeCommand("{\"type\":\"shuffle_toggle\"}")
+        )
     }
 
     @Test
@@ -220,6 +224,7 @@ class GarminMessageCodecTest {
             GarminCommand.CadenceDelta(-1),
             GarminCommand.CadenceUseCurrent(168f),
             GarminCommand.SpeedCorrectionToggle,
+            GarminCommand.ShuffleToggle,
             GarminCommand.VolumeDelta(1),
             GarminCommand.VolumeDelta(-1),
             GarminCommand.MarkNotForRunning,
@@ -252,6 +257,10 @@ class GarminMessageCodecTest {
         assertEquals(
             "{\"type\":\"mark_not_for_running\"}",
             GarminMessageCodec.encodeCommand(GarminCommand.MarkNotForRunning)
+        )
+        assertEquals(
+            "{\"type\":\"shuffle_toggle\"}",
+            GarminMessageCodec.encodeCommand(GarminCommand.ShuffleToggle)
         )
         assertEquals(
             "{\"type\":\"request_state\"}",
@@ -336,25 +345,6 @@ class GarminMessageCodecTest {
     }
 
     // ---------------------------------------------------------------
-    // Phone -> watch: wake (background re-activation)
-    // ---------------------------------------------------------------
-
-    @Test
-    fun wakeWireFormatIsExact() {
-        // The watch's background service matches the exact substring
-        // "type":"wake" with no JSON parser (32 KB background heap), so
-        // the wire format must stay whitespace-free.
-        assertEquals("{\"type\":\"wake\"}", GarminMessageCodec.encodeWake())
-    }
-
-    @Test
-    fun isWakeRecognizesWakeMessages() {
-        assertTrue(GarminMessageCodec.isWake(GarminMessageCodec.encodeWake()))
-        assertEquals(false, GarminMessageCodec.isWake(GarminMessageCodec.encodeAck(GarminAck("toggle", true))))
-        assertEquals(false, GarminMessageCodec.isWake("not json"))
-    }
-
-    // ---------------------------------------------------------------
     // Phone -> watch: state
     // ---------------------------------------------------------------
 
@@ -404,9 +394,26 @@ class GarminMessageCodecTest {
             speedCorrection = false,
             playbackSpeed = 1.0f,
             volume = 9,
+            shuffle = true,
         )
         val decoded = GarminMessageCodec.decodeState(GarminMessageCodec.encodeState(state))
         assertEquals(state, decoded)
+    }
+
+    @Test
+    fun encodeStateAlwaysEmitsShuffleAndDefaultsToFalse() {
+        val obj = JSONObject(
+            GarminMessageCodec.encodeState(
+                GarminWatchState(source = "external", isPlaying = true, volume = 7)
+            )
+        )
+        assertTrue(obj.has("shuffle"))
+        assertFalse(obj.getBoolean("shuffle"))
+        assertFalse(
+            GarminMessageCodec.decodeState(
+                "{\"type\":\"state\",\"source\":\"RunBeat\",\"isPlaying\":true}"
+            )!!.shuffle
+        )
     }
 
     @Test

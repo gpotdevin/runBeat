@@ -8,20 +8,27 @@ import Toybox.WatchUi;
 // tap (AdjustScreenView).
 class VolumeSetView extends AdjustScreenView {
 
+    // Cached resources (loadResource() hits the file system; these hooks
+    // run from the onUpdate draw path — loaded once here).
+    private var _strNoValue as String;
+    private var _strVolumeLabel as String;
+
     function initialize(state) {
         AdjustScreenView.initialize(state);
+        _strNoValue = WatchUi.loadResource(Rez.Strings.NoValue) as String;
+        _strVolumeLabel = WatchUi.loadResource(Rez.Strings.VolumeLabel) as String;
     }
 
     function valueText() as String {
         var vol = _state.volumeText();
         if (vol.length() == 0) {
-            return WatchUi.loadResource(Rez.Strings.NoValue) as String;
+            return _strNoValue;
         }
         return vol;
     }
 
     function captionText() as String {
-        return WatchUi.loadResource(Rez.Strings.VolumeLabel) as String;
+        return _strVolumeLabel;
     }
 }
 

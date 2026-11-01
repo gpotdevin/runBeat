@@ -45,6 +45,9 @@ class PlayerRepository @Inject constructor(
         // Rhythm-mode beep signal at track start (2 = binary, 3 = ternary).
         private const val KEY_MODE_BEEP_SIGNAL = "mode_beep_signal"
         private const val DEFAULT_MODE_BEEP_SIGNAL = true
+
+        // Interval of the playback-position poll (only while playing).
+        private const val POSITION_UPDATE_INTERVAL_MS = 100L
     }
     
     // State management
@@ -120,6 +123,48 @@ class PlayerRepository @Inject constructor(
     // poller (at most one log every 5 seconds).
     private var lastPlaybackStateLogMs = 0L
 
+    // Periodic position updates run ONLY while actually playing: a 100 ms
+    // poll reposted forever meant 10 Handler wakeups/s for the whole process
+    // lifetime, even with no playback and no watch connected. The poll stops
+    // itself when playback pauses/stops and restarts from the player
+    // listener (see ensurePositionPollRunning).
+    private val positionHandler = Handler(Looper.getMainLooper())
+    private var positionPollRunning = false
+    private val positionUpdateRunnable = object : Runnable {
+        override fun run() {
+            if (!exoPlayer.isPlaying) {
+                // Paused or stopped: stop the poll until playback resumes.
+                positionPollRunning = false
+                return
+            }
+            _playerState.update { currentState ->
+                currentState.copy(
+                    isPlaying = exoPlayer.isPlaying,
+                    currentPosition = exoPlayer.currentPosition
+                )
+            }
+            _currentPosition.value = exoPlayer.currentPosition
+            val now = SystemClock.elapsedRealtime()
+            if (now - lastPlaybackStateLogMs >= 5000L) {
+                lastPlaybackStateLogMs = now
+                Log.d(
+                    "PlayerRepository",
+                    "Playback state: isPlaying=${exoPlayer.isPlaying}, playbackState=${exoPlayer.playbackState}, " +
+                        "position=${exoPlayer.currentPosition}, duration=${exoPlayer.duration}, " +
+                        "speed=${exoPlayer.playbackParameters.speed}, volume=${exoPlayer.volume}"
+                )
+            }
+            positionHandler.postDelayed(this, POSITION_UPDATE_INTERVAL_MS)
+        }
+    }
+
+    /** Starts the 100 ms position poll if it is not already running. */
+    private fun ensurePositionPollRunning() {
+        if (positionPollRunning) return
+        positionPollRunning = true
+        positionHandler.post(positionUpdateRunnable)
+    }
+
     init {
         updatePlayerState()
         
@@ -153,9 +198,32 @@ class PlayerRepository @Inject constructor(
             
             override fun onPlaybackStateChanged(state: Int) {
                 updatePlayerState()
+                // The position poll only runs during active playback.
+                ensurePositionPollRunning()
                 // Auto-advance to next track when current track ends
                 if (state == androidx.media3.common.Player.STATE_ENDED) {
                     playNext()
+                }
+            }
+
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                // Pausing keeps playbackState == STATE_READY, so
+                // onPlaybackStateChanged does NOT fire on pause (including
+                // pauses not initiated here, e.g. audio-focus loss handled
+                // by the media session). Without this, playerState.isPlaying
+                // could stay stale true and the watch router would believe
+                // RunBeat is still the active player.
+                updatePlayerState()
+            }
+
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                updatePlayerState()
+                // Pausing/resuming while STATE_READY does not change playbackState,
+                // so onPlaybackStateChanged never fires for it. The poll runnable
+                // stops itself once isPlaying is false; restart it here when
+                // playback is resumed so the progress bar keeps updating.
+                if (playWhenReady) {
+                    ensurePositionPollRunning()
                 }
             }
             
@@ -165,35 +233,9 @@ class PlayerRepository @Inject constructor(
             }
         })
         
-        // Use a Handler to post periodic position updates
-        val handler = Handler(Looper.getMainLooper())
-        val positionUpdateInterval = 100L // ms
-        val positionUpdateRunnable = object : Runnable {
-            override fun run() {
-                if (exoPlayer.isPlaying) {
-                    _playerState.update { currentState ->
-                        currentState.copy(
-                            isPlaying = exoPlayer.isPlaying,
-                            currentPosition = exoPlayer.currentPosition
-                        )
-                    }
-                    _currentPosition.value = exoPlayer.currentPosition
-                }
-                val now = SystemClock.elapsedRealtime()
-                if (now - lastPlaybackStateLogMs >= 5000L) {
-                    lastPlaybackStateLogMs = now
-                    Log.d(
-                        "PlayerRepository",
-                        "Playback state: isPlaying=${exoPlayer.isPlaying}, playbackState=${exoPlayer.playbackState}, " +
-                            "position=${exoPlayer.currentPosition}, duration=${exoPlayer.duration}, " +
-                            "speed=${exoPlayer.playbackParameters.speed}, volume=${exoPlayer.volume}"
-                    )
-                }
-                handler.postDelayed(this, positionUpdateInterval)
-            }
-        }
-        // Start periodic position updates
-        handler.post(positionUpdateRunnable)
+        // The position poll is started by the player listener when playback
+        // actually begins (see ensurePositionPollRunning); it is not started
+        // here so an idle app does not wake the main looper 10x/s.
     }
     
     private fun updatePlayerState() {

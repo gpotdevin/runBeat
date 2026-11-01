@@ -20,10 +20,14 @@ class WatchState {
     var artist as String = "";          // track artist (RunBeat only)
     var album as String = "";           // album title (RunBeat only)
     var durationMs as Number? = null;   // track duration in ms (RunBeat only)
-    var positionMs as Number? = null;   // playback position in ms, whole seconds (RunBeat only)
+    var positionMs as Number? = null;   // playback position in ms, 5 s buckets (RunBeat only)
+    // System.getTimer() when positionMs was last updated by a state push;
+    // base for local extrapolation (see effectivePositionMs).
+    var positionTimestampMs as Number = 0;
     var bpm as Float? = null;
     var targetCadence as Float? = null;
     var speedCorrection as Boolean = false;
+    var shuffle as Boolean = false;    // shuffle mode on (RunBeat only; phone sends false for external)
     var playbackSpeed as Float? = null;
     var volume as Float? = null;        // AudioManager STREAM_MUSIC index
 
@@ -59,6 +63,12 @@ class WatchState {
     // timers and the app already runs two repeating ones).
     var adjustScreen = null;
 
+    // True while a page menu is pushed on top of the view stack (set by the
+    // delegates' onMenu via RunBeatCompanionApp.noteMenuPushed, cleared by
+    // BaseView.onShow when a page becomes visible again). Menus are static:
+    // the app's 1 Hz tick never repaints them.
+    var menuOpen as Boolean = false;
+
     function isRunBeatActive() as Boolean {
         return source.equals("RunBeat");
     }
@@ -72,12 +82,29 @@ class WatchState {
         phoneReachable = false;
     }
 
+    // Staleness thresholds (battery): while PLAYING the phone pushes state
+    // about once per 5 s (position in 5 s buckets), so 10 s without a
+    // message means the link is dead. While PAUSED the phone pushes
+    // nothing — the watch only hears back when it asks (request_state) —
+    // so a longer threshold (30 s) keeps that probe/answer ping-pong (a
+    // BLE wakeup per round trip) at ~1/30 s instead of ~1/10 s. Cost:
+    // dead-phone detection and the "Phone not connected" header flip are
+    // slower while paused (30 s instead of 10 s); each answer still
+    // refreshes the link, so a live phone never shows as stale for long.
+    static const STALE_PLAYING_MS = 10000;
+    static const STALE_IDLE_MS = 30000;
+
     // True while the phone link looks dead: no message ever received, or
-    // the last one is older than 10 s. While playing, the phone pushes
-    // state about once per second and answers the watch's request_state,
-    // so a live link never goes stale.
+    // the last one is older than the threshold for the current play state
+    // (10 s playing / 30 s paused — see above). While playing, the phone
+    // pushes state about once per 5 s and answers the watch's
+    // request_state keepalive, so a live link never goes stale.
     function isStale(now as Number) as Boolean {
-        return lastMessageAt == 0 || now - lastMessageAt > 10000;
+        if (lastMessageAt == 0) {
+            return true;
+        }
+        var threshold = isPlaying ? STALE_PLAYING_MS : STALE_IDLE_MS;
+        return now - lastMessageAt > threshold;
     }
 
     // True once any message has arrived; distinguishes "Connecting..."
@@ -172,9 +199,28 @@ class WatchState {
         return v == null ? "" : (v as Float).format("%.0f");
     }
 
-    // Playback position as m:ss ("" when unknown).
-    function positionText() as String {
+    // Locally extrapolated playback position: the phone pushes positionMs
+    // only every 5 s (5 s buckets) to keep BLE traffic low, so between
+    // pushes the watch advances it itself while playing:
+    // positionMs + (now - positionTimestampMs). This keeps the progress bar
+    // and the m:ss caption smooth at the 1 Hz repaint rate; the next push
+    // re-anchors any drift. Null when the position is unknown; never
+    // negative.
+    function effectivePositionMs(now as Number) as Number? {
         var v = positionMs;
+        if (v == null) {
+            return null;
+        }
+        var pos = v as Number;
+        if (isPlaying && now > positionTimestampMs) {
+            pos += now - positionTimestampMs;
+        }
+        return pos < 0 ? 0 : pos;
+    }
+
+    // Playback position as m:ss, extrapolated to `now` ("" when unknown).
+    function positionTextAt(now as Number) as String {
+        var v = effectivePositionMs(now);
         return v == null ? "" : formatMs(v as Number);
     }
 
@@ -184,13 +230,14 @@ class WatchState {
         return v == null ? "" : formatMs(v as Number);
     }
 
-    // "1:23 / 3:45" ("" when the duration is unknown).
-    function progressText() as String {
+    // "1:23 / 3:45" with the position extrapolated to `now`
+    // ("" when the duration is unknown).
+    function progressTextAt(now as Number) as String {
         var d = durationMs;
         if (d == null || (d as Number) <= 0) {
             return "";
         }
-        var p = positionText();
+        var p = positionTextAt(now);
         if (p.length() == 0) {
             p = formatMs(0);
         }

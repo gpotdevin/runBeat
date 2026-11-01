@@ -12,8 +12,17 @@ class ControlView extends BaseView {
     // Drawn button rect [x, y, w, h] from the last onUpdate (tap hit-testing).
     private var _btnVolume;   // Array? or null
 
+    // Cached resources (battery/CPU: loadResource() hits the file system
+    // and must not run in the onUpdate draw path — loaded once here).
+    private var _strHeaderControls as String;
+    private var _strNoValue as String;
+    private var _strVolumeLabel as String;
+
     function initialize(state, messages) {
         BaseView.initialize(state, messages);
+        _strHeaderControls = WatchUi.loadResource(Rez.Strings.HeaderControls) as String;
+        _strNoValue = WatchUi.loadResource(Rez.Strings.NoValue) as String;
+        _strVolumeLabel = WatchUi.loadResource(Rez.Strings.VolumeLabel) as String;
     }
 
     function onLayout(dc as Dc) as Void {
@@ -32,7 +41,7 @@ class ControlView extends BaseView {
         dc.setColor(Graphics.COLOR_BLACK, Graphics.COLOR_BLACK);
         dc.clear();
 
-        updateHeader(WatchUi.loadResource(Rez.Strings.HeaderControls) as String, Graphics.COLOR_LT_GRAY);
+        updateHeader(_strHeaderControls, Graphics.COLOR_LT_GRAY);
 
         // Volume entry: caption above, one big button with the value,
         // "+ / -" hint below (tapping the button — or anywhere — opens
@@ -46,11 +55,11 @@ class ControlView extends BaseView {
 
         var volText = _state.volumeText();
         if (volText.length() == 0) {
-            volText = WatchUi.loadResource(Rez.Strings.NoValue) as String;
+            volText = _strNoValue;
         }
 
         dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
-        dc.drawText(w / 2, bTop - fhTiny / 2 - 6, Graphics.FONT_TINY, WatchUi.loadResource(Rez.Strings.VolumeLabel) as String,
+        dc.drawText(w / 2, bTop - fhTiny / 2 - 6, Graphics.FONT_TINY, _strVolumeLabel,
             Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
         dc.setColor(Graphics.COLOR_DK_GRAY, Graphics.COLOR_BLACK);
         dc.fillRoundedRectangle(bLeft, bTop, bW, bH, 16);

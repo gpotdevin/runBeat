@@ -5,6 +5,7 @@ package com.bpmapp.audio.viewmodel
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.bpmapp.audio.audio.BpmResolver
+import com.bpmapp.audio.audio.MediaItemFactory
 import com.bpmapp.audio.audio.PlayerRepository
 import com.bpmapp.audio.audio.TrackRepository
 import com.bpmapp.audio.data.AppDatabase
@@ -92,7 +93,7 @@ class LibraryViewModelNotForRunningTest {
         }
         val bpmResolver: BpmResolver = mock()
 
-        viewModel = LibraryViewModel(trackRepository, bpmResolver, playerRepository, appDatabase, context)
+        viewModel = LibraryViewModel(trackRepository, bpmResolver, playerRepository, MediaItemFactory(), appDatabase, context)
     }
 
     @After
@@ -146,6 +147,7 @@ class LibraryViewModelNotForRunningTest {
             trackRepository,
             mock(),
             playerRepository,
+            MediaItemFactory(),
             appDatabase,
             context
         )
