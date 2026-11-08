@@ -24,10 +24,10 @@ import Toybox.WatchUi;
 // No live cadence display — the stock running app already shows it.
 // FIT contribution: cadence + target cadence written to the FIT file.
 
-class RunBeatDataFieldApp extends Application.App {
+class RunBeatDataFieldApp extends Application.AppBase {
 
     function initialize() {
-        Application.App.initialize();
+        AppBase.initialize();
     }
 
     function getInitialView() {
@@ -88,8 +88,8 @@ class RunBeatDataField extends WatchUi.DataField {
         Communications.registerForPhoneAppMessages(_messages.method(:onPhoneMessage));
         _messages.sendRequestState();
         try {
-            _fitCadence = FitContributor.createField("cadence", 0, FitContributor.DATA_TYPE_NUMBER, {:mesgType => FitContributor.MESG_TYPE_RECORD, :units => "spm"});
-            _fitTarget = FitContributor.createField("target_cadence", 1, FitContributor.DATA_TYPE_NUMBER, {:mesgType => FitContributor.MESG_TYPE_RECORD, :units => "spm"});
+            _fitCadence = createField("cadence", 0, FitContributor.DATA_TYPE_UINT16, {:mesgType => FitContributor.MESG_TYPE_RECORD, :units => "spm"});
+            _fitTarget = createField("target_cadence", 1, FitContributor.DATA_TYPE_UINT16, {:mesgType => FitContributor.MESG_TYPE_RECORD, :units => "spm"});
         } catch (e) {
             _fitCadence = null;
             _fitTarget = null;
@@ -99,7 +99,6 @@ class RunBeatDataField extends WatchUi.DataField {
     function onHide() as Void {
         _messages.sendBye();
         Communications.registerForPhoneAppMessages(null);
-        saveFit();
     }
 
     function onUpdate(dc as Graphics.Dc) as Void {
@@ -119,7 +118,6 @@ class RunBeatDataField extends WatchUi.DataField {
     function onTimerStop() as Void {
         _messages.sendBye();
         Communications.registerForPhoneAppMessages(null);
-        saveFit();
     }
     function onTimerPause() as Void { _messages.sendBye(); }
 
@@ -210,14 +208,7 @@ class RunBeatDataField extends WatchUi.DataField {
         _fitSaveCounter++;
         if (_fitSaveCounter >= 30) {
             _fitSaveCounter = 0;
-            saveFit();
-        }
-    }
-
-    private function saveFit() as Void {
-        if (_fitCadence != null || _fitTarget != null) {
-            try { FitContributor.save(); } catch (e) {}
-        }
+            }
     }
 
     // --- Drawing: Screen 0 (Track) ---
@@ -314,31 +305,31 @@ class RunBeatDataField extends WatchUi.DataField {
         if (target.length() == 0) { target = _strNoValue; }
         var tgtColor = !runBeat ? Graphics.COLOR_DK_GRAY
             : (_state.speedCorrection ? Graphics.COLOR_GREEN : Graphics.COLOR_LT_GRAY);
-        drawCellLabel(dc, cellW / 2, tlY + cellH * 0.30, _strTargetPrefix,
+        drawCellLabel(dc, (cellW / 2).toNumber(), (tlY + cellH * 0.30).toNumber(), _strTargetPrefix,
             Graphics.COLOR_LT_GRAY, Graphics.FONT_TINY);
-        drawCellValue(dc, cellW / 2, tlY + cellH * 0.62, target, tgtColor, Graphics.FONT_NUMBER_MEDIUM);
+        drawCellValue(dc, (cellW / 2).toNumber(), (tlY + cellH * 0.62).toNumber(), target, tgtColor, Graphics.FONT_NUMBER_MEDIUM);
         drawCellBorder(dc, tlX, tlY, cellW, cellH, tgtColor);
 
         // --- Top-right: 60s avg cadence (blue) ---
         var trX = cellW;
         var mean = _cadenceBuffer.mean(now);
         var meanText = mean == null ? _strNoValue : (mean as Float).format("%.0f");
-        drawCellLabel(dc, trX + cellW / 2, tlY + cellH * 0.30, _strAvgCaption,
+        drawCellLabel(dc, trX + (cellW / 2).toNumber(), (tlY + cellH * 0.30).toNumber(), _strAvgCaption,
             Graphics.COLOR_LT_GRAY, Graphics.FONT_TINY);
-        drawCellValue(dc, trX + cellW / 2, tlY + cellH * 0.62, meanText,
+        drawCellValue(dc, trX + (cellW / 2).toNumber(), (tlY + cellH * 0.62).toNumber(), meanText,
             Graphics.COLOR_BLUE, Graphics.FONT_NUMBER_MEDIUM);
         drawCellBorder(dc, trX, tlY, cellW, cellH, Graphics.COLOR_BLUE);
 
         // --- Bottom-left: Mark not for running (red) ---
         var blY = gridTop + cellH;
-        drawCellLabel(dc, cellW / 2, blY + cellH * 0.30, _strMarkLabel,
+        drawCellLabel(dc, (cellW / 2).toNumber(), (blY + cellH * 0.30).toNumber(), _strMarkLabel,
             Graphics.COLOR_RED, Graphics.FONT_SMALL);
         drawCellBorder(dc, 0, blY, cellW, cellH, Graphics.COLOR_RED);
 
         // --- Bottom-right: Connection status (gray) ---
         var brX = cellW;
         var connText = headerText();
-        drawCellValue(dc, brX + cellW / 2, blY + cellH * 0.50, connText,
+        drawCellValue(dc, brX + (cellW / 2).toNumber(), (blY + cellH * 0.50).toNumber(), connText,
             Graphics.COLOR_LT_GRAY, Graphics.FONT_TINY);
         drawCellBorder(dc, brX, blY, cellW, cellH, Graphics.COLOR_DK_GRAY);
 
@@ -395,7 +386,7 @@ class RunBeatDataField extends WatchUi.DataField {
         dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
         dc.drawText(dc.getWidth() - 4, dc.getHeight() - 4, Graphics.FONT_TINY,
             page.format("%d") + "/" + total.format("%d"),
-            Graphics.TEXT_JUSTIFY_RIGHT | Graphics.TEXT_JUSTIFY_BOTTOM);
+            Graphics.TEXT_JUSTIFY_RIGHT | Graphics.TEXT_JUSTIFY_VCENTER);
     }
 
     private function hitTest(rect, x as Number, y as Number) as Boolean {
