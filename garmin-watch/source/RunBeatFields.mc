@@ -241,14 +241,15 @@ class RunBeatControlsField extends RunBeatFieldBase {
         var fhNum = dc.getFontHeight(Graphics.FONT_NUMBER_MEDIUM);
         var runBeat = _state.isRunBeatActive();
 
-        // Three compact sections, all close to center:
+        // Three compact sections centered as a group (not stretched to edges).
         // top = title+artist, mid = [- num +], bot = avg | mark
         var topH = fhLarge + fhTiny + 4;
         var botH = fhNum + 4;
-        var midH = h - topH - botH;
-        var topY = 0;
-        var midY = topH;
-        var botY = topH + midH;
+        var midH = fhNum + 8;  // compact middle, just enough for the number row
+        var totalH = topH + midH + botH;
+        var topY = ((h - totalH) / 2).toNumber();  // center the whole group vertically
+        var midY = topY + topH;
+        var botY = midY + midH;
 
         // ---- Top: track title + artist/album (tap = play/pause) ----
         var topCy = topY + topH / 2;
