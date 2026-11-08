@@ -64,7 +64,9 @@ class RunBeatFieldBase extends WatchUi.DataField {
 
     function onTimerStart() as Void { safeReq(); }
     function onTimerResume() as Void { safeReq(); }
-    function onTimerLap() as Void { _messages.sendNext(); }
+    function onTimerLap() as Void {
+        // Auto km/lap splits also fire onTimerLap — do NOT skip track here.
+    }
     function onTimerStop() as Void {
         try { _messages.sendBye(); Communications.registerForPhoneAppMessages(null); } catch (e) {}
     }
