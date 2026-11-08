@@ -1,79 +1,56 @@
-# RunBeat Data Field — Architecture
+# Data field architecture
 
-**Status: two-screen data field (battery fix). Docs synced 2026-11-08.**
+Two data field apps, each one full-screen rectangle on one activity screen.
+Only the visible screen's field runs at a time — one process.
 
-A Connect IQ **data field** (`garmin-watch/`, manifest type `datafield`) that
-remote-controls RunBeat during an activity. Runs ONLY during an activity —
-firmware-managed lifecycle, zero battery cost outside a workout.
+## Screen 1 — RunBeat Track (`RunBeatTrackField`)
+```
+ Playing              <- connection color
+ |<    >/||    >|     <- tap zones, connection color
+```
+Tap left/center/right = prev / play-pause / next.
 
-Wire protocol (unchanged, normative): [architecture.md](architecture.md).
-
-## Screens
-
-### Screen 1/2 — Track
-- Play state (Playing / Paused)
-- Track title (big) + artist
-- Bottom hint: `|<  >/||  >|`
-- Tap zones: left 1/3 = previous, center = play/pause, right 1/3 = next
-- Keys: SELECT/ENTER = play/pause, LAP = next
-
-### Screen 2/2 — Controls (2x2 grid)
-| Cell | Label | Color | Tap action |
-|------|-------|-------|------------|
-| Top-left | TARGET xxx | green = speed-corr ON, gray = OFF | toggle speed correction |
-| Top-right | AVG/60s xxx | blue | set 60 s avg as target cadence |
-| Bottom-left | NO GOOD RUN | red | mark current track not-for-running |
-| Bottom-right | connection status | gray | (no action) |
-
-Switch screens: UP/DOWN key or vertical swipe.
-
-No live cadence display — the stock running app already shows it.
-
-## Input mapping
-
-| Input | Screen 1 (Track) | Screen 2 (Controls) |
-|-------|-----------------|---------------------|
-| SELECT / ENTER | play/pause toggle | — |
-| LAP | next track | — |
-| Tap left 1/3 | previous track | — |
-| Tap center | play/pause | — |
-| Tap right 1/3 | next track | — |
-| Tap top-left cell | — | toggle speed correction |
-| Tap top-right cell | — | set avg as target |
-| Tap bottom-left cell | — | mark not-for-running |
-| UP / DOWN key | switch screen | switch screen |
-| Swipe up/down | switch screen | switch screen |
+## Screen 2 — RunBeat Controls (`RunBeatControlsField`)
+```
+ Song Title           <- yellow if favorite, marquee scrolls on round screens
+ Artist - Album
+   -    172    +       <- tap: -1 / toggle speed-corr (green=ON) / +1
+  168    NO GOOD RUN   <- tap: set avg as target (blue) / mark not-for-running (red)
+```
+Tap title/artist = favorite toggle. Three sections centered as a group.
 
 ## Watch components
 
-| Component | Role |
-|-----------|------|
-| `RunBeatDataFieldApp` (extends `Application.App`) | Manifest entry; returns field + delegate |
-| `RunBeatDataField` (extends `WatchUi.DataField`) | `onUpdate()` at 1 Hz (system-driven): samples cadence, writes FIT, draws current screen. `onShow/onHide`: register/unregister phone listener. `onTimerStart/Resume/Lap/Stop/Pause`: activity lifecycle |
-| `RunBeatDataFieldDelegate` (extends `WatchUi.BehaviorDelegate`) | Routes keys, taps, swipes to the field |
-| `MessageHandler` | JSON protocol codec (unchanged); `.equals()` for strings |
-| `WatchState` | Phone state holder (unchanged) |
-| `CadenceRingBuffer` | 60 s rolling cadence average (unchanged) |
-
-## FIT contribution
-
-`FitContributor` permission: writes `cadence` (spm) and `target_cadence` (spm)
-to the FIT activity file every 30 s — visible in Garmin Connect after the run.
+| File | Role |
+|------|------|
+| `RunBeatFields.mc` | `RunBeatFieldBase` (shared: Communications, cadence sampling via `Activity.getActivityInfo().currentCadence`, conn color) + 2 field subclasses + 2 app entry classes + shared delegate |
+| `MessageHandler.mc` | JSON codec; injects `apiVersion` into every outgoing message; parses state/ack/playlists |
+| `WatchState.mc` | Latest phone state + `phoneApiVersion` |
+| `CadenceRingBuffer.mc` | 60 s rolling cadence average |
 
 ## Lifecycle
 
 ```
-Activity start -> onShow() -> registerForPhoneAppMessages + request_state
-     |
-onUpdate() @ 1 Hz -> sample cadence, write FIT, draw current screen
-     |
-Activity pause -> onTimerPause() -> bye (phone drops push window)
-Activity resume -> onTimerResume() -> request_state (re-arm)
-LAP -> onTimerLap() -> next
-Activity stop -> onTimerStop() -> bye + unregister + save FIT
-     |
-onHide() -> bye + unregister
+onShow  -> registerForPhoneAppMessages + request_state
+onUpdate @1Hz (system-driven) -> sample cadence, draw
+onTimerStart/Resume -> request_state
+onTimerLap -> no-op (auto km splits fire this too — do NOT skip track)
+onTimerStop/Pause -> bye + unregister
+onHide  -> bye + unregister
 ```
 
-Phone side (`GarminCompanionManager`) unchanged: 30 s push-window gating handles
-activity-scoped watch correctly.
+Data fields cannot use `Sensor.getInfo()` — use `Activity.getActivityInfo().currentCadence`.
+
+## Protocol versioning
+
+`API_VERSION = 1` (watch) / `PROTOCOL_API_VERSION = 1` (phone). Watch broadcasts
+it in every message; phone logs it per device and includes its own in state/ack
+pushes. Bump both on incompatible changes.
+
+## Build
+
+```
+# per field, one .prg each:
+monkeybrains -f <jungle pointing to manifest-{track,controls}.xml> -d venu2 \
+  -y developer_key.der --override-devices-json devices-local -o venu2-{track,controls}.prg
+```
