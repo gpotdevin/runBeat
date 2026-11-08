@@ -514,7 +514,7 @@ class GarminCompanionManager @Inject constructor(
         Log.i(TAG, "Garmin watch connected")
         GarminWatchConnection.update(GarminConnectionState.CONNECTED)
         startStatePush()
-        scope.launch { pushState() }
+        pushState()
     }
 
     private fun setDisconnected() {
@@ -615,7 +615,7 @@ class GarminCompanionManager @Inject constructor(
      * Pushes the current state to the watch. No-op while disconnected OR
      * while no watch app is active — the stream is only for an open remote.
      */
-    private suspend fun pushState() {
+    private fun pushState() {
         if (connectionState.value != GarminConnectionState.CONNECTED) return
         if (!hasActiveWatchApp()) return
         sendToWatch(GarminMessageCodec.encodeState(router.currentState()), statePush = true)
@@ -630,7 +630,7 @@ class GarminCompanionManager @Inject constructor(
      * the state stream usually answered the request a moment ago, and
      * answering every keepalive again would double the BLE traffic.
      */
-    private suspend fun pushStateTo(device: IQDevice) {
+    private fun pushStateTo(device: IQDevice) {
         if (deviceStatuses[device.deviceIdentifier] != IQDevice.IQDeviceStatus.CONNECTED) {
             Log.i(TAG, "request_state from ${device.friendlyName}: device not connected, not answering")
             return

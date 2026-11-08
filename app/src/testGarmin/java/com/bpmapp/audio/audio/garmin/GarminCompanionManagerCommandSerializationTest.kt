@@ -160,7 +160,7 @@ class GarminCompanionManagerCommandSerializationTest {
         stubSuspendingRoomWrite()
 
         val device = IQDevice(1L, "Forerunner")
-        val app = IQApp(GarminCompanionManager.IQ_APP_ID)
+        val app = IQApp(GarminCompanionManager.IQ_APP_IDS.first())
         val json = "{\"type\":\"mark_not_for_running\"}"
         manager.onMessageReceived(device, app, listOf(json, json), ConnectIQ.IQMessageStatus.SUCCESS)
 
@@ -180,7 +180,7 @@ class GarminCompanionManagerCommandSerializationTest {
         val sentMessages = mutableListOf<Pair<IQDevice, String>>()
         val device = IQDevice(1L, "Forerunner")
         val notConnectedDevice = IQDevice(2L, "NotConnected")
-        val app = IQApp(GarminCompanionManager.IQ_APP_ID)
+        val app = IQApp(GarminCompanionManager.IQ_APP_IDS.first())
 
         Mockito.mockStatic(ConnectIQ::class.java).use { mocked ->
             mocked.`when`<ConnectIQ> { ConnectIQ.getInstance(any(), any()) }.thenReturn(connectIQ)
@@ -259,7 +259,7 @@ class GarminCompanionManagerCommandSerializationTest {
         val connectIQ = mock<ConnectIQ>()
         val sentMessages = mutableListOf<Pair<IQDevice, String>>()
         val device = IQDevice(1L, "Forerunner")
-        val app = IQApp(GarminCompanionManager.IQ_APP_ID)
+        val app = IQApp(GarminCompanionManager.IQ_APP_IDS.first())
 
         Mockito.mockStatic(ConnectIQ::class.java).use { mocked ->
             mocked.`when`<ConnectIQ> { ConnectIQ.getInstance(any(), any()) }.thenReturn(connectIQ)

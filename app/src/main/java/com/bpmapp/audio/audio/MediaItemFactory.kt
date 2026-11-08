@@ -54,6 +54,7 @@ class MediaItemFactory @Inject constructor() {
                             putString("bpm", track.bpm?.toString() ?: "")
                             putString("fileName", track.fileName)
                             putLong("durationMs", track.durationMs ?: 0L)
+                            putBoolean("isFavorite", track.isFavorite)
                         }
                         setExtras(extras)
                     }
