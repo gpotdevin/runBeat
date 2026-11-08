@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<menus>
-    <menu id="CadenceViewMenu" title="@Strings.CadenceMenuTitle">
-        <menu-item id="cadence_plus" label="@Strings.MenuCadencePlus"/>
-        <menu-item id="cadence_minus" label="@Strings.MenuCadenceMinus"/>
-        <menu-item id="cadence_use_current" label="@Strings.MenuUseCurrent"/>
-        <menu-item id="speed_correction" label="@Strings.MenuSpeedCorrection"/>
-    </menu>
-</menus>

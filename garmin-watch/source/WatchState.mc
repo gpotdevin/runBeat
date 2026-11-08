@@ -7,7 +7,7 @@ import Toybox.System;
 // (protocol: docs/companion_garmin_app/architecture.md).
 class WatchState {
 
-    // How long a transient ack line stays on screen (BaseView.drawAck
+    // How long a transient ack line stays on screen (drawn by the data field
     // clears it when it expires; the app's 1 Hz tick repaints once at
     // expiry).
     static const ACK_VISIBLE_MS = 2500;
@@ -64,8 +64,8 @@ class WatchState {
     var adjustScreen = null;
 
     // True while a page menu is pushed on top of the view stack (set by the
-    // delegates' onMenu via RunBeatCompanionApp.noteMenuPushed, cleared by
-    // BaseView.onShow when a page becomes visible again). Menus are static:
+    // (data field: no page menus; kept for protocol compatibility)
+    //
     // the app's 1 Hz tick never repaints them.
     var menuOpen as Boolean = false;
 

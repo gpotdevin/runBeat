@@ -1,66 +1,57 @@
-# Garmin Companion App — RunBeat watch remote
+# Garmin Data Field — RunBeat activity companion
 
-**Status: implemented and build-verified; on-device checklist in progress. Docs synced 2026-10-31.**
+**Status: converted to data field (battery fix). Docs synced 2026-11-08.**
 
-A Garmin Connect IQ watch app (`garmin-watch/`, Monkey C) that remote-controls the RunBeat
-Android app from the wrist. Music always plays on the **phone**, never on the watch.
-Wire protocol (normative): [architecture.md](architecture.md). On-device checklist:
-[device_test_plan.md](device_test_plan.md). Simulator procedure:
-[simulator_runbook_2026-10-29.md](simulator_runbook_2026-10-29.md).
+A Garmin Connect IQ **data field** (`garmin-watch/`, Monkey C) that shows live
+cadence and the current RunBeat track during an activity, and remote-controls
+the RunBeat Android app from the wrist. Music always plays on the **phone**,
+never on the watch.
 
-The watch controls **RunBeat only**: the phone never reads other apps' notifications or media
-sessions for the companion. When RunBeat is not the active player, watch transport/volume
-commands are ignored and the pushed `source` is `"none"` (no track metadata). Exception — the
-pause resume grace: for 60 s after a pause, RunBeat stays "active", the watch shows the paused
-track and can resume it; after the grace the watch flips to `"none"` and commands are ignored
-again.
+**Why a data field:** the previous audio-content-provider companion app drained
+the watch battery even when closed (persistent process + BLE wakeups). A data
+field runs ONLY during an activity — the firmware owns its lifecycle — so it
+costs zero battery outside a workout. Details: [datafield.md](datafield.md).
 
-## Features (all six shipped)
+Wire protocol (normative): [architecture.md](architecture.md). Data field
+architecture: [datafield.md](datafield.md).
+
+## Features
 
 | # | Feature | How |
 |---|---------|-----|
-| 1 | Play / pause / next / prev | watch command → `PlayerRepository`; ignored when RunBeat isn't the active player. A paused RunBeat stays resumable from the watch for 60 s (pause resume grace) |
-| 2 | Target cadence ±, or = 60 s average | watch samples its own cadence 1 Hz into a 60-sample ring buffer; "use current" sends the mean → `setTargetCadence` (clamped 150–195) |
-| 3 | Speed-correction toggle | → `PlayerRepository.toggleSpeedCorrection()` |
-| 4 | Volume up/down | `AudioManager` STREAM_MUSIC; ignored when RunBeat isn't the active player |
-| 5 | Mark track "not for running" | sets `Track.notForRunning` in Room (migration 6→7) **and skips immediately**; excluded from future queues behind a settings toggle (default ON). Wording: "does not feel right to run on", not a quality rating |
-| 6 | Play a library playlist | Watch Playlists page (4th ViewLoop page) lists the phone's playlists (`playlist_list` → one `playlists` push); tap a row → `playlist_play` → phone loads the queue (not-for-running filter applied) and plays |
+| 1 | Play / pause toggle | SELECT/ENTER key -> `toggle` command |
+| 2 | Next track | LAP key -> `next` command |
+| 3 | Target cadence +/-1 | UP/DOWN keys -> `cadence_delta` |
+| 4 | Live cadence display | Watch sensor, 1 Hz via system-driven `onUpdate()` |
+| 5 | 60 s cadence average | `CadenceRingBuffer`, displayed on the field |
+| 6 | Track info | Phone pushes `state` -> title/artist shown on the field |
+| 7 | FIT recording | Cadence + target cadence written to the FIT activity file |
+
+Removed from the companion app (not applicable to data fields): volume control,
+shuffle toggle, speed-correction toggle, mark-not-for-running, playlists,
+multi-page UI, menus.
 
 ## Confirmed decisions
 
-- **Transport:** Connect IQ watch app + Connect IQ Mobile SDK on the phone, relayed by Garmin
-  Connect Mobile over BLE. The exported `MediaSessionService` remains a free fallback for basic
-  transport only. Wear OS / raw BLE GATT not applicable.
-- **Flavors:** `fdroid` (default, no Garmin SDK, what F-Droid builds via `assembleFdroidRelease`)
-  and `garmin` (adds `com.garmin.connectiq:ciq-companion-app-sdk:2.4.0`). Both share applicationId
-  `com.RunBeat.run.audio` → not co-installable.
-- **Cadence is measured on the watch** (wrist sensor; avoids `ACTIVITY_RECOGNITION` on the
-  phone). Only the 60 s mean crosses the link, on button press.
-- **Manifest type `audio-content-provider-app`** (hybrid, reaffirmed 2026-10-31 after a
-  one-day `watch-app` experiment — that type can never be reached from the Music app/music
-  shortcut): the app appears in both the **app menu** (direct launch via `getInitialView`,
-  back to watch face) and **Music → Music Providers** (via `getPlaybackConfigurationView`,
-  branded with `getProviderIconInfo`) — same two entry points as Spotify. In the provider
-  flow the stock Music app is the host (brief flash on launch, extra back press) — firmware
-  behavior, not removable in code. There is **no watch-side playback**; the stock player also
-  controls RunBeat via the phone's "Phone" source (MediaSession metadata). Details: architecture.md.
-- **Watch UI:** 4 ViewLoop pages — Main (artist/album/title + play/pause, next, prev, volume +
-  "No good run" button), Controls, Cadence, Playlists. fr245 (CIQ 3.3.1 < 3.4.0) falls back to Main-only.
-- **Battery:** phone pushes state only within a 30 s window of the last incoming watch message
-  (armed by the 20 s `request_state` keepalive, dropped by `bye`) and never initiates contact
-  itself (no `wake`, no background service — the watch app connects only when started
-  manually); 2-min idle auto-exit once music stopped (goes inert first: stops timers + `bye`, then `System.exit`);
-  back is never swallowed; the cadence tick is adaptive (1 Hz while playing, 5 s while paused)
-  and the sensor read runs only while playing, so a paused app costs almost nothing; resource
-  strings are cached at view init so the draw path never hits the file system. Details: architecture.md "Battery & lifecycle".
-- **Distribution:** sideload `.prg` with the local developer key (sideload only — never valid
-  for the IQ Store); IQ Store submission optional later.
+- **Manifest type `datafield`** (converted 2026-11-08 from
+  `audio-content-provider-app`): runs only during activities, firmware-managed
+  lifecycle, no background execution possible — this is the battery fix.
+- **Permissions:** `Communications` + `Sensor` + `FitContributor` (no
+  `Background` — data fields cannot run in the background by design).
+- **Product list:** all Connect IQ devices (plain fr245/fr255 now included —
+  data fields have no music-capable restriction).
+- **Phone side unchanged:** `GarminCompanionManager`, `GarminCommandRouter`,
+  `GarminMessageCodec` work as-is; the existing 30 s push-window gating handles
+  the activity-scoped watch correctly.
+- **Cadence is measured on the watch** (wrist sensor). Only the display uses it;
+  the phone receives cadence commands only on explicit key press.
+- **Distribution:** sideload `.prg` with the local developer key (sideload only).
 
 ## Where things live
 
-- Watch app: `garmin-watch/` — Connect IQ SDK 9.3.0, 16 product ids, IQ app UUID
-  `06c14376-0c60-4e4c-a977-e93364ace3eb`, permissions `Communications` + `Sensor`
-- Phone Garmin layer: `app/src/main/java/com/bpmapp/audio/audio/garmin/` (SDK-free: codec,
-  router) and `app/src/garmin/java/...` (SDK wiring: `GarminCompanionManager`)
+- Watch data field: `garmin-watch/` — Connect IQ SDK, IQ app UUID
+  `06c14376-0c60-4e4c-a977-e93364ace3eb`, manifest type `datafield`
+- Phone Garmin layer: `app/src/main/java/com/bpmapp/audio/audio/garmin/` (SDK-free:
+  codec, router) and `app/src/garmin/java/...` (SDK wiring: `GarminCompanionManager`)
 - Build scripts, developer key, per-device `.prg` outputs: outside the repo at
   `/c/Users/guill/dev/tools/garmin-build/`

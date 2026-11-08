@@ -1,62 +1,27 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- All user-visible strings. Keep them short: screens are 218-454 px. -->
+<!-- All user-visible strings. Keep them short: data field screens are small. -->
 <strings>
     <string id="AppName">RunBeat</string>
 
-    <!-- Page headers (layout labels). -->
-    <string id="HeaderCadence">CADENCE</string>
-    <string id="HeaderControls">CONTROLS</string>
-    <string id="PlaylistsHeader">PLAYLISTS</string>
-
-    <!-- Main page. -->
+    <!-- Header / status. -->
     <string id="NoPlayback">Nothing playing</string>
-    <string id="NoPlaylists">No playlists</string>
     <string id="PhoneNotConnected">Phone not connected</string>
     <string id="Connecting">Connecting...</string>
-    <string id="PhonePlaybackOnly">Music plays on the phone</string>
     <string id="NoValue">--</string>
-    <string id="BpmSuffix"> BPM</string>
-    <string id="SpeedSuffix">x</string>
-    <string id="VolumeShort">VOL</string>
 
-    <!-- Cadence page. -->
-    <string id="AvgCaption">AVG / 60 S</string>
-    <string id="TargetPrefix">TARGET</string>
+    <!-- Data field display. -->
+    <string id="AvgCaption">AVG</string>
+    <string id="TargetPrefix">TGT</string>
 
-    <!-- Cadence page buttons / volume screen. -->
-    <string id="SetTargetLabel">SET TARGET</string>
-    <string id="UseAvgAsTargetLabel">USE AVG AS TARGET</string>
-    <string id="TempoLabel">TEMPO</string>
-    <string id="FixBpmLabel">FIX BPM FROM CADENCE</string>
-    <string id="VolumeLabel">VOLUME</string>
-    <string id="On">ON</string>
-    <string id="Off">OFF</string>
-
-    <!-- Menus. -->
-    <string id="MainMenuTitle">Transport</string>
-    <string id="CadenceMenuTitle">Cadence</string>
-    <string id="ControlMenuTitle">Controls</string>
-    <string id="MenuNext">Next</string>
-    <string id="MenuPrev">Previous</string>
-    <string id="MenuCadencePlus">+1 spm</string>
-    <string id="MenuCadenceMinus">-1 spm</string>
-    <string id="MenuUseCurrent">Use current</string>
-    <string id="MenuSpeedCorrection">Speed correction</string>
-    <string id="MenuVolumeDown">Volume -</string>
-    <string id="MenuVolumeUp">Volume +</string>
-    <string id="MenuMarkNotForRunning">Exclude</string>
-
-    <!-- Transient hints and ack confirmations. -->
-    <string id="RunBeatOnlyHint">RunBeat only</string>
-    <string id="NoCadenceHint">No cadence yet</string>
-    <string id="AckMarked">Marked: not for running</string>
-    <string id="AckRunBeatOnly">RunBeat only</string>
-    <string id="AckMarkFailed">Mark failed</string>
-    <string id="AckCadenceApplied">Target set</string>
-    <string id="AckCadenceFailed">Not applied</string>
-    <string id="AckSpeedCorrection">Toggled</string>
-    <string id="AckPlaylistStarted">Playlist started</string>
-    <string id="AckPlaylistFailed">Playlist failed</string>
+    <!-- Ack messages (from phone). -->
     <string id="AckOk">OK</string>
     <string id="AckFailed">Failed</string>
+    <string id="AckCadenceApplied">Target set</string>
+    <string id="AckCadenceFailed">Not applied</string>
+    <string id="AckMarked">Marked: not for running</string>
+    <string id="AckMarkFailed">Mark failed</string>
+    <string id="AckSpeedCorrection">Toggled</string>
+    <string id="AckRunBeatOnly">RunBeat only</string>
+    <string id="AckPlaylistStarted">Playlist started</string>
+    <string id="AckPlaylistFailed">Playlist failed</string>
 </strings>

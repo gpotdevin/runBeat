@@ -112,7 +112,7 @@ class MessageHandler {
     // 20 s while playing (keepalive — the phone only pushes state to an
     // "active" watch app, and while playing the app itself sends nothing),
     // and while the state is stale with exponential backoff (see
-    // RunBeatCompanionApp.onStateTimerTick — an unreachable phone must
+    // (data field: stale retry handled by system-driven onUpdate cadence) an unreachable phone must
     // not trigger a radio attempt every 5 s forever). No ack — the answer
     // is the state push itself.
     function sendRequestState() as Void {
