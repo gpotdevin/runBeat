@@ -6,19 +6,24 @@ import Toybox.Lang;
 import Toybox.System;
 import Toybox.WatchUi;
 
-// RunBeat data fields — 5 separate data field apps in one .prg.
-// Each app = one rectangle on one activity screen.
+// RunBeat data fields — TWO full-screen data field apps.
 //
-// Shared base handles Communications + WatchState + cadence sampling.
-// Each subclass overrides draw() and onTap() for its specific function.
+// Field 1 "RunBeat Track":    play state, title, artist/album, transport |< >/|| >|
+// Field 2 "RunBeat Controls": target cadence [- num +], AVG/60s, NO GOOD RUN
+//
+// Add each to a separate full-screen data screen in the run activity.
+// Only the visible screen's field runs, so one process at a time.
+
+// ============================================================
+// Shared base
+// ============================================================
 
 class RunBeatFieldBase extends WatchUi.DataField {
 
-    protected var _state;            // WatchState
-    protected var _messages;         // MessageHandler
-    protected var _cadenceBuffer;    // CadenceRingBuffer
+    protected var _state;
+    protected var _messages;
+    protected var _cadenceBuffer;
 
-    // Cached resources.
     protected var _strAppName as String;
     protected var _strNoPlayback as String;
     protected var _strNoValue as String;
@@ -79,18 +84,11 @@ class RunBeatFieldBase extends WatchUi.DataField {
         } catch (ex) {}
     }
 
-    // Connection status color: yellow=connecting/stale, green=RunBeat, gray=none.
     protected function connColor() as Number {
         if (!_state.hasConnected() || _state.isStale(System.getTimer())) {
             return Graphics.COLOR_YELLOW;
         }
         return _state.isRunBeatActive() ? Graphics.COLOR_GREEN : Graphics.COLOR_LT_GRAY;
-    }
-
-    protected function connText() as String {
-        if (!_state.hasConnected()) { return _strConnecting; }
-        if (_state.isStale(System.getTimer())) { return _strPhoneNotConnected; }
-        return _state.isRunBeatActive() ? _strAppName : _strNoPlayback;
     }
 
     protected function hitTest(rect, x as Number, y as Number) as Boolean {
@@ -109,19 +107,22 @@ class RunBeatFieldBase extends WatchUi.DataField {
         return t + "...";
     }
 
-    // Overridden by subclasses.
     function draw(dc as Graphics.Dc, now as Number) as Void {}
     function onTap(x as Number, y as Number) as Boolean { return false; }
 }
 
 // ============================================================
-// Field 1: Track — Artist / Album / Title (display only)
+// Field 1: TRACK — full screen
+//   top: play state (connection color)
+//   center: title (big) + artist - album
+//   bottom: transport |<  >/||  >|  (tap zones, connection color)
 // ============================================================
 
 class RunBeatTrackField extends RunBeatFieldBase {
 
     private var _strPlaying as String;
     private var _strPaused as String;
+    private var _zones as Array = [];
 
     function initialize() {
         RunBeatFieldBase.initialize();
@@ -138,85 +139,56 @@ class RunBeatTrackField extends RunBeatFieldBase {
         var fhTiny = dc.getFontHeight(Graphics.FONT_TINY);
         var fhSmall = dc.getFontHeight(Graphics.FONT_SMALL);
         var fhLarge = dc.getFontHeight(Graphics.FONT_LARGE);
+        var fhNum = dc.getFontHeight(Graphics.FONT_NUMBER_MEDIUM);
         var runBeat = _state.isRunBeatActive();
+        var color = connColor();
 
-        // Play state (top, small).
+        // Top: play state.
         var st = runBeat ? (_state.isPlaying ? _strPlaying : _strPaused) : _strNoPlayback;
-        dc.setColor(connColor(), Graphics.COLOR_BLACK);
-        dc.drawText(w / 2, fhTiny / 2 + 1, Graphics.FONT_TINY, st,
+        dc.setColor(color, Graphics.COLOR_BLACK);
+        dc.drawText(w / 2, fhSmall / 2 + 4, Graphics.FONT_SMALL, st,
             Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
 
+        // Center: title (big) + artist/album.
+        var midY = fhSmall + 8 + (h - fhSmall - fhNum - 16) / 2;
         if (runBeat) {
-            // Title (big, center).
             var title = _state.title.length() > 0 ? _state.title : _strNoValue;
             dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_BLACK);
-            dc.drawText(w / 2, h / 2, Graphics.FONT_LARGE,
+            dc.drawText(w / 2, midY, Graphics.FONT_LARGE,
                 truncate(dc, title, Graphics.FONT_LARGE, (w * 0.94).toNumber()),
                 Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
-            // Artist / Album (bottom).
-            var artist = _state.artist.length() > 0 ? _state.artist : "";
-            var album = _state.album.length() > 0 ? _state.album : "";
-            var sub = artist;
-            if (album.length() > 0) {
-                sub = sub.length() > 0 ? sub + " - " + album : album;
+            var sub = _state.artist;
+            if (_state.album.length() > 0) {
+                sub = sub.length() > 0 ? sub + " - " + _state.album : _state.album;
             }
             if (sub.length() > 0) {
                 dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
-                dc.drawText(w / 2, h - fhSmall / 2 - 1, Graphics.FONT_SMALL,
-                    truncate(dc, sub, Graphics.FONT_SMALL, (w * 0.90).toNumber()),
+                dc.drawText(w / 2, midY + fhLarge / 2 + 4 + fhTiny / 2, Graphics.FONT_TINY,
+                    truncate(dc, sub, Graphics.FONT_TINY, (w * 0.90).toNumber()),
                     Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
             }
         } else {
             dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
-            dc.drawText(w / 2, h / 2, Graphics.FONT_LARGE, _strNoPlayback,
+            dc.drawText(w / 2, midY, Graphics.FONT_LARGE, _strNoPlayback,
                 Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
         }
-    }
-}
 
-class RunBeatTrackApp extends Application.AppBase {
-    function initialize() { AppBase.initialize(); }
-    function getInitialView() {
-        var f = new RunBeatTrackField();
-        return [f, new RunBeatFieldDelegate(f)];
-    }
-}
-
-// ============================================================
-// Field 2: Transport — |<  >/||  >|  (colors = connection status)
-// ============================================================
-
-class RunBeatTransportField extends RunBeatFieldBase {
-
-    private var _zones as Array = [];  // [prev, play, next]
-
-    function draw(dc as Graphics.Dc, now as Number) as Void {
-        var w = dc.getWidth();
-        var h = dc.getHeight();
-        dc.setColor(Graphics.COLOR_BLACK, Graphics.COLOR_BLACK);
-        dc.clear();
-
-        var fhNum = dc.getFontHeight(Graphics.FONT_NUMBER_MEDIUM);
-        var color = connColor();
-
-        // Three equal zones: prev | play-pause | next.
+        // Bottom: transport row.
+        var tY = h - fhNum - 8;
         var zw = (w / 3).toNumber();
-        var cy = (h / 2).toNumber();
-        var fs = fhNum > (h * 0.5).toNumber() ? (h * 0.5).toNumber() : fhNum;
-
         dc.setColor(color, Graphics.COLOR_BLACK);
-        dc.drawText((zw / 2).toNumber(), cy, Graphics.FONT_NUMBER_MEDIUM, "|<",
+        dc.drawText((zw / 2).toNumber(), tY + fhNum / 2, Graphics.FONT_NUMBER_MEDIUM, "|<",
             Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
-        var playLabel = _state.isPlaying ? "||" : ">";
-        dc.drawText(zw + (zw / 2).toNumber(), cy, Graphics.FONT_NUMBER_MEDIUM, playLabel,
+        var pl = _state.isPlaying ? "||" : ">";
+        dc.drawText(zw + (zw / 2).toNumber(), tY + fhNum / 2, Graphics.FONT_NUMBER_MEDIUM, pl,
             Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
-        dc.drawText(zw * 2 + (zw / 2).toNumber(), cy, Graphics.FONT_NUMBER_MEDIUM, ">|",
+        dc.drawText(zw * 2 + (zw / 2).toNumber(), tY + fhNum / 2, Graphics.FONT_NUMBER_MEDIUM, ">|",
             Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
 
         _zones = [
-            [0, 0, zw, h],
-            [zw, 0, zw, h],
-            [zw * 2, 0, w - zw * 2, h]
+            [0, tY, zw, fhNum + 8],
+            [zw, tY, zw, fhNum + 8],
+            [zw * 2, tY, w - zw * 2, fhNum + 8]
         ];
     }
 
@@ -231,103 +203,32 @@ class RunBeatTransportField extends RunBeatFieldBase {
     }
 }
 
-class RunBeatTransportApp extends Application.AppBase {
+class RunBeatTrackApp extends Application.AppBase {
     function initialize() { AppBase.initialize(); }
     function getInitialView() {
-        var f = new RunBeatTransportField();
+        var f = new RunBeatTrackField();
         return [f, new RunBeatFieldDelegate(f)];
     }
 }
 
 // ============================================================
-// Field 3: Target cadence — [-1] [number] [+1]
-//   number tap = toggle speed correction; color = green(ON)/gray(OFF)
+// Field 2: CONTROLS — full screen
+//   Row 1: TARGET  [-] [num] [+]   num tap = toggle speed corr (green/gray)
+//   Row 2: AVG/60s (blue, tap=set target)  |  NO GOOD RUN (red, tap=mark)
 // ============================================================
 
-class RunBeatTargetField extends RunBeatFieldBase {
+class RunBeatControlsField extends RunBeatFieldBase {
 
     private var _strTargetPrefix as String;
-    private var _zones as Array = [];  // [minus, number, plus]
+    private var _strAvgCaption as String;
+    private var _strMarkLabel as String;
+    private var _zonesT as Array = [];  // [minus, num, plus]
+    private var _zonesB as Array = [];  // [avg, mark]
 
     function initialize() {
         RunBeatFieldBase.initialize();
         _strTargetPrefix = WatchUi.loadResource(Rez.Strings.TargetPrefix) as String;
-    }
-
-    function draw(dc as Graphics.Dc, now as Number) as Void {
-        var w = dc.getWidth();
-        var h = dc.getHeight();
-        dc.setColor(Graphics.COLOR_BLACK, Graphics.COLOR_BLACK);
-        dc.clear();
-
-        var fhTiny = dc.getFontHeight(Graphics.FONT_TINY);
-        var fhNum = dc.getFontHeight(Graphics.FONT_NUMBER_MEDIUM);
-        var runBeat = _state.isRunBeatActive();
-
-        // Label (top).
-        dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
-        dc.drawText(w / 2, fhTiny / 2 + 1, Graphics.FONT_TINY, _strTargetPrefix,
-            Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
-
-        // Three zones: -1 | number | +1
-        var zw = (w / 3).toNumber();
-        var cy = (h + fhTiny) / 2;
-
-        // -1 button (left).
-        dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
-        dc.drawText((zw / 2).toNumber(), cy, Graphics.FONT_NUMBER_MEDIUM, "-",
-            Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
-
-        // Number (center) — green if speed corr ON, gray if OFF.
-        var target = _state.targetCadenceText();
-        if (target.length() == 0) { target = _strNoValue; }
-        var numColor = !runBeat ? Graphics.COLOR_DK_GRAY
-            : (_state.speedCorrection ? Graphics.COLOR_GREEN : Graphics.COLOR_LT_GRAY);
-        dc.setColor(numColor, Graphics.COLOR_BLACK);
-        dc.drawText(zw + (zw / 2).toNumber(), cy, Graphics.FONT_NUMBER_MEDIUM, target,
-            Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
-
-        // +1 button (right).
-        dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
-        dc.drawText(zw * 2 + (zw / 2).toNumber(), cy, Graphics.FONT_NUMBER_MEDIUM, "+",
-            Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
-
-        _zones = [
-            [0, fhTiny, zw, h - fhTiny],           // -1
-            [zw, fhTiny, zw, h - fhTiny],          // number (toggle corr)
-            [zw * 2, fhTiny, w - zw * 2, h - fhTiny] // +1
-        ];
-    }
-
-    function onTap(x as Number, y as Number) as Boolean {
-        var z = _zones;
-        if (z.size() >= 3) {
-            if (hitTest(z[0], x, y)) { _messages.sendCadenceDelta(-1); return true; }
-            if (hitTest(z[1], x, y)) { _messages.sendSpeedCorrectionToggle(); return true; }
-            if (hitTest(z[2], x, y)) { _messages.sendCadenceDelta(1); return true; }
-        }
-        return false;
-    }
-}
-
-class RunBeatTargetApp extends Application.AppBase {
-    function initialize() { AppBase.initialize(); }
-    function getInitialView() {
-        var f = new RunBeatTargetField();
-        return [f, new RunBeatFieldDelegate(f)];
-    }
-}
-
-// ============================================================
-// Field 4: No Good Run — red button, tap = mark not-for-running
-// ============================================================
-
-class RunBeatMarkField extends RunBeatFieldBase {
-
-    private var _strMarkLabel as String;
-
-    function initialize() {
-        RunBeatFieldBase.initialize();
+        _strAvgCaption = WatchUi.loadResource(Rez.Strings.AvgCaption) as String;
         _strMarkLabel = WatchUi.loadResource(Rez.Strings.MarkNotForRunning) as String;
     }
 
@@ -337,80 +238,104 @@ class RunBeatMarkField extends RunBeatFieldBase {
         dc.setColor(Graphics.COLOR_BLACK, Graphics.COLOR_BLACK);
         dc.clear();
 
-        var fhSmall = dc.getFontHeight(Graphics.FONT_SMALL);
-        var runBeat = _state.isRunBeatActive();
-        var color = runBeat ? Graphics.COLOR_RED : Graphics.COLOR_DK_GRAY;
-
-        dc.setColor(color, Graphics.COLOR_BLACK);
-        dc.drawText(w / 2, h / 2, Graphics.FONT_SMALL,
-            truncate(dc, _strMarkLabel, Graphics.FONT_SMALL, (w * 0.92).toNumber()),
-            Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
-    }
-
-    function onTap(x as Number, y as Number) as Boolean {
-        if (_state.isRunBeatActive()) {
-            _messages.sendMarkNotForRunning();
-        }
-        return true;
-    }
-}
-
-class RunBeatMarkApp extends Application.AppBase {
-    function initialize() { AppBase.initialize(); }
-    function getInitialView() {
-        var f = new RunBeatMarkField();
-        return [f, new RunBeatFieldDelegate(f)];
-    }
-}
-
-// ============================================================
-// Field 5: Avg/60s cadence — blue, tap = set as target cadence
-// ============================================================
-
-class RunBeatAvgField extends RunBeatFieldBase {
-
-    private var _strAvgCaption as String;
-
-    function initialize() {
-        RunBeatFieldBase.initialize();
-        _strAvgCaption = WatchUi.loadResource(Rez.Strings.AvgCaption) as String;
-    }
-
-    function draw(dc as Graphics.Dc, now as Number) as Void {
-        var w = dc.getWidth();
-        var h = dc.getHeight();
-        dc.setColor(Graphics.COLOR_BLACK, Graphics.COLOR_BLACK);
-        dc.clear();
-
         var fhTiny = dc.getFontHeight(Graphics.FONT_TINY);
+        var fhSmall = dc.getFontHeight(Graphics.FONT_SMALL);
         var fhNum = dc.getFontHeight(Graphics.FONT_NUMBER_MEDIUM);
+        var runBeat = _state.isRunBeatActive();
 
-        // Label (top).
+        // Split into two rows.
+        var rowH = (h / 2).toNumber();
+        var row1Y = 0;
+        var row2Y = rowH;
+
+        // ---- Row 1: TARGET [-] [num] [+] ----
+        var c1y = row1Y + rowH / 2;
         dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
-        dc.drawText(w / 2, fhTiny / 2 + 1, Graphics.FONT_TINY, _strAvgCaption,
+        dc.drawText(w / 2, row1Y + fhTiny / 2 + 2, Graphics.FONT_TINY, _strTargetPrefix,
             Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
 
-        // Big blue number (center).
-        var mean = _cadenceBuffer.mean(now);
-        var txt = mean == null ? _strNoValue : (mean as Float).format("%.0f");
-        dc.setColor(Graphics.COLOR_BLUE, Graphics.COLOR_BLACK);
-        dc.drawText(w / 2, (h + fhTiny) / 2, Graphics.FONT_NUMBER_MEDIUM, txt,
+        var zw = (w / 3).toNumber();
+        var numY = row1Y + fhTiny + 4 + (rowH - fhTiny - 4 - fhNum) / 2 + fhNum / 2;
+
+        dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
+        dc.drawText((zw / 2).toNumber(), numY, Graphics.FONT_NUMBER_MEDIUM, "-",
             Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
+
+        var target = _state.targetCadenceText();
+        if (target.length() == 0) { target = _strNoValue; }
+        var numColor = !runBeat ? Graphics.COLOR_DK_GRAY
+            : (_state.speedCorrection ? Graphics.COLOR_GREEN : Graphics.COLOR_LT_GRAY);
+        dc.setColor(numColor, Graphics.COLOR_BLACK);
+        dc.drawText(zw + (zw / 2).toNumber(), numY, Graphics.FONT_NUMBER_MEDIUM, target,
+            Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
+
+        dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
+        dc.drawText(zw * 2 + (zw / 2).toNumber(), numY, Graphics.FONT_NUMBER_MEDIUM, "+",
+            Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
+
+        _zonesT = [
+            [0, row1Y, zw, rowH],
+            [zw, row1Y, zw, rowH],
+            [zw * 2, row1Y, w - zw * 2, rowH]
+        ];
+
+        // ---- Row 2: AVG/60s | NO GOOD RUN ----
+        var c2y = row2Y + rowH / 2;
+        var halfW = (w / 2).toNumber();
+
+        // Left half: AVG/60s (blue, tap = set as target).
+        dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
+        dc.drawText((halfW / 2).toNumber(), row2Y + fhTiny / 2 + 2, Graphics.FONT_TINY, _strAvgCaption,
+            Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
+        var mean = _cadenceBuffer.mean(now);
+        var meanText = mean == null ? _strNoValue : (mean as Float).format("%.0f");
+        dc.setColor(Graphics.COLOR_BLUE, Graphics.COLOR_BLACK);
+        dc.drawText((halfW / 2).toNumber(), c2y + fhNum / 4, Graphics.FONT_NUMBER_MEDIUM, meanText,
+            Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
+
+        // Right half: NO GOOD RUN (red, tap = mark).
+        var markColor = runBeat ? Graphics.COLOR_RED : Graphics.COLOR_DK_GRAY;
+        dc.setColor(markColor, Graphics.COLOR_BLACK);
+        dc.drawText(halfW + (halfW / 2).toNumber(), c2y, Graphics.FONT_SMALL,
+            truncate(dc, _strMarkLabel, Graphics.FONT_SMALL, (halfW * 0.92).toNumber()),
+            Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
+
+        _zonesB = [
+            [0, row2Y, halfW, rowH],
+            [halfW, row2Y, halfW, rowH]
+        ];
     }
 
     function onTap(x as Number, y as Number) as Boolean {
-        if (_state.isRunBeatActive()) {
-            var mean = _cadenceBuffer.mean(System.getTimer());
-            if (mean != null) { _messages.sendCadenceUseCurrent(mean as Float); }
+        var h = 0;  // we don't have h here, use zones to determine row
+        var zt = _zonesT;
+        if (zt.size() >= 3) {
+            if (hitTest(zt[0], x, y)) { _messages.sendCadenceDelta(-1); return true; }
+            if (hitTest(zt[1], x, y)) { _messages.sendSpeedCorrectionToggle(); return true; }
+            if (hitTest(zt[2], x, y)) { _messages.sendCadenceDelta(1); return true; }
         }
-        return true;
+        var zb = _zonesB;
+        if (zb.size() >= 2) {
+            if (hitTest(zb[0], x, y)) {
+                if (_state.isRunBeatActive()) {
+                    var mean = _cadenceBuffer.mean(System.getTimer());
+                    if (mean != null) { _messages.sendCadenceUseCurrent(mean as Float); }
+                }
+                return true;
+            }
+            if (hitTest(zb[1], x, y)) {
+                if (_state.isRunBeatActive()) { _messages.sendMarkNotForRunning(); }
+                return true;
+            }
+        }
+        return false;
     }
 }
 
-class RunBeatAvgApp extends Application.AppBase {
+class RunBeatControlsApp extends Application.AppBase {
     function initialize() { AppBase.initialize(); }
     function getInitialView() {
-        var f = new RunBeatAvgField();
+        var f = new RunBeatControlsField();
         return [f, new RunBeatFieldDelegate(f)];
     }
 }
@@ -421,7 +346,7 @@ class RunBeatAvgApp extends Application.AppBase {
 
 class RunBeatFieldDelegate extends WatchUi.BehaviorDelegate {
 
-    private var _field;   // RunBeatFieldBase
+    private var _field;
 
     function initialize(field) {
         BehaviorDelegate.initialize();
@@ -429,7 +354,7 @@ class RunBeatFieldDelegate extends WatchUi.BehaviorDelegate {
     }
 
     function onSelect() as Boolean {
-        _field.onTap(-1, -1);  // no zone hit = no-op for most fields
+        _field.onTap(-1, -1);
         return true;
     }
 

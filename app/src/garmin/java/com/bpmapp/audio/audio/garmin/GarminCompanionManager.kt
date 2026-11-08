@@ -732,10 +732,7 @@ class GarminCompanionManager @Inject constructor(
          */
         val IQ_APP_IDS = listOf(
             "06c14376-0c60-4e4c-a977-e93364ace3e1", // Track
-            "06c14376-0c60-4e4c-a977-e93364ace3e2", // Transport
-            "06c14376-0c60-4e4c-a977-e93364ace3e3", // Target
-            "06c14376-0c60-4e4c-a977-e93364ace3e4", // No Good Run
-            "06c14376-0c60-4e4c-a977-e93364ace3e5", // Avg
+            "06c14376-0c60-4e4c-a977-e93364ace3e2", // Controls
         )
 
         /**

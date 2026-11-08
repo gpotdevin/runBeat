@@ -4,10 +4,10 @@
 
     <!-- Data field names (shown in the field picker). -->
     <string id="FieldTrack">RunBeat Track</string>
-    <string id="FieldTransport">RunBeat Transport</string>
-    <string id="FieldTarget">RunBeat Target</string>
-    <string id="FieldMark">RunBeat NoRun</string>
-    <string id="FieldAvg">RunBeat Avg</string>
+    <string id="FieldControls">RunBeat Controls</string>
+    
+    
+    
 
     <!-- Status / display. -->
     <string id="NoPlayback">Nothing playing</string>
