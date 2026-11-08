@@ -80,6 +80,8 @@ class GarminCommandRouter @Inject constructor(
     /** Cached favorite flag of the current track (avoids a Room read in the
      * non-suspend currentState()); updated by toggleCurrentTrackFavorite */
      private var _lastKnownFavorite: Boolean = false
+    /** trackId the cached favorite flag belongs to */
+    private var _favoriteTrackId: String? = null
 
     /**
      * True when RunBeat is the app holding the phone's media stream right
@@ -324,7 +326,14 @@ class GarminCommandRouter @Inject constructor(
             playbackSpeed = playerRepository.playbackSpeed.value,
             volume = currentVolume(),
             shuffle = playerRepository.shuffleEnabled.value,
-            isFavorite = extras?.getBoolean("isFavorite") ?: _lastKnownFavorite,
+            isFavorite = run {
+                val tid = extras?.getString("trackId")
+                if (tid != null && tid != _favoriteTrackId) {
+                    _favoriteTrackId = tid
+                    _lastKnownFavorite = extras.getBoolean("isFavorite")
+                }
+                _lastKnownFavorite
+            },
         )
     }
 
@@ -367,6 +376,7 @@ class GarminCommandRouter @Inject constructor(
         val newValue = !current
         trackRepository.updateFavorite(trackId, newValue)
         _lastKnownFavorite = newValue
+        _favoriteTrackId = trackId
         return GarminAck(cmd.wireType(), ok = true)
     }
 

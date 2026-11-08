@@ -3,6 +3,7 @@ import Toybox.Application;
 import Toybox.Communications;
 import Toybox.Graphics;
 import Toybox.Lang;
+import Toybox.Math;
 import Toybox.System;
 import Toybox.WatchUi;
 
@@ -267,14 +268,18 @@ class RunBeatControlsField extends RunBeatFieldBase {
             var textColor = _state.isFavorite ? Graphics.COLOR_YELLOW : Graphics.COLOR_WHITE;
             var title = _state.title.length() > 0 ? _state.title : _strNoValue;
             _scrollTitle = drawMarquee(dc, title, Graphics.FONT_LARGE,
-                topY + fhLarge / 2 + 1, fhLarge, (w * 0.94).toNumber(), textColor, _scrollTitle);
+                topY + fhLarge / 2 + 1, fhLarge, textColor, _scrollTitle);
+
+
             var sub = _state.artist;
             if (_state.album.length() > 0) {
                 sub = sub.length() > 0 ? sub + " - " + _state.album : _state.album;
             }
             if (sub.length() > 0) {
                 _scrollSub = drawMarquee(dc, sub, Graphics.FONT_TINY,
-                    topY + fhLarge + 2 + fhTiny / 2, fhTiny, (w * 0.90).toNumber(), textColor, _scrollSub);
+                    topY + fhLarge + 2 + fhTiny / 2, fhTiny, textColor, _scrollSub);
+
+
             }
         } else {
             dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
@@ -336,10 +341,29 @@ class RunBeatControlsField extends RunBeatFieldBase {
     // onUpdate cadence), clipped to maxW, and the offset wraps once the tail
     // has scrolled past the left edge. Returns the next scroll offset (0 for
     // text that fits, which also resets the marquee).
+    // Available width at vertical position y, accounting for round screens:
+    // on a round display the usable chord at y is 2*sqrt(r^2 - dy^2).
+    private function chordWidthAt(dc as Graphics.Dc, y as Number) as Number {
+        var w = dc.getWidth();
+        var h = dc.getHeight();
+        if (System.getDeviceSettings().screenShape != System.SCREEN_SHAPE_ROUND) {
+            return (w * 0.94).toNumber();
+        }
+        var r = w / 2;
+        var dy = y - h / 2;
+        if (dy < 0) { dy = -dy; }
+        if (dy >= r) { return 0; }
+        var chord = 2 * Math.sqrt(r * r - dy * dy);
+        var maxW = (w * 0.94).toNumber();
+        return chord < maxW ? chord.toNumber() : maxW;
+    }
+
     private function drawMarquee(dc as Graphics.Dc, text as String, font, y as Number,
-                                 lineH as Number, maxW as Number, color as Number,
+                                 lineH as Number, color as Number,
                                  scroll as Number) as Number {
         var w = dc.getWidth();
+        var maxW = chordWidthAt(dc, y);
+        if (maxW <= 0) { return 0; }
         var tw = dc.getTextWidthInPixels(text, font);
         if (tw <= maxW) {
             dc.setColor(color, Graphics.COLOR_BLACK);
@@ -349,17 +373,14 @@ class RunBeatControlsField extends RunBeatFieldBase {
         }
         var x0 = ((w - maxW) / 2).toNumber();
         dc.setColor(color, Graphics.COLOR_BLACK);
-        dc.setClip(x0, y - lineH / 2, maxW, lineH);
+        dc.setClip(x0, (y - lineH / 2).toNumber(), maxW, lineH);
         dc.drawText(x0 - scroll, y, font, text,
             Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER);
         dc.clearClip();
         var next = scroll + MARQUEE_STEP;
-        if (next > tw) {
-            next = 0;
-        }
+        if (next > tw) { next = 0; }
         return next;
     }
-
     function onTap(x as Number, y as Number) as Boolean {
         // Top zone first: title/artist tap = favorite toggle.
         if (_zoneTop != null && hitTest(_zoneTop, x, y)) {
