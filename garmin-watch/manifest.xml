@@ -51,8 +51,6 @@
     <iq:permissions>
         <!-- Phone messaging with the RunBeat companion (required). -->
         <iq:uses-permission id="Communications"/>
-        <!-- Accelerometer-based cadence sampling. -->
-        <iq:uses-permission id="Sensor"/>
 <!-- NOTE: no Background permission — a data field only runs during
              an activity, the system controls its lifecycle, so it can never
              drain the battery outside a workout. -->

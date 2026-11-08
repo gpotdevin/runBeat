@@ -2,7 +2,7 @@ import Toybox.Application;
 import Toybox.Communications;
 import Toybox.Graphics;
 import Toybox.Lang;
-import Toybox.Sensor;
+import Toybox.Activity;
 import Toybox.System;
 import Toybox.WatchUi;
 
@@ -123,15 +123,14 @@ class RunBeatDataField extends WatchUi.DataField {
     // --- Cadence sampling (feeds ring buffer for the 60 s avg) ---
 
     private function sampleCadence(now as Number) as Void {
-        if (Toybox has :Sensor) {
-            try {
-                var info = Sensor.getInfo();
-                if (info != null) {
-                    var i = info as Sensor.Info;
-                    if (i.cadence != null) { _cadenceBuffer.add(i.cadence, now); }
-                }
-            } catch (ex) {}
-        }
+        // Data fields get cadence from Activity.getActivityInfo(), not Sensor.
+        try {
+            var info = Activity.getActivityInfo();
+            if (info != null) {
+                var i = info as Activity.Info;
+                if (i.currentCadence != null) { _cadenceBuffer.add(i.currentCadence, now); }
+            }
+        } catch (ex) {}
     }
 
     // --- Drawing: single view, all controls visible ---
