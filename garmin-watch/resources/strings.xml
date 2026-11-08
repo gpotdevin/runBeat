@@ -1,9 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- All user-visible strings. Keep them short: data field screens are small. -->
 <strings>
     <string id="AppName">RunBeat</string>
 
-    <!-- Header / status. -->
+    <!-- Data field names (shown in the field picker). -->
+    <string id="FieldTrack">RunBeat Track</string>
+    <string id="FieldTransport">RunBeat Transport</string>
+    <string id="FieldTarget">RunBeat Target</string>
+    <string id="FieldMark">RunBeat NoRun</string>
+    <string id="FieldAvg">RunBeat Avg</string>
+
+    <!-- Status / display. -->
     <string id="NoPlayback">Nothing playing</string>
     <string id="PhoneNotConnected">Phone not connected</string>
     <string id="Connecting">Connecting...</string>
@@ -11,7 +17,7 @@
     <string id="Playing">Playing</string>
     <string id="Paused">Paused</string>
 
-    <!-- Data field screen 1 (controls grid). -->
+    <!-- Field labels. -->
     <string id="AvgCaption">AVG/60s</string>
     <string id="TargetPrefix">TARGET</string>
     <string id="MarkNotForRunning">NO GOOD RUN</string>

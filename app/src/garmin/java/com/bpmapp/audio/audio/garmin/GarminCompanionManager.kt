@@ -127,7 +127,7 @@ class GarminCompanionManager @Inject constructor(
         false
     }
 
-    private val iqApp: IQApp by lazy { IQApp(IQ_APP_ID) }
+    private val iqApps: List<IQApp> by lazy { IQ_APP_IDS.map { IQApp(it) } }
 
     /**
      * Incoming tether messages carry a hardcoded empty app UUID: the SDK's
@@ -455,7 +455,9 @@ class GarminCompanionManager @Inject constructor(
         if (devices.containsKey(device.deviceIdentifier)) return true
         try {
             // Device status events + messages from our IQ app on this device.
-            connectIQ.registerForEvents(device, this, iqApp, this)
+            for (app in iqApps) {
+                connectIQ.registerForEvents(device, this, app, this)
+            }
             if (simulatorAdbMode) {
                 // Simulator (ADB) mode: incoming messages are re-broadcast
                 // with an empty app UUID (see [simulatorIqApp]); without this
@@ -699,7 +701,9 @@ class GarminCompanionManager @Inject constructor(
             if (deviceStatuses[device.deviceIdentifier] != IQDevice.IQDeviceStatus.CONNECTED) return@launch
             if (!isWatchAppActive(device)) return@launch
             try {
-                connectIQ.sendMessage(device, iqApp, json, sendMessageListener)
+                for (app in iqApps) {
+                    connectIQ.sendMessage(device, app, json, sendMessageListener)
+                }
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to send message to ${device.friendlyName}", e)
             }
@@ -726,7 +730,13 @@ class GarminCompanionManager @Inject constructor(
          * Connect IQ app id of the RunBeat watch app. Must match the id in
          * garmin-watch/manifest.xml.
          */
-        const val IQ_APP_ID = "06c14376-0c60-4e4c-a977-e93364ace3eb"
+        val IQ_APP_IDS = listOf(
+            "06c14376-0c60-4e4c-a977-e93364ace3e1", // Track
+            "06c14376-0c60-4e4c-a977-e93364ace3e2", // Transport
+            "06c14376-0c60-4e4c-a977-e93364ace3e3", // Target
+            "06c14376-0c60-4e4c-a977-e93364ace3e4", // No Good Run
+            "06c14376-0c60-4e4c-a977-e93364ace3e5", // Avg
+        )
 
         /**
          * Minimum gap between two state pushes to the same device for a
