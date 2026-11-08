@@ -401,9 +401,10 @@ class GarminCompanionManager @Inject constructor(
                     if (command.needsAck()) {
                         sendToWatch(GarminMessageCodec.encodeAck(ack))
                     }
-                    // Volume is not a repository flow: push the new state right away
-                    // instead of waiting for the next periodic state push.
-                    if (command is GarminCommand.VolumeDelta) pushState()
+                    // Volume is not a repository flow, and the favorite flag is
+                    // not either: push the new state right away instead of
+                    // waiting for the next periodic state push.
+                    if (command is GarminCommand.VolumeDelta || command is GarminCommand.FavoriteToggle) pushState()
                 } catch (e: Exception) {
                     // A failing watch command must never crash playback.
                     Log.e(TAG, "Failed to handle watch command: $json", e)
@@ -513,7 +514,7 @@ class GarminCompanionManager @Inject constructor(
         Log.i(TAG, "Garmin watch connected")
         GarminWatchConnection.update(GarminConnectionState.CONNECTED)
         startStatePush()
-        pushState()
+        scope.launch { pushState() }
     }
 
     private fun setDisconnected() {
@@ -614,7 +615,7 @@ class GarminCompanionManager @Inject constructor(
      * Pushes the current state to the watch. No-op while disconnected OR
      * while no watch app is active — the stream is only for an open remote.
      */
-    private fun pushState() {
+    private suspend fun pushState() {
         if (connectionState.value != GarminConnectionState.CONNECTED) return
         if (!hasActiveWatchApp()) return
         sendToWatch(GarminMessageCodec.encodeState(router.currentState()), statePush = true)
@@ -629,7 +630,7 @@ class GarminCompanionManager @Inject constructor(
      * the state stream usually answered the request a moment ago, and
      * answering every keepalive again would double the BLE traffic.
      */
-    private fun pushStateTo(device: IQDevice) {
+    private suspend fun pushStateTo(device: IQDevice) {
         if (deviceStatuses[device.deviceIdentifier] != IQDevice.IQDeviceStatus.CONNECTED) {
             Log.i(TAG, "request_state from ${device.friendlyName}: device not connected, not answering")
             return
@@ -718,6 +719,7 @@ class GarminCompanionManager @Inject constructor(
         is GarminCommand.SpeedCorrectionToggle,
         is GarminCommand.ShuffleToggle,
         is GarminCommand.MarkNotForRunning,
+        is GarminCommand.FavoriteToggle,
         is GarminCommand.PlaylistPlay,
         -> true
         else -> false

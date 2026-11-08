@@ -221,10 +221,16 @@ class RunBeatTrackApp extends Application.AppBase {
 
 class RunBeatControlsField extends RunBeatFieldBase {
 
+    // Marquee scroll step in px per 1 Hz repaint for overlong title/artist
+    // lines in the top section.
+    static const MARQUEE_STEP = 2;
+
     private var _strMarkLabel as String;
-    private var _zoneTop;              // title/artist tap zone (play/pause)
+    private var _zoneTop;              // title/artist tap zone (favorite toggle)
     private var _zonesT as Array = [];  // [minus, num, plus]
     private var _zonesB as Array = [];  // [avg, mark]
+    private var _scrollTitle as Number = 0;  // marquee offset of the title line
+    private var _scrollSub as Number = 0;    // marquee offset of the artist/album line
 
     function initialize() {
         RunBeatFieldBase.initialize();
@@ -253,23 +259,22 @@ class RunBeatControlsField extends RunBeatFieldBase {
         var midY = topY + topH;
         var botY = midY + midH;
 
-        // ---- Top: track title + artist/album (tap = play/pause) ----
+        // ---- Top: track title + artist/album (tap = favorite toggle) ----
+        // Title/artist turn yellow while the current track is a favorite;
+        // overlong lines scroll (marquee) instead of being truncated.
         var topCy = topY + topH / 2;
         if (runBeat) {
+            var textColor = _state.isFavorite ? Graphics.COLOR_YELLOW : Graphics.COLOR_WHITE;
             var title = _state.title.length() > 0 ? _state.title : _strNoValue;
-            dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_BLACK);
-            dc.drawText(w / 2, topY + fhLarge / 2 + 1, Graphics.FONT_LARGE,
-                truncate(dc, title, Graphics.FONT_LARGE, (w * 0.94).toNumber()),
-                Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
+            _scrollTitle = drawMarquee(dc, title, Graphics.FONT_LARGE,
+                topY + fhLarge / 2 + 1, fhLarge, (w * 0.94).toNumber(), textColor, _scrollTitle);
             var sub = _state.artist;
             if (_state.album.length() > 0) {
                 sub = sub.length() > 0 ? sub + " - " + _state.album : _state.album;
             }
             if (sub.length() > 0) {
-                dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
-                dc.drawText(w / 2, topY + fhLarge + 2 + fhTiny / 2, Graphics.FONT_TINY,
-                    truncate(dc, sub, Graphics.FONT_TINY, (w * 0.90).toNumber()),
-                    Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
+                _scrollSub = drawMarquee(dc, sub, Graphics.FONT_TINY,
+                    topY + fhLarge + 2 + fhTiny / 2, fhTiny, (w * 0.90).toNumber(), textColor, _scrollSub);
             }
         } else {
             dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
@@ -326,10 +331,39 @@ class RunBeatControlsField extends RunBeatFieldBase {
         ];
     }
 
+    // Draws one line of the top section. Text that fits is centered; wider
+    // text scrolls left by MARQUEE_STEP px per repaint (draw runs at the 1 Hz
+    // onUpdate cadence), clipped to maxW, and the offset wraps once the tail
+    // has scrolled past the left edge. Returns the next scroll offset (0 for
+    // text that fits, which also resets the marquee).
+    private function drawMarquee(dc as Graphics.Dc, text as String, font, y as Number,
+                                 lineH as Number, maxW as Number, color as Number,
+                                 scroll as Number) as Number {
+        var w = dc.getWidth();
+        var tw = dc.getTextWidthInPixels(text, font);
+        if (tw <= maxW) {
+            dc.setColor(color, Graphics.COLOR_BLACK);
+            dc.drawText((w / 2).toNumber(), y, font, text,
+                Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
+            return 0;
+        }
+        var x0 = ((w - maxW) / 2).toNumber();
+        dc.setColor(color, Graphics.COLOR_BLACK);
+        dc.setClip(x0, y - lineH / 2, maxW, lineH);
+        dc.drawText(x0 - scroll, y, font, text,
+            Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER);
+        dc.clearClip();
+        var next = scroll + MARQUEE_STEP;
+        if (next > tw) {
+            next = 0;
+        }
+        return next;
+    }
+
     function onTap(x as Number, y as Number) as Boolean {
-        // Top zone first: title/artist tap = play/pause.
+        // Top zone first: title/artist tap = favorite toggle.
         if (_zoneTop != null && hitTest(_zoneTop, x, y)) {
-            _messages.sendToggle();
+            _messages.sendFavoriteToggle();
             return true;
         }
         var zt = _zonesT;

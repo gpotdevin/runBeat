@@ -69,8 +69,10 @@ object MetadataMerger {
      * Build an actual [Track] instance from the merged metadata overrides.
      *
      * @param existing The current track in the DB (may be null). When present, its
-     *   [Track.isFavorite], [Track.notForRunning] and [Track.lastUpdated] are preserved.
-     * @param id3Data Non-null values from the audio file's ID3 tags (keys: title, artist, album, genre, bpm).
+     *   [Track.lastUpdated] is refreshed; [Track.isFavorite]/[Track.notForRunning] are preserved
+     *   unless the ID3 tags carry RunBeat flags.
+     * @param id3Data Non-null values from the audio file's ID3 tags (keys: title, artist, album, genre, bpm,
+     *   runbeatFlags).
      * @param systemData Non-null values revealed by the system library (keys: title, artist, album, genre).
      * @param csvData Non-null values from a CSV row (keys: title, artist, album, genre, bpm).
      * @param newId The id to use for a new track (ignored when an existing track is present).
@@ -100,6 +102,10 @@ object MetadataMerger {
         val mergedBpm = merged["bpm"] as? Float
         val bpm = if (mergedBpm != null) mergedBpm else bpmFallback
 
+        // RunBeat flags from the file's tags (key "runbeatFlags", e.g. "NFR=1;FAV=1")
+        // have ID3 priority over the values already stored in the database
+        val flags = MetadataEditor.parseFlags(id3Data["runbeatFlags"])
+
         Log.i(TAG, "Building '${existing?.fileName ?: fileName}' with bpm=$bpm (source=${merged["bpmSource"]})")
 
         return Track(
@@ -116,8 +122,8 @@ object MetadataMerger {
             metadataAlbum = merged["album"] as? String,
             metadataGenre = merged["genre"] as? String,
             metadataTrackNumber = merged["trackNumber"] as? String,
-            isFavorite = existing?.isFavorite ?: false,
-            notForRunning = existing?.notForRunning ?: false
+            isFavorite = flags?.second ?: existing?.isFavorite ?: false,
+            notForRunning = flags?.first ?: existing?.notForRunning ?: false
         )
     }
 

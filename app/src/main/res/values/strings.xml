@@ -109,6 +109,8 @@
     <string name="library_filter_bpm_known">BPM Known</string>
     <string name="library_filter_speed">Speed 0.9-1.1</string>
     <string name="library_filter_speed_wide">Speed 0.85-1.15</string>
+    <string name="library_filter_not_for_running">Not for running</string>
+    <string name="library_filter_favorites">Favorites</string>
     <string name="library_clear_filters">Clear filters</string>
 
     <!-- Library browse dimensions -->
@@ -257,6 +259,7 @@
     <string name="trackcard_speed_good">Good match</string>
     <string name="trackcard_remove_favorite">Remove from favorites</string>
     <string name="trackcard_add_favorite">Add to favorites</string>
+    <string name="trackcard_favorite_desc">Favorite</string>
     <string name="trackcard_add_to_playlist">Add to Playlist</string>
     <string name="trackcard_add">Add</string>
     <string name="trackcard_actions">Track actions</string>

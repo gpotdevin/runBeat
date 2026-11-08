@@ -17,6 +17,7 @@ import com.bpmapp.audio.data.Playlist
 import com.bpmapp.audio.data.PlaylistTrack
 import com.bpmapp.audio.data.Track
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -93,6 +94,9 @@ class GarminCommandRouterTest {
         whenever(playerRepository.speedCorrectionEnabled).thenReturn(speedCorrectionEnabled)
         whenever(playerRepository.playbackSpeed).thenReturn(playbackSpeed)
         whenever(playerRepository.shuffleEnabled).thenReturn(shuffleEnabled)
+        // currentState() reads the current track's favorite flag from the
+        // library; default to "not in the library" (null -> false).
+        runBlocking { whenever(trackRepository.getTrackById(any())).thenReturn(flowOf(null)) }
 
         router = GarminCommandRouter(
             playerRepository,
@@ -805,7 +809,7 @@ class GarminCommandRouterTest {
         playbackSpeed.value = 1.03f
         shuffleEnabled.value = true
 
-        val state = router.currentState()
+        val state = runBlocking { router.currentState() }
 
         assertEquals("RunBeat", state.source)
         assertTrue(state.isPlaying)
@@ -836,7 +840,7 @@ class GarminCommandRouterTest {
             durationMs = 213000L,
         )
 
-        val state = router.currentState()
+        val state = runBlocking { router.currentState() }
 
         assertEquals("RunBeat", state.source)
         // artist / album come from the track's MediaMetadata.
@@ -864,7 +868,7 @@ class GarminCommandRouterTest {
             album = "Song Album",
         )
 
-        val state = router.currentState()
+        val state = runBlocking { router.currentState() }
 
         // No extras.durationMs: fall back to PlayerState.duration.
         assertEquals(180000L, state.durationMs)
@@ -876,7 +880,7 @@ class GarminCommandRouterTest {
     fun currentState_omitsRunBeatOnlyFieldsWhenInactive() {
         setRunBeatActive(false)
 
-        val state = router.currentState()
+        val state = runBlocking { router.currentState() }
 
         assertEquals("none", state.source)
         assertFalse(state.isPlaying)
@@ -901,7 +905,7 @@ class GarminCommandRouterTest {
     fun currentState_omitsTitleWhenRunBeatInactive() {
         setRunBeatActive(false)
 
-        val state = router.currentState()
+        val state = runBlocking { router.currentState() }
 
         assertEquals("none", state.source)
         assertNull(state.title)
@@ -915,7 +919,7 @@ class GarminCommandRouterTest {
         setRunBeatActive(false)
         currentTrack.value = track("track-1", "Song Title", "140.5")
 
-        val state = router.currentState()
+        val state = runBlocking { router.currentState() }
 
         assertEquals("none", state.source)
         assertFalse(state.isPlaying)
@@ -931,7 +935,7 @@ class GarminCommandRouterTest {
         currentTrack.value = track("track-1", "Song Title", "140.5")
         armPauseGrace()
 
-        val state = router.currentState()
+        val state = runBlocking { router.currentState() }
 
         assertEquals("RunBeat", state.source)
         assertFalse(state.isPlaying)
@@ -945,7 +949,7 @@ class GarminCommandRouterTest {
         armPauseGrace()
         expirePauseGrace()
 
-        val state = router.currentState()
+        val state = runBlocking { router.currentState() }
 
         assertEquals("none", state.source)
         assertNull(state.trackId)
@@ -960,7 +964,7 @@ class GarminCommandRouterTest {
         )
         currentTrack.value = track("track-1", "Song Title", "140")
 
-        val state = router.currentState()
+        val state = runBlocking { router.currentState() }
 
         assertEquals("RunBeat", state.source)
         assertFalse(state.isPlaying)
@@ -971,7 +975,7 @@ class GarminCommandRouterTest {
     fun currentState_withoutTrack_reportsNoTrackFields() {
         setRunBeatActive(true)
 
-        val state = router.currentState()
+        val state = runBlocking { router.currentState() }
 
         assertEquals("RunBeat", state.source)
         assertNull(state.trackId)
@@ -986,9 +990,9 @@ class GarminCommandRouterTest {
     fun currentState_sourceIsNeverExternal() {
         setRunBeatActive(true)
         currentTrack.value = track("track-1", "Song Title", "140")
-        assertEquals("RunBeat", router.currentState().source)
+        assertEquals("RunBeat", runBlocking { router.currentState().source })
 
         setRunBeatActive(false)
-        assertEquals("none", router.currentState().source)
+        assertEquals("none", runBlocking { router.currentState().source })
     }
 }

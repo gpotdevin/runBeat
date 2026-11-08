@@ -76,6 +76,12 @@ class TrackRepository @Inject constructor(
         trackDao.updateNotForRunning(trackId, false)
 
     /**
+     * Set the favorite flag for a track
+     */
+    suspend fun updateFavorite(trackId: String, isFavorite: Boolean): Int =
+        trackDao.updateFavorite(trackId, isFavorite)
+
+    /**
      * Delete a track from the library
      */
     suspend fun deleteTrack(trackId: String): Int {
@@ -353,12 +359,19 @@ class TrackRepository @Inject constructor(
      * Read ID3 metadata tags from the actual audio file for a track
      * 
      * @param track The track to read ID3 tags for
-     * @return Map with keys "title", "artist", "album", "genre", "bpm"
+     * @return Map with keys "title", "artist", "album", "genre", "bpm",
+     *         plus "runbeatFlags" (e.g. "NFR=1;FAV=1") when the file carries RunBeat flags
      */
     private suspend fun readId3TagsForTrack(track: Track): Map<String, String?> {
         return try {
             val uri = Uri.parse(track.id)
-            metadataEditor.readCompleteMetadata(uri)
+            val metadata = metadataEditor.readCompleteMetadata(uri)
+            val flags = metadataEditor.readFlagsFromFile(uri)
+            if (flags != null) {
+                metadata + ("runbeatFlags" to MetadataEditor.formatFlags(flags.first, flags.second))
+            } else {
+                metadata
+            }
         } catch (e: Exception) {
             Log.w(TAG, "Failed to read ID3 tags for ${track.fileName}: ${e.message}")
             emptyMap()
@@ -465,6 +478,13 @@ class TrackRepository @Inject constructor(
                 } else {
                     trackDao.insertOrReplace(finalTrack)
                 }
+                
+                // Persist RunBeat flags read from the file's tags (notForRunning/isFavorite)
+                MetadataEditor.parseFlags(id3Data["runbeatFlags"])?.let { flags ->
+                    trackDao.updateNotForRunning(finalTrack.id, flags.first)
+                    trackDao.updateFavorite(finalTrack.id, flags.second)
+                }
+                
                 true
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to add/update system track: ${track.fileName}", e)

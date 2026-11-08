@@ -13,6 +13,7 @@ import Toybox.WatchUi;
 //   {"type":"shuffle_toggle"}
 //   {"type":"volume_delta","delta":1} or {"delta":-1}
 //   {"type":"mark_not_for_running"}
+//   {"type":"favorite_toggle"}           (acked)
 //   {"type":"request_state"}            (no payload, no ack; the phone answers
 //                                       the sender with one state push)
 //   {"type":"seek","positionMs":42000}  (no ack; positionMs is an integer)
@@ -23,7 +24,8 @@ import Toybox.WatchUi;
 // Phone -> watch:
 //   {"type":"state","source":"RunBeat","isPlaying":true,"trackId":"...","title":"...",
 //    "artist":"...","album":"...","durationMs":213000,"positionMs":42000,
-//    "bpm":140.0,"targetCadence":172,"speedCorrection":true,"shuffle":false,"playbackSpeed":1.03,"volume":12}
+//    "bpm":140.0,"targetCadence":172,"speedCorrection":true,"shuffle":false,"playbackSpeed":1.03,"volume":12,
+//    "isFavorite":false}
 //     - title/artist/album: track metadata, sent for source "RunBeat";
 //       omitted for "none";
 //     - durationMs/positionMs: track length and playback position in ms
@@ -95,6 +97,10 @@ class MessageHandler {
 
     function sendMarkNotForRunning() as Void {
         sendJson("{\"type\":\"mark_not_for_running\"}");
+    }
+
+    function sendFavoriteToggle() as Void {
+        sendJson("{\"type\":\"favorite_toggle\"}");
     }
 
     // Playlist list request (link-layer: the phone intercepts it like
@@ -176,7 +182,7 @@ class MessageHandler {
         // so changes to them must not trigger a repaint.
         var before = [s.source, s.isPlaying, s.title, s.artist,
             s.album, s.durationMs, s.targetCadence, s.speedCorrection,
-            s.shuffle, s.volume];
+            s.shuffle, s.isFavorite, s.volume];
         var source = dict["source"];
         if (source instanceof String) {
             s.source = source as String;
@@ -219,6 +225,12 @@ class MessageHandler {
         if (shuffle instanceof Boolean) {
             s.shuffle = shuffle as Boolean;
         }
+        // Favorite flag of the current track; like shuffle it is sent for
+        // both sources (false when the source is "none").
+        var isFavorite = dict["isFavorite"];
+        if (isFavorite instanceof Boolean) {
+            s.isFavorite = isFavorite as Boolean;
+        }
         s.playbackSpeed = optionalFloat(dict, "playbackSpeed");
         s.volume = optionalFloat(dict, "volume");
 
@@ -234,13 +246,14 @@ class MessageHandler {
             s.bpm = null;
             s.targetCadence = null;
             s.speedCorrection = false;
+            s.isFavorite = false;
             s.playbackSpeed = null;
         }
 
         s.markMessageReceived();
         var after = [s.source, s.isPlaying, s.title, s.artist,
             s.album, s.durationMs, s.targetCadence, s.speedCorrection,
-            s.shuffle, s.volume];
+            s.shuffle, s.isFavorite, s.volume];
         if (wasStale || !statesEqual(before, after)) {
             WatchUi.requestUpdate();
         } else {

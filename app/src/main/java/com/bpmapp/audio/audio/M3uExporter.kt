@@ -9,6 +9,8 @@ import com.bpmapp.audio.data.Track
  * ```
  * #EXTM3U
  * #EXTINF:<durationSec>,<artist> - <title>
+ * #EXTBPM:<bpm>               (only with includeMetadata and when the track has a BPM)
+ * #EXTRB:NFR=<0|1>;FAV=<0|1>  (only with includeMetadata; RunBeat flags)
  * <track path or URI>
  * ```
  */
@@ -21,8 +23,14 @@ object M3uExporter {
      *
      * @param playlistName name of the playlist (used for display only, not written to the file)
      * @param tracks tracks in playlist order (already sorted by position by the caller)
+     * @param includeMetadata when true, per-track metadata lines are written:
+     *        #EXTBPM:<bpm> (when the track has a BPM) and #EXTRB:<NFR=..;FAV=..> for the RunBeat flags
      */
-    fun buildM3uContent(playlistName: String, tracks: List<Track>): String {
+    fun buildM3uContent(
+        playlistName: String,
+        tracks: List<Track>,
+        includeMetadata: Boolean = false
+    ): String {
         val builder = StringBuilder()
         builder.append(HEADER).append('\n')
         for (track in tracks) {
@@ -36,6 +44,14 @@ object M3uExporter {
                 .append(" - ")
                 .append(title)
                 .append('\n')
+            if (includeMetadata) {
+                track.bpm?.let { bpm ->
+                    builder.append("#EXTBPM:").append(MetadataEditor.formatBpmValue(bpm)).append('\n')
+                }
+                builder.append("#EXTRB:")
+                    .append(MetadataEditor.formatFlags(track.notForRunning, track.isFavorite))
+                    .append('\n')
+            }
             builder.append(escapeNewlines(track.id)).append('\n')
         }
         return builder.toString()

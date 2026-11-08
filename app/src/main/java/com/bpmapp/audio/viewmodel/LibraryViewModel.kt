@@ -122,6 +122,12 @@ class LibraryViewModel @Inject constructor(
     private val _filterByWideSpeedFactor = MutableStateFlow(false)
     val filterByWideSpeedFactor: StateFlow<Boolean> = _filterByWideSpeedFactor.asStateFlow()
     
+    private val _filterExcludeNotForRunning = MutableStateFlow(false)
+    val filterExcludeNotForRunning: StateFlow<Boolean> = _filterExcludeNotForRunning.asStateFlow()
+    
+    private val _filterFavoritesOnly = MutableStateFlow(false)
+    val filterFavoritesOnly: StateFlow<Boolean> = _filterFavoritesOnly.asStateFlow()
+    
     private val _sortByBpm = MutableStateFlow(false)
     val sortByBpm: StateFlow<Boolean> = _sortByBpm.asStateFlow()
     
@@ -159,11 +165,12 @@ class LibraryViewModel @Inject constructor(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
     
     // Base filter: search query + BPM-known + speed factor (0.9-1.1 and/or
-    // 0.85-1.15 windows, ANDed when both are enabled). Everything that is
-    // NOT a category/dimension filter. Dimension option flows and the final
-    // track list both build on top of this, so the chip rows reflect the
-    // BPM/speed filters exactly as the track list does.
-    // Six source flows exceed the largest typed combine overload, so the
+    // 0.85-1.15 windows, ANDed when both are enabled) + not-for-running
+    // exclusion + favorites-only. Everything that is NOT a category/dimension
+    // filter. Dimension option flows and the final track list both build on
+    // top of this, so the chip rows reflect the BPM/speed filters exactly as
+    // the track list does.
+    // Eight source flows exceed the largest typed combine overload, so the
     // vararg form with explicit casts is used here.
     @Suppress("UNCHECKED_CAST")
     private val baseFilteredTrackFlow: Flow<List<Track>> = combine(
@@ -172,6 +179,8 @@ class LibraryViewModel @Inject constructor(
         _showOnlyKnownBpm,
         _filterBySpeedFactor,
         _filterByWideSpeedFactor,
+        _filterExcludeNotForRunning,
+        _filterFavoritesOnly,
         playerRepository.targetCadence
     ) { values ->
         val tracks = values[0] as List<Track>
@@ -179,7 +188,9 @@ class LibraryViewModel @Inject constructor(
         val showKnownBpm = values[2] as Boolean
         val filterSpeed = values[3] as Boolean
         val filterWideSpeed = values[4] as Boolean
-        val targetCadence = values[5] as Float
+        val filterExcludeNotForRunning = values[5] as Boolean
+        val filterFavoritesOnly = values[6] as Boolean
+        val targetCadence = values[7] as Float
         tracks.filter { track ->
             val matchesQuery = query.isBlank() || track.matchesSearch(query)
             val matchesBpm = !showKnownBpm || (track.bpm != null && track.bpm > 0)
@@ -187,7 +198,9 @@ class LibraryViewModel @Inject constructor(
                 track.matchesSpeedFactor(targetCadence, SPEED_WINDOW_MIN, SPEED_WINDOW_MAX)) &&
                 (!filterWideSpeed ||
                     track.matchesSpeedFactor(targetCadence, WIDE_SPEED_WINDOW_MIN, WIDE_SPEED_WINDOW_MAX))
-            matchesQuery && matchesBpm && matchesSpeed
+            val matchesNotForRunning = !filterExcludeNotForRunning || !track.notForRunning
+            val matchesFavorites = !filterFavoritesOnly || track.isFavorite
+            matchesQuery && matchesBpm && matchesSpeed && matchesNotForRunning && matchesFavorites
         }
     }
 
@@ -731,6 +744,20 @@ class LibraryViewModel @Inject constructor(
     }
     
     /**
+     * Update the "exclude not for running" filter
+     */
+    fun setFilterExcludeNotForRunning(enabled: Boolean) {
+        _filterExcludeNotForRunning.value = enabled
+    }
+    
+    /**
+     * Update the "favorites only" filter
+     */
+    fun setFilterFavoritesOnly(enabled: Boolean) {
+        _filterFavoritesOnly.value = enabled
+    }
+    
+    /**
      * Set the primary sort key (true = sort by BPM, mutually exclusive with album/artist)
      */
     fun setSortByBpm(enabled: Boolean) {
@@ -778,6 +805,8 @@ class LibraryViewModel @Inject constructor(
         _showOnlyKnownBpm.value = false
         _filterBySpeedFactor.value = false
         _filterByWideSpeedFactor.value = false
+        _filterExcludeNotForRunning.value = false
+        _filterFavoritesOnly.value = false
         _sortByBpm.value = false
         _sortByAlbum.value = false
         _sortByArtist.value = false
@@ -885,7 +914,7 @@ class LibraryViewModel @Inject constructor(
                 val tracks = playlistTrackMap.value[playlistId].orEmpty()
                 val playlistName = playlists.value.firstOrNull { it.id == playlistId }?.name
                     ?: playlistId
-                val content = M3uExporter.buildM3uContent(playlistName, tracks)
+                val content = M3uExporter.buildM3uContent(playlistName, tracks, includeMetadata = true)
                 context.contentResolver.openOutputStream(targetUri)?.use { output ->
                     output.write(content.toByteArray(Charsets.UTF_8))
                     output.flush()

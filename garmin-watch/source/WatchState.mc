@@ -28,6 +28,7 @@ class WatchState {
     var targetCadence as Float? = null;
     var speedCorrection as Boolean = false;
     var shuffle as Boolean = false;    // shuffle mode on (RunBeat only; false for "none")
+    var isFavorite as Boolean = false;  // current track favorited (RunBeat only; false for "none")
     var playbackSpeed as Float? = null;
     var volume as Float? = null;        // AudioManager STREAM_MUSIC index
 

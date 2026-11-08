@@ -227,6 +227,8 @@ fun LibraryScreen(
     val showOnlyKnownBpm by viewModel.showOnlyKnownBpm.collectAsState()
     val filterBySpeedFactor by viewModel.filterBySpeedFactor.collectAsState()
     val filterByWideSpeedFactor by viewModel.filterByWideSpeedFactor.collectAsState()
+    val filterExcludeNotForRunning by viewModel.filterExcludeNotForRunning.collectAsState()
+    val filterFavoritesOnly by viewModel.filterFavoritesOnly.collectAsState()
 
     // Sort state - default to BPM sort (persisted in the Activity-scoped ViewModel)
     val sortByBpm by viewModel.sortByBpm.collectAsState()
@@ -379,11 +381,13 @@ fun LibraryScreen(
     
     // Check if any filter is active
     val hasActiveFilter = remember(
-        showOnlyKnownBpm, filterBySpeedFactor, filterByWideSpeedFactor, searchQuery,
+        showOnlyKnownBpm, filterBySpeedFactor, filterByWideSpeedFactor,
+        filterExcludeNotForRunning, filterFavoritesOnly, searchQuery,
         selectedArtists, selectedAlbums, selectedGenres,
         selectedPathLevels
     ) {
         showOnlyKnownBpm || filterBySpeedFactor || filterByWideSpeedFactor ||
+            filterExcludeNotForRunning || filterFavoritesOnly ||
             searchQuery.isNotBlank() ||
             selectedArtists.isNotEmpty() || selectedAlbums.isNotEmpty() || selectedGenres.isNotEmpty() ||
             selectedPathLevels.any { it.isNotEmpty() }
@@ -694,6 +698,22 @@ fun LibraryScreen(
                         horizontalArrangement = Arrangement.Start,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        if (hasActiveFilter) {
+                            TextButton(
+                                onClick = { viewModel.clearAllFilters() },
+                                colors = ButtonDefaults.textButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.error
+                                )
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.library_clear_filters),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(AppSpacing.xs))
+                        }
                         FilterChip(
                             label = stringResource(R.string.library_filter_bpm_known),
                             selected = showOnlyKnownBpm,
@@ -714,22 +734,20 @@ fun LibraryScreen(
                             onSelected = { viewModel.setFilterByWideSpeedFactor(it) },
                             color = MaterialTheme.colorScheme.primary
                         )
-                        if (hasActiveFilter) {
-                            Spacer(modifier = Modifier.width(AppSpacing.xs))
-                            TextButton(
-                                onClick = { viewModel.clearAllFilters() },
-                                colors = ButtonDefaults.textButtonColors(
-                                    contentColor = MaterialTheme.colorScheme.error
-                                )
-                            ) {
-                                Text(
-                                    text = stringResource(R.string.library_clear_filters),
-                                    style = MaterialTheme.typography.labelMedium,
-                                    maxLines = 1,
-                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                                )
-                            }
-                        }
+                        Spacer(modifier = Modifier.width(AppSpacing.xs))
+                        FilterChip(
+                            label = stringResource(R.string.library_filter_not_for_running),
+                            selected = filterExcludeNotForRunning,
+                            onSelected = { viewModel.setFilterExcludeNotForRunning(it) },
+                            color = MaterialTheme.colorScheme.error
+                        )
+                        Spacer(modifier = Modifier.width(AppSpacing.xs))
+                        FilterChip(
+                            label = stringResource(R.string.library_filter_favorites),
+                            selected = filterFavoritesOnly,
+                            onSelected = { viewModel.setFilterFavoritesOnly(it) },
+                            color = MaterialTheme.colorScheme.secondary
+                        )
                     }
                 }
                 

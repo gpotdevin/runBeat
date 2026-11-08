@@ -169,6 +169,15 @@ fun TrackCard(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
                     )
+                    if (track.isFavorite) {
+                        Spacer(modifier = Modifier.width(AppSpacing.xxs))
+                        Icon(
+                            imageVector = Icons.Filled.Star,
+                            contentDescription = stringResource(R.string.trackcard_favorite_desc),
+                            modifier = Modifier.size(14.dp),
+                            tint = Color.Yellow
+                        )
+                    }
                     if (track.notForRunning) {
                         Spacer(modifier = Modifier.width(AppSpacing.xxs))
                         Text(

@@ -18,6 +18,7 @@ import org.json.JSONObject
  *   {"type":"shuffle_toggle"}
  *   {"type":"volume_delta","delta":1}
  *   {"type":"mark_not_for_running"}
+ *   {"type":"favorite_toggle"}
  *   {"type":"request_state"}
  *   {"type":"seek","positionMs":42000}
  *   {"type":"bye"}                      (app closing: stop the watch-active window)
@@ -42,6 +43,9 @@ sealed class GarminCommand {
     data object ShuffleToggle : GarminCommand()
     data class VolumeDelta(val delta: Int) : GarminCommand()
     data object MarkNotForRunning : GarminCommand()
+
+    /** Toggles the favorite flag of the current track in RunBeat (RunBeat-only). */
+    data object FavoriteToggle : GarminCommand()
 
     /**
      * Link-layer request, not a playback command: the companion manager
@@ -80,7 +84,8 @@ sealed class GarminCommand {
  * Playback state pushed from the phone to the watch:
  *   {"type":"state","source":"RunBeat","isPlaying":true,"trackId":"...","title":"...",
  *    "artist":"...","album":"...","durationMs":213000,"positionMs":42000,
- *    "bpm":140.0,"targetCadence":172,"speedCorrection":true,"playbackSpeed":1.03,"volume":12,"shuffle":false}
+ *    "bpm":140.0,"targetCadence":172,"speedCorrection":true,"playbackSpeed":1.03,"volume":12,"shuffle":false,
+ *    "isFavorite":false}
  *
  * [source] is "RunBeat" when RunBeat is the active playback app (playing,
  * buffering, or paused within the 60 s resume grace — see
@@ -113,6 +118,7 @@ data class GarminWatchState(
     val playbackSpeed: Float? = null,
     val volume: Int = 0,
     val shuffle: Boolean = false,
+    val isFavorite: Boolean = false,
 )
 
 /**
@@ -160,6 +166,7 @@ object GarminMessageCodec {
     private const val KEY_PLAYBACK_SPEED = "playbackSpeed"
     private const val KEY_VOLUME = "volume"
     private const val KEY_SHUFFLE = "shuffle"
+    private const val KEY_IS_FAVORITE = "isFavorite"
     private const val KEY_PLAYLIST_ID = "playlistId"
     private const val KEY_COUNT = "count"
 
@@ -176,6 +183,7 @@ object GarminMessageCodec {
     private const val TYPE_SHUFFLE_TOGGLE = "shuffle_toggle"
     private const val TYPE_VOLUME_DELTA = "volume_delta"
     private const val TYPE_MARK_NOT_FOR_RUNNING = "mark_not_for_running"
+    private const val TYPE_FAVORITE_TOGGLE = "favorite_toggle"
     private const val TYPE_REQUEST_STATE = "request_state"
     private const val TYPE_BYE = "bye"
     private const val TYPE_SEEK = "seek"
@@ -222,6 +230,7 @@ object GarminMessageCodec {
             TYPE_VOLUME_DELTA -> obj.optDeltaOrNull(KEY_DELTA)
                 ?.let { GarminCommand.VolumeDelta(it) }
             TYPE_MARK_NOT_FOR_RUNNING -> GarminCommand.MarkNotForRunning
+            TYPE_FAVORITE_TOGGLE -> GarminCommand.FavoriteToggle
             TYPE_REQUEST_STATE -> GarminCommand.RequestState
             TYPE_BYE -> GarminCommand.Bye
             TYPE_SEEK -> obj.optPositionMsOrNull(KEY_POSITION_MS)
@@ -265,6 +274,7 @@ object GarminMessageCodec {
             .put(KEY_DELTA, command.delta)
             .toString()
         is GarminCommand.MarkNotForRunning -> typed(TYPE_MARK_NOT_FOR_RUNNING)
+        is GarminCommand.FavoriteToggle -> typed(TYPE_FAVORITE_TOGGLE)
         is GarminCommand.RequestState -> typed(TYPE_REQUEST_STATE)
         is GarminCommand.Bye -> typed(TYPE_BYE)
         is GarminCommand.Seek -> JSONObject()
@@ -301,6 +311,7 @@ object GarminMessageCodec {
             playbackSpeed = obj.optFloatOrNull(KEY_PLAYBACK_SPEED),
             volume = obj.optInt(KEY_VOLUME, 0),
             shuffle = obj.optBoolean(KEY_SHUFFLE, false),
+            isFavorite = obj.optBoolean(KEY_IS_FAVORITE, false),
         )
     }
 
@@ -323,6 +334,7 @@ object GarminMessageCodec {
             ?.let { obj.put(KEY_PLAYBACK_SPEED, it.toDouble()) }
         obj.put(KEY_VOLUME, state.volume)
         obj.put(KEY_SHUFFLE, state.shuffle)
+        obj.put(KEY_IS_FAVORITE, state.isFavorite)
         return obj.toString()
     }
 

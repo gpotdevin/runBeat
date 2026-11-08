@@ -11,6 +11,7 @@ import com.bpmapp.audio.audio.PlaylistRepository
 import com.bpmapp.audio.audio.PlayerRepository
 import com.bpmapp.audio.audio.TrackRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -210,6 +211,7 @@ class GarminCommandRouter @Inject constructor(
                 }
             }
             is GarminCommand.MarkNotForRunning -> markCurrentTrackNotForRunning(active, cmd)
+            is GarminCommand.FavoriteToggle -> toggleCurrentTrackFavorite(active, cmd)
             // Absolute seek is RunBeat-only. The ack is returned for
             // symmetry, but the manager does not send it — the following
             // state push (with the new positionMs) confirms the seek.
@@ -289,7 +291,7 @@ class GarminCommandRouter @Inject constructor(
      * watch extrapolates between pushes; must match the rounding in
      * GarminCompanionManager.watchStateFlow).
      */
-    fun currentState(): GarminWatchState {
+    suspend fun currentState(): GarminWatchState {
         if (!isRunBeatActive()) {
             return GarminWatchState(
                 source = SOURCE_NONE,
@@ -318,6 +320,8 @@ class GarminCommandRouter @Inject constructor(
             playbackSpeed = playerRepository.playbackSpeed.value,
             volume = currentVolume(),
             shuffle = playerRepository.shuffleEnabled.value,
+            isFavorite = extras?.getString("trackId")
+                ?.let { trackRepository.getTrackById(it).first()?.isFavorite } == true,
         )
     }
 
@@ -343,6 +347,24 @@ class GarminCommandRouter @Inject constructor(
         return GarminAck(cmd.wireType(), ok = true)
     }
 
+    /**
+     * Toggles the favorite flag of the current track (Room suspend call, so
+     * the UPDATE runs on Room's query executor). Returns a not-ok ack when
+     * RunBeat is not active or when no track is loaded.
+     */
+    private suspend fun toggleCurrentTrackFavorite(
+        active: Boolean,
+        cmd: GarminCommand.FavoriteToggle,
+    ): GarminAck {
+        if (!active) return GarminAck(cmd.wireType(), ok = false)
+        val trackId = playerRepository.currentTrack.value
+            ?.mediaMetadata?.extras?.getString("trackId")
+            ?: return GarminAck(cmd.wireType(), ok = false)
+        val current = trackRepository.getTrackById(trackId).first()?.isFavorite == true
+        trackRepository.updateFavorite(trackId, !current)
+        return GarminAck(cmd.wireType(), ok = true)
+    }
+
     /** Wire type name of a command, used as the ack's "command" field. */
     private fun GarminCommand.wireType(): String = when (this) {
         GarminCommand.Play -> "play"
@@ -358,6 +380,7 @@ class GarminCommandRouter @Inject constructor(
         GarminCommand.ShuffleToggle -> "shuffle_toggle"
         is GarminCommand.VolumeDelta -> "volume_delta"
         GarminCommand.MarkNotForRunning -> "mark_not_for_running"
+        GarminCommand.FavoriteToggle -> "favorite_toggle"
         // RequestState never reaches the router (the manager intercepts it);
         // the mapping exists to keep this when exhaustive.
         GarminCommand.RequestState -> "request_state"

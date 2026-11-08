@@ -822,7 +822,7 @@ fun PlaybackControlsSection(
     modifier: Modifier = Modifier
 ) {
     Card(
-        modifier = modifier.heightIn(min = 150.dp),
+        modifier = modifier,
         shape = MaterialTheme.shapes.large,
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
@@ -845,7 +845,8 @@ fun PlaybackControlsSection(
                 )
                 Text(
                     text = trackName,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f).padding(horizontal = AppSpacing.xxs),
                     textAlign = TextAlign.Center,
                     maxLines = 1,
@@ -869,6 +870,7 @@ fun PlaybackControlsSection(
                 valueRange = 0f..1f,
                 modifier = Modifier
                     .fillMaxWidth()
+                    .padding(top = AppSpacing.xxs)
                     .height(8.dp) // Thicker track
             )
             
