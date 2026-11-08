@@ -53,10 +53,7 @@
         <iq:uses-permission id="Communications"/>
         <!-- Accelerometer-based cadence sampling. -->
         <iq:uses-permission id="Sensor"/>
-        <!-- Data field: write cadence/target-cadence to the FIT activity
-             file so they appear in Garmin Connect after the run. -->
-        <iq:uses-permission id="FitContributor"/>
-        <!-- NOTE: no Background permission — a data field only runs during
+<!-- NOTE: no Background permission — a data field only runs during
              an activity, the system controls its lifecycle, so it can never
              drain the battery outside a workout. -->
     </iq:permissions>
