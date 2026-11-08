@@ -234,19 +234,14 @@ class RunBeatDataField extends WatchUi.DataField {
 
         var runBeat = _state.isRunBeatActive();
 
-        // Header: connection status.
-        dc.setColor(headerColor(runBeat), Graphics.COLOR_BLACK);
-        dc.drawText(w / 2, fhTiny / 2 + 2, Graphics.FONT_TINY, headerText(),
-            Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
-
-        // Play/pause state line.
+        // Play/pause state line (top of screen, no header).
         var stateText = runBeat ? (_state.isPlaying ? _strPlaying : _strPaused) : _strNoPlayback;
         dc.setColor(runBeat ? Graphics.COLOR_WHITE : Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
-        dc.drawText(w / 2, fhTiny + 4 + fhSmall / 2, Graphics.FONT_SMALL, stateText,
+        dc.drawText(w / 2, 2 + fhSmall / 2, Graphics.FONT_SMALL, stateText,
             Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
 
         // Track title (big, centered in remaining space).
-        var yTitle = fhTiny + 4 + fhSmall + (h - fhTiny - fhSmall - fhTiny) / 2;
+        var yTitle = fhSmall + 6 + (h - fhSmall - fhTiny - 6) / 2;
         if (runBeat) {
             var title = _state.title.length() > 0 ? _state.title : _strNoValue;
             dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_BLACK);
@@ -274,8 +269,8 @@ class RunBeatDataField extends WatchUi.DataField {
             Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
 
         // Tap zones: left 1/3 = prev, center 1/3 = play/pause, right 1/3 = next.
-        var zoneY = fhTiny + 4;
-        var zoneH = h - fhTiny - fhTiny - 8;
+        var zoneY = 0;
+        var zoneH = h - fhTiny - 4;
         var zw = (w / 3).toNumber();
         _tapZones = [
             [0, zoneY, zw, zoneH],

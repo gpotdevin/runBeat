@@ -11,7 +11,6 @@ Wire protocol (unchanged, normative): [architecture.md](architecture.md).
 ## Screens
 
 ### Screen 1/2 — Track
-- Header: connection status (Connecting... / Phone not connected / RunBeat / Nothing playing)
 - Play state (Playing / Paused)
 - Track title (big) + artist
 - Bottom hint: `|<  >/||  >|`
