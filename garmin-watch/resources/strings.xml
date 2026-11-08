@@ -8,10 +8,13 @@
     <string id="PhoneNotConnected">Phone not connected</string>
     <string id="Connecting">Connecting...</string>
     <string id="NoValue">--</string>
+    <string id="Playing">Playing</string>
+    <string id="Paused">Paused</string>
 
-    <!-- Data field display. -->
-    <string id="AvgCaption">AVG</string>
-    <string id="TargetPrefix">TGT</string>
+    <!-- Data field screen 1 (controls grid). -->
+    <string id="AvgCaption">AVG/60s</string>
+    <string id="TargetPrefix">TARGET</string>
+    <string id="MarkNotForRunning">NO GOOD RUN</string>
 
     <!-- Ack messages (from phone). -->
     <string id="AckOk">OK</string>

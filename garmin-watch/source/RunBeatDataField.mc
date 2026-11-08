@@ -7,29 +7,22 @@ import Toybox.Sensor;
 import Toybox.System;
 import Toybox.WatchUi;
 
-// RunBeat data field (Connect IQ / Monkey C).
+// RunBeat data field (Connect IQ / Monkey C) — two screens.
 //
-// A data field runs ONLY during an activity (run, bike, ...) — the watch
-// firmware owns its lifecycle, so it can never run in the background or
-// keep the BLE radio awake outside a workout. This structurally fixes the
-// battery drain of the old audio-content-provider companion app: when the
-// activity stops, the data field stops, zero BLE cost.
+// A data field runs ONLY during an activity; the firmware owns its
+// lifecycle, so it can never drain the battery outside a workout.
 //
-// The field shows live cadence (big), the 60 s average, the target cadence,
-// and the current RunBeat track. It talks to the RunBeat phone companion
-// (GarminCompanionManager) via Connect IQ messages:
-//   - on activity start it sends request_state (arms the phone's push window)
-//   - SELECT/ENTER toggles play/pause, UP/DOWN adjust target cadence,
-//     LAP skips to the next track
-//   - the phone pushes state (~1/5 s while playing) which updates the display
+// Screen 0 — Track: title, artist, play state. Tap zones: left=prev,
+//   center=play/pause, right=next. SELECT=play/pause, LAP=next.
+// Screen 1 — Controls: 2x2 grid.
+//   top-left   TGT xxx  (green=speed-corr ON, gray=OFF)  tap=toggle speed corr
+//   top-right  AVG xxx  (blue)                            tap=set avg as target
+//   bottom-left MARK    (red)                             tap=mark not-for-running
+//   bottom-right        connection status (gray)
+// Switch screens: UP/DOWN key, or vertical swipe.
 //
-// No own timers: the system calls onUpdate() at the data field's configured
-// rate (typically 1 Hz). No idle-exit, no visibility tracking, no listener
-// unregistration hacks — the system tears the field down when the activity
-// ends, so a stopped field costs nothing.
-//
-// FIT contribution: live cadence and target cadence are written to the
-// activity's FIT file so they appear in Garmin Connect after the run.
+// No live cadence display — the stock running app already shows it.
+// FIT contribution: cadence + target cadence written to the FIT file.
 
 class RunBeatDataFieldApp extends Application.App {
 
@@ -37,27 +30,27 @@ class RunBeatDataFieldApp extends Application.App {
         Application.App.initialize();
     }
 
-    // Data fields: getInitialView returns [DataField, delegate].
     function getInitialView() {
         var field = new RunBeatDataField();
         return [field, new RunBeatDataFieldDelegate(field)];
     }
 }
 
-// The data field itself. onUpdate(dc) is called by the system at the
-// configured rate (1 Hz) while the activity runs.
 class RunBeatDataField extends WatchUi.DataField {
 
     private var _state;            // WatchState
     private var _messages;         // MessageHandler
     private var _cadenceBuffer;    // CadenceRingBuffer
 
-    // FIT contributor fields (written each onUpdate, saved every 30 s).
+    // FIT contributor fields.
     private var _fitCadence;       // FitContributor.Field?
     private var _fitTarget;        // FitContributor.Field?
     private var _fitSaveCounter as Number = 0;
 
-    // Cached resources (loadResource hits the file system — cache once).
+    // Current screen: 0 = track, 1 = controls.
+    private var _screen as Number = 0;
+
+    // Cached resources.
     private var _strAppName as String;
     private var _strNoPlayback as String;
     private var _strNoValue as String;
@@ -65,6 +58,13 @@ class RunBeatDataField extends WatchUi.DataField {
     private var _strTargetPrefix as String;
     private var _strConnecting as String;
     private var _strPhoneNotConnected as String;
+    private var _strMarkLabel as String;
+    private var _strPlaying as String;
+    private var _strPaused as String;
+
+    // Tap-zone rects [x, y, w, h] from the last onUpdate, per screen.
+    private var _tapZones as Array = [];   // screen 0: [prev, play, next]
+    private var _tapZones1 as Array = [];  // screen 1: [target, avg, mark, conn]
 
     function initialize() {
         WatchUi.DataField.initialize();
@@ -79,15 +79,14 @@ class RunBeatDataField extends WatchUi.DataField {
         _strTargetPrefix = WatchUi.loadResource(Rez.Strings.TargetPrefix) as String;
         _strConnecting = WatchUi.loadResource(Rez.Strings.Connecting) as String;
         _strPhoneNotConnected = WatchUi.loadResource(Rez.Strings.PhoneNotConnected) as String;
+        _strMarkLabel = WatchUi.loadResource(Rez.Strings.MarkNotForRunning) as String;
+        _strPlaying = WatchUi.loadResource(Rez.Strings.Playing) as String;
+        _strPaused = WatchUi.loadResource(Rez.Strings.Paused) as String;
     }
 
-    // Called when the data field is shown (activity started / screen added).
     function onShow() as Void {
-        // Register for phone messages and handshake.
         Communications.registerForPhoneAppMessages(_messages.method(:onPhoneMessage));
         _messages.sendRequestState();
-
-        // Set up FIT contributor fields.
         try {
             _fitCadence = FitContributor.createField("cadence", 0, FitContributor.DATA_TYPE_NUMBER, {:mesgType => FitContributor.MESG_TYPE_RECORD, :units => "spm"});
             _fitTarget = FitContributor.createField("target_cadence", 1, FitContributor.DATA_TYPE_NUMBER, {:mesgType => FitContributor.MESG_TYPE_RECORD, :units => "spm"});
@@ -97,94 +96,104 @@ class RunBeatDataField extends WatchUi.DataField {
         }
     }
 
-    // Called when the data field is hidden (activity stopped / screen removed).
     function onHide() as Void {
-        // Best-effort farewell + unregister so no BLE traffic lingers.
         _messages.sendBye();
         Communications.registerForPhoneAppMessages(null);
-
-        // Save any pending FIT data.
         saveFit();
     }
 
-    // Called by the system at the configured rate (1 Hz) while the activity runs.
     function onUpdate(dc as Graphics.Dc) as Void {
         var now = System.getTimer();
-
-        // Sample cadence from the sensor (the system drives this callback,
-        // so no own timer is needed).
         sampleCadence(now);
-
-        // Write FIT fields.
         writeFit(now);
-
-        // Draw.
-        draw(dc, now);
+        if (_screen == 0) {
+            drawTrackScreen(dc, now);
+        } else {
+            drawControlsScreen(dc, now);
+        }
     }
 
-    // Activity lifecycle callbacks.
-    function onTimerStart() as Void {
-        _messages.sendRequestState();
-    }
-
-    function onTimerResume() as Void {
-        _messages.sendRequestState();
-    }
-
-    function onTimerLap() as Void {
-        // LAP button = next track.
-        _messages.sendNext();
-    }
-
+    function onTimerStart() as Void { _messages.sendRequestState(); }
+    function onTimerResume() as Void { _messages.sendRequestState(); }
+    function onTimerLap() as Void { _messages.sendNext(); }
     function onTimerStop() as Void {
         _messages.sendBye();
         Communications.registerForPhoneAppMessages(null);
         saveFit();
     }
-
-    function onTimerPause() as Void {
-        // Paused: send bye so the phone drops the push window.
-        _messages.sendBye();
-    }
+    function onTimerPause() as Void { _messages.sendBye(); }
 
     // --- Input handlers (called by the delegate) ---
 
     function onSelectPressed() as Void {
-        _messages.sendToggle();
-    }
-
-    function onUpPressed() as Void {
-        _messages.sendCadenceDelta(1);
-    }
-
-    function onDownPressed() as Void {
-        _messages.sendCadenceDelta(-1);
-    }
-
-    // --- Cadence sampling ---
-
-    private function sampleCadence(now as Number) as Void {
-        var cadence = readSensorCadence();
-        if (cadence != null) {
-            _cadenceBuffer.add(cadence, now);
+        if (_screen == 0) {
+            _messages.sendToggle();
         }
     }
 
-    private function readSensorCadence() as Float? {
+    // UP/DOWN toggle between the two screens.
+    function onUpPressed() as Void {
+        _screen = (_screen == 0) ? 1 : 0;
+        WatchUi.requestUpdate();
+    }
+
+    function onDownPressed() as Void {
+        _screen = (_screen == 0) ? 1 : 0;
+        WatchUi.requestUpdate();
+    }
+
+    // Tap routing: screen 0 = prev/play/next zones; screen 1 = 2x2 grid.
+    function onTap(x as Number, y as Number) as Boolean {
+        if (_screen == 0) {
+            var zones = _tapZones;
+            if (zones.size() >= 3) {
+                if (hitTest(zones[0], x, y)) { _messages.sendPrev(); return true; }
+                if (hitTest(zones[1], x, y)) { _messages.sendToggle(); return true; }
+                if (hitTest(zones[2], x, y)) { _messages.sendNext(); return true; }
+            }
+            // Tap outside zones on screen 0 = play/pause.
+            _messages.sendToggle();
+            return true;
+        } else {
+            var z = _tapZones1;
+            if (z.size() >= 4) {
+                if (hitTest(z[0], x, y)) { _messages.sendSpeedCorrectionToggle(); return true; }
+                if (hitTest(z[1], x, y)) { useAvgAsTarget(); return true; }
+                if (hitTest(z[2], x, y)) { _messages.sendMarkNotForRunning(); return true; }
+            }
+            return true;
+        }
+    }
+
+    // Vertical swipe switches screens.
+    function onVerticalSwipe(direction as Symbol) as Void {
+        _screen = (_screen == 0) ? 1 : 0;
+        WatchUi.requestUpdate();
+    }
+
+    // Sends cadence_use_current with the 60 s ring-buffer mean.
+    private function useAvgAsTarget() as Void {
+        if (!_state.isRunBeatActive()) { return; }
+        var mean = _cadenceBuffer.mean(System.getTimer());
+        if (mean != null) {
+            _messages.sendCadenceUseCurrent(mean as Float);
+        }
+    }
+
+    // --- Cadence sampling (feeds the ring buffer; no live display) ---
+
+    private function sampleCadence(now as Number) as Void {
         if (Toybox has :Sensor) {
             try {
                 var info = Sensor.getInfo();
                 if (info != null) {
                     var i = info as Sensor.Info;
                     if (i.cadence != null) {
-                        return i.cadence;
+                        _cadenceBuffer.add(i.cadence, now);
                     }
                 }
-            } catch (ex) {
-                // fall through
-            }
+            } catch (ex) {}
         }
-        return null;
     }
 
     // --- FIT contribution ---
@@ -198,7 +207,6 @@ class RunBeatDataField extends WatchUi.DataField {
         if (target != null && _fitTarget != null) {
             (_fitTarget as FitContributor.Field).setData(target);
         }
-        // Save every 30 updates (~30 s at 1 Hz) to balance FIT write cost.
         _fitSaveCounter++;
         if (_fitSaveCounter >= 30) {
             _fitSaveCounter = 0;
@@ -208,145 +216,176 @@ class RunBeatDataField extends WatchUi.DataField {
 
     private function saveFit() as Void {
         if (_fitCadence != null || _fitTarget != null) {
-            try {
-                FitContributor.save();
-            } catch (e) {
-                // FIT save failure is non-fatal.
-            }
+            try { FitContributor.save(); } catch (e) {}
         }
     }
 
-    // --- Drawing ---
+    // --- Drawing: Screen 0 (Track) ---
 
-    private function draw(dc as Graphics.Dc, now as Number) as Void {
+    private function drawTrackScreen(dc as Graphics.Dc, now as Number) as Void {
         var w = dc.getWidth();
         var h = dc.getHeight();
-
         dc.setColor(Graphics.COLOR_BLACK, Graphics.COLOR_BLACK);
         dc.clear();
 
         var fhTiny = dc.getFontHeight(Graphics.FONT_TINY);
         var fhSmall = dc.getFontHeight(Graphics.FONT_SMALL);
         var fhLarge = dc.getFontHeight(Graphics.FONT_LARGE);
-        var fhNumber = dc.getFontHeight(Graphics.FONT_NUMBER_MEDIUM);
 
         var runBeat = _state.isRunBeatActive();
 
-        // --- Header line (connection status / source) ---
+        // Header: connection status.
         dc.setColor(headerColor(runBeat), Graphics.COLOR_BLACK);
         dc.drawText(w / 2, fhTiny / 2 + 2, Graphics.FONT_TINY, headerText(),
             Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
 
-        // Wide screens (>= 240 px): two columns. Narrow: stacked.
-        if (w < 240) {
-            drawNarrowLayout(dc, w, h, now, fhTiny, fhLarge, runBeat);
-        } else {
-            drawWideLayout(dc, w, h, now, fhTiny, fhNumber, fhSmall, runBeat);
-        }
-    }
-
-    // Wide layout (>= 240 px): two columns.
-    private function drawWideLayout(dc as Graphics.Dc, w as Number, h as Number, now as Number,
-                                    fhTiny as Number, fhNumber as Number, fhSmall as Number,
-                                    runBeat as Boolean) as Void {
-        var colW = w / 2;
-        var y = fhTiny + 4;
-
-        // --- Left column: cadence ---
-        var live = _cadenceBuffer.last(now);
-        var liveText = live == null ? _strNoValue : (live as Float).format("%.0f");
-        dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_BLACK);
-        dc.drawText(colW / 2, y + fhNumber / 2, Graphics.FONT_NUMBER_MEDIUM, liveText,
-            Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
-        y += fhNumber + 2;
-
-        var mean = _cadenceBuffer.mean(now);
-        var meanText = mean == null ? _strNoValue : (mean as Float).format("%.0f");
-        dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
-        dc.drawText(colW / 2, y + fhTiny / 2, Graphics.FONT_TINY,
-            _strAvgCaption + " " + meanText,
+        // Play/pause state line.
+        var stateText = runBeat ? (_state.isPlaying ? _strPlaying : _strPaused) : _strNoPlayback;
+        dc.setColor(runBeat ? Graphics.COLOR_WHITE : Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
+        dc.drawText(w / 2, fhTiny + 4 + fhSmall / 2, Graphics.FONT_SMALL, stateText,
             Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
 
-        // --- Right column: target cadence + track ---
-        y = fhTiny + 4;
-        var target = _state.targetCadenceText();
-        if (target.length() == 0) { target = _strNoValue; }
-        dc.setColor(runBeat ? Graphics.COLOR_GREEN : Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
-        dc.drawText(colW + colW / 2, y + fhSmall / 2, Graphics.FONT_SMALL,
-            _strTargetPrefix + " " + target,
-            Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
-        y += fhSmall + 2;
-
+        // Track title (big, centered in remaining space).
+        var yTitle = fhTiny + 4 + fhSmall + (h - fhTiny - fhSmall - fhTiny) / 2;
         if (runBeat) {
             var title = _state.title.length() > 0 ? _state.title : _strNoValue;
             dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_BLACK);
-            var maxW = (colW * 0.92).toNumber();
-            dc.drawText(colW + colW / 2, y + fhTiny / 2, Graphics.FONT_TINY,
-                truncateToWidth(dc, title, Graphics.FONT_TINY, maxW),
+            dc.drawText(w / 2, yTitle, Graphics.FONT_LARGE,
+                truncateToWidth(dc, title, Graphics.FONT_LARGE, (w * 0.92).toNumber()),
                 Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
-            y += fhTiny + 2;
+            // Artist below title.
             var artist = _state.artist.length() > 0 ? _state.artist : "";
             if (artist.length() > 0) {
                 dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
-                dc.drawText(colW + colW / 2, y + fhTiny / 2, Graphics.FONT_TINY,
-                    truncateToWidth(dc, artist, Graphics.FONT_TINY, maxW),
+                dc.drawText(w / 2, yTitle + fhLarge / 2 + 2 + fhTiny / 2, Graphics.FONT_TINY,
+                    truncateToWidth(dc, artist, Graphics.FONT_TINY, (w * 0.84).toNumber()),
                     Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
             }
         } else {
             dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
-            dc.drawText(colW + colW / 2, y + fhTiny / 2, Graphics.FONT_TINY,
-                _strNoPlayback,
+            dc.drawText(w / 2, yTitle, Graphics.FONT_LARGE, _strNoPlayback,
                 Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
         }
+
+        // Transport hint at the bottom: |<  >/||  >|
+        var hintY = h - fhTiny - 4;
+        dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
+        dc.drawText(w / 2, hintY, Graphics.FONT_TINY, "|<   >/||   >|",
+            Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
+
+        // Tap zones: left 1/3 = prev, center 1/3 = play/pause, right 1/3 = next.
+        var zoneY = fhTiny + 4;
+        var zoneH = h - fhTiny - fhTiny - 8;
+        var zw = (w / 3).toNumber();
+        _tapZones = [
+            [0, zoneY, zw, zoneH],
+            [zw, zoneY, zw, zoneH],
+            [zw * 2, zoneY, w - zw * 2, zoneH]
+        ];
+
+        // Screen indicator.
+        drawScreenIndicator(dc, 1, 2);
     }
 
-    // Narrow layout (< 240 px): stacked vertically.
-    private function drawNarrowLayout(dc as Graphics.Dc, w as Number, h as Number, now as Number,
-                                      fhTiny as Number, fhLarge as Number,
-                                      runBeat as Boolean) as Void {
-        var y = fhTiny + 4;
+    // --- Drawing: Screen 1 (Controls, 2x2 grid) ---
 
-        // Live cadence (big, centered).
-        var live = _cadenceBuffer.last(now);
-        var liveText = live == null ? _strNoValue : (live as Float).format("%.0f");
-        dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_BLACK);
-        dc.drawText(w / 2, y + fhLarge / 2, Graphics.FONT_LARGE, liveText,
+    private function drawControlsScreen(dc as Graphics.Dc, now as Number) as Void {
+        var w = dc.getWidth();
+        var h = dc.getHeight();
+        dc.setColor(Graphics.COLOR_BLACK, Graphics.COLOR_BLACK);
+        dc.clear();
+
+        var fhTiny = dc.getFontHeight(Graphics.FONT_TINY);
+        var fhSmall = dc.getFontHeight(Graphics.FONT_SMALL);
+        var fhMedium = dc.getFontHeight(Graphics.FONT_NUMBER_MEDIUM);
+
+        var runBeat = _state.isRunBeatActive();
+
+        // Header: connection status.
+        dc.setColor(headerColor(runBeat), Graphics.COLOR_BLACK);
+        dc.drawText(w / 2, fhTiny / 2 + 2, Graphics.FONT_TINY, headerText(),
             Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
-        y += fhLarge + 2;
 
-        // Avg + target on one line.
-        var mean = _cadenceBuffer.mean(now);
-        var meanText = mean == null ? _strNoValue : (mean as Float).format("%.0f");
+        // 2x2 grid below the header.
+        var gridTop = fhTiny + 6;
+        var gridH = h - gridTop - fhTiny - 6;
+        var cellW = (w / 2).toNumber();
+        var cellH = (gridH / 2).toNumber();
+
+        // --- Top-left: Target cadence (green=speed-corr ON, gray=OFF) ---
+        var tlX = 0;
+        var tlY = gridTop;
         var target = _state.targetCadenceText();
         if (target.length() == 0) { target = _strNoValue; }
-        dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
-        dc.drawText(w / 2, y + fhTiny / 2, Graphics.FONT_TINY,
-            _strAvgCaption + " " + meanText + "  " + _strTargetPrefix + " " + target,
-            Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
-        y += fhTiny + 2;
+        var tgtColor = !runBeat ? Graphics.COLOR_DK_GRAY
+            : (_state.speedCorrection ? Graphics.COLOR_GREEN : Graphics.COLOR_LT_GRAY);
+        drawCellLabel(dc, cellW / 2, tlY + cellH * 0.30, _strTargetPrefix,
+            Graphics.COLOR_LT_GRAY, Graphics.FONT_TINY);
+        drawCellValue(dc, cellW / 2, tlY + cellH * 0.62, target, tgtColor, Graphics.FONT_NUMBER_MEDIUM);
+        drawCellBorder(dc, tlX, tlY, cellW, cellH, tgtColor);
 
-        // Track title.
-        if (runBeat) {
-            var title = _state.title.length() > 0 ? _state.title : _strNoValue;
-            dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_BLACK);
-            dc.drawText(w / 2, y + fhTiny / 2, Graphics.FONT_TINY,
-                truncateToWidth(dc, title, Graphics.FONT_TINY, (w * 0.92).toNumber()),
-                Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
-        } else {
-            dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
-            dc.drawText(w / 2, y + fhTiny / 2, Graphics.FONT_TINY, _strNoPlayback,
-                Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
-        }
+        // --- Top-right: 60s avg cadence (blue) ---
+        var trX = cellW;
+        var mean = _cadenceBuffer.mean(now);
+        var meanText = mean == null ? _strNoValue : (mean as Float).format("%.0f");
+        drawCellLabel(dc, trX + cellW / 2, tlY + cellH * 0.30, _strAvgCaption,
+            Graphics.COLOR_LT_GRAY, Graphics.FONT_TINY);
+        drawCellValue(dc, trX + cellW / 2, tlY + cellH * 0.62, meanText,
+            Graphics.COLOR_BLUE, Graphics.FONT_NUMBER_MEDIUM);
+        drawCellBorder(dc, trX, tlY, cellW, cellH, Graphics.COLOR_BLUE);
+
+        // --- Bottom-left: Mark not for running (red) ---
+        var blY = gridTop + cellH;
+        drawCellLabel(dc, cellW / 2, blY + cellH * 0.30, _strMarkLabel,
+            Graphics.COLOR_RED, Graphics.FONT_SMALL);
+        drawCellBorder(dc, 0, blY, cellW, cellH, Graphics.COLOR_RED);
+
+        // --- Bottom-right: Connection status (gray) ---
+        var brX = cellW;
+        var connText = headerText();
+        drawCellValue(dc, brX + cellW / 2, blY + cellH * 0.50, connText,
+            Graphics.COLOR_LT_GRAY, Graphics.FONT_TINY);
+        drawCellBorder(dc, brX, blY, cellW, cellH, Graphics.COLOR_DK_GRAY);
+
+        // Tap zones for the 2x2 grid.
+        _tapZones1 = [
+            [tlX, tlY, cellW, cellH],   // target -> toggle speed correction
+            [trX, tlY, cellW, cellH],   // avg -> set as target
+            [0, blY, cellW, cellH],     // mark -> not for running
+            [brX, blY, cellW, cellH]    // connection (no action)
+        ];
+
+        drawScreenIndicator(dc, 2, 2);
     }
 
-    // Header: three connection states.
+    // Small label inside a grid cell.
+    private function drawCellLabel(dc as Graphics.Dc, cx as Number, cy as Number,
+                                   text as String, color as Number, font) as Void {
+        dc.setColor(color, Graphics.COLOR_BLACK);
+        dc.drawText(cx, cy, font, text,
+            Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
+    }
+
+    // Big value inside a grid cell.
+    private function drawCellValue(dc as Graphics.Dc, cx as Number, cy as Number,
+                                   text as String, color as Number, font) as Void {
+        dc.setColor(color, Graphics.COLOR_BLACK);
+        dc.drawText(cx, cy, font, text,
+            Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
+    }
+
+    // Thin border around a grid cell (visual tap target hint).
+    private function drawCellBorder(dc as Graphics.Dc, x as Number, y as Number,
+                                    cw as Number, ch as Number, color as Number) as Void {
+        dc.setColor(color, Graphics.COLOR_BLACK);
+        dc.drawRectangle(x + 2, y + 2, cw - 4, ch - 4);
+    }
+
+    // --- Shared helpers ---
+
     private function headerText() as String {
-        if (!_state.hasConnected()) {
-            return _strConnecting;
-        }
-        if (_state.isStale(System.getTimer())) {
-            return _strPhoneNotConnected;
-        }
+        if (!_state.hasConnected()) { return _strConnecting; }
+        if (_state.isStale(System.getTimer())) { return _strPhoneNotConnected; }
         return _state.isRunBeatActive() ? _strAppName : _strNoPlayback;
     }
 
@@ -357,10 +396,22 @@ class RunBeatDataField extends WatchUi.DataField {
         return runBeat ? Graphics.COLOR_GREEN : Graphics.COLOR_LT_GRAY;
     }
 
+    private function drawScreenIndicator(dc as Graphics.Dc, page as Number, total as Number) as Void {
+        dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
+        dc.drawText(dc.getWidth() - 4, dc.getHeight() - 4, Graphics.FONT_TINY,
+            page.format("%d") + "/" + total.format("%d"),
+            Graphics.TEXT_JUSTIFY_RIGHT | Graphics.TEXT_JUSTIFY_BOTTOM);
+    }
+
+    private function hitTest(rect, x as Number, y as Number) as Boolean {
+        if (rect == null) { return false; }
+        var r = rect as Array;
+        return x >= (r[0] as Number) && x < (r[0] as Number) + (r[2] as Number) &&
+               y >= (r[1] as Number) && y < (r[1] as Number) + (r[3] as Number);
+    }
+
     private function truncateToWidth(dc as Graphics.Dc, text as String, font, maxWidth as Number) as String {
-        if (dc.getTextWidthInPixels(text, font) <= maxWidth) {
-            return text;
-        }
+        if (dc.getTextWidthInPixels(text, font) <= maxWidth) { return text; }
         var ellipsis = "...";
         var trimmed = text;
         while (trimmed.length() > 0 && dc.getTextWidthInPixels(trimmed + ellipsis, font) > maxWidth) {
@@ -370,11 +421,7 @@ class RunBeatDataField extends WatchUi.DataField {
     }
 }
 
-// Input delegate for the data field. Maps hardware keys to field actions:
-//   SELECT/ENTER = play/pause toggle
-//   UP           = target cadence +1
-//   DOWN         = target cadence -1
-//   LAP          = next track (handled in onTimerLap)
+// Input delegate: routes keys and taps to the field.
 class RunBeatDataFieldDelegate extends WatchUi.BehaviorDelegate {
 
     private var _field;   // RunBeatDataField
@@ -406,7 +453,21 @@ class RunBeatDataFieldDelegate extends WatchUi.BehaviorDelegate {
         return false;
     }
 
-    // Back exits the data field configuration (system handles the pop).
+    function onTap(clickEvent as WatchUi.ClickEvent) as Boolean {
+        var coords = clickEvent.getCoordinates();
+        _field.onTap(coords[0] as Number, coords[1] as Number);
+        return true;
+    }
+
+    function onSwipe(swipeEvent as WatchUi.SwipeEvent) as Boolean {
+        var dir = swipeEvent.getDirection();
+        if (dir == WatchUi.SWIPE_UP || dir == WatchUi.SWIPE_DOWN) {
+            _field.onVerticalSwipe(dir);
+            return true;
+        }
+        return false;
+    }
+
     function onBack() as Boolean {
         return false;
     }

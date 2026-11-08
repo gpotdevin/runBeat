@@ -1,100 +1,80 @@
 # RunBeat Data Field — Architecture
 
-**Status: converted from audio-content-provider companion app to data field (battery fix).**
+**Status: two-screen data field (battery fix). Docs synced 2026-11-08.**
 
-The Garmin watch side is now a Connect IQ **data field** (`garmin-watch/`, manifest
-type `datafield`) instead of an `audio-content-provider-app`. A data field runs
-ONLY during an activity — the watch firmware owns its lifecycle — so it can
-never run in the background or keep the BLE radio awake outside a workout.
-This structurally fixes the battery drain that persisted despite the extensive
-mitigations in the old companion app (adaptive ticks, idle exit, listener
-unregistration, push-window gating).
+A Connect IQ **data field** (`garmin-watch/`, manifest type `datafield`) that
+remote-controls RunBeat during an activity. Runs ONLY during an activity —
+firmware-managed lifecycle, zero battery cost outside a workout.
 
 Wire protocol (unchanged, normative): [architecture.md](architecture.md).
 
-## System overview
+## Screens
 
-```
-+------------------+  Connect IQ messages via Garmin Connect Mobile (BLE)  +-----------------------+
-|  Garmin watch    |  -- commands (toggle, cadence_delta, next) ----------->  |  RunBeat (phone)      |
-|  Data field      |  <-- state pushes (only while activity runs) ---------  |  GarminCompanionManager|
-|  (Monkey C)      |                                                       |         |             |
-|  - runs only     |                                                       |  GarminCommandRouter -+-> PlayerRepository    |
-|    during an     |                                                       |                       |                       |
-|    activity      |                                                       |                       |                       |
-|  - 1 Hz onUpdate |                                                       |                       |                       |
-|  - 60 s ring buf |                                                       |                       |                       |
-+------------------+                                                       +-----------------------+
-```
+### Screen 1/2 — Track
+- Header: connection status (Connecting... / Phone not connected / RunBeat / Nothing playing)
+- Play state (Playing / Paused)
+- Track title (big) + artist
+- Bottom hint: `|<  >/||  >|`
+- Tap zones: left 1/3 = previous, center = play/pause, right 1/3 = next
+- Keys: SELECT/ENTER = play/pause, LAP = next
 
-## Why a data field fixes the battery drain
+### Screen 2/2 — Controls (2x2 grid)
+| Cell | Label | Color | Tap action |
+|------|-------|-------|------------|
+| Top-left | TARGET xxx | green = speed-corr ON, gray = OFF | toggle speed correction |
+| Top-right | AVG/60s xxx | blue | set 60 s avg as target cadence |
+| Bottom-left | NO GOOD RUN | red | mark current track not-for-running |
+| Bottom-right | connection status | gray | (no action) |
 
-| Old companion app | Data field |
-|---|---|
-| Persistent app process — can linger and stay BLE-wakeable after "close" (known CIQ bug: System.exit() is a no-op, unregistered callback keeps process alive) | Runs only during an activity; firmware tears it down when the activity stops — zero cost outside a workout |
-| Own timers (1 Hz cadence + 5 s state tick) waking the CPU even when idle | No own timers — the system calls `onUpdate()` at the configured rate (1 Hz) |
-| Manual idle-exit, visibility tracking, listener unregistration hacks | None needed — the system owns the lifecycle |
-| 20 s request_state keepalive + stale-retry BLE traffic while open | request_state sent on activity start/resume; the phone's push window expires naturally when the activity ends |
-| Phone pushes state ~1/5 s while playing (BLE wakeups) | Same push rate, but only during an activity — bounded by workout duration |
+Switch screens: UP/DOWN key or vertical swipe.
+
+No live cadence display — the stock running app already shows it.
+
+## Input mapping
+
+| Input | Screen 1 (Track) | Screen 2 (Controls) |
+|-------|-----------------|---------------------|
+| SELECT / ENTER | play/pause toggle | — |
+| LAP | next track | — |
+| Tap left 1/3 | previous track | — |
+| Tap center | play/pause | — |
+| Tap right 1/3 | next track | — |
+| Tap top-left cell | — | toggle speed correction |
+| Tap top-right cell | — | set avg as target |
+| Tap bottom-left cell | — | mark not-for-running |
+| UP / DOWN key | switch screen | switch screen |
+| Swipe up/down | switch screen | switch screen |
 
 ## Watch components
 
 | Component | Role |
 |-----------|------|
-| `RunBeatDataFieldApp` (extends `Application.App`) | Manifest entry point; `getInitialView()` returns the data field + delegate |
-| `RunBeatDataField` (extends `WatchUi.DataField`) | The field itself: `onUpdate(dc)` draws at 1 Hz (system-driven), samples cadence, writes FIT fields; `onShow/onHide` register/unregister the phone-message listener; `onTimerStart/Resume/Lap/Stop/Pause` handle activity lifecycle |
-| `RunBeatDataFieldDelegate` (extends `WatchUi.BehaviorDelegate`) | Input: SELECT/ENTER = play/pause toggle, UP = cadence +1, DOWN = cadence -1, LAP = next track |
-| `MessageHandler` | Parse/build the JSON protocol (unchanged from companion app); all string comparisons use `.equals()` |
-| `WatchState` | Latest phone state holder (unchanged) |
-| `CadenceRingBuffer` | 60-slot circular buffer for the 60 s cadence average (unchanged) |
-
-## Input mapping
-
-| Key | Action | Phone command |
-|-----|--------|---------------|
-| SELECT / ENTER | Play/pause toggle | `toggle` |
-| UP | Target cadence +1 | `cadence_delta {delta:1}` |
-| DOWN | Target cadence -1 | `cadence_delta {delta:-1}` |
-| LAP | Next track | `next` |
-
-## Display
-
-Single screen, drawn in `onUpdate()`:
-- **Header**: connection status (Connecting... / Phone not connected / RunBeat / Nothing playing)
-- **Wide screens (>=240 px)**: left column = live cadence (big) + 60 s avg; right column = target cadence + track title/artist
-- **Narrow screens (<240 px)**: stacked vertically — live cadence (big), avg + target on one line, track title
+| `RunBeatDataFieldApp` (extends `Application.App`) | Manifest entry; returns field + delegate |
+| `RunBeatDataField` (extends `WatchUi.DataField`) | `onUpdate()` at 1 Hz (system-driven): samples cadence, writes FIT, draws current screen. `onShow/onHide`: register/unregister phone listener. `onTimerStart/Resume/Lap/Stop/Pause`: activity lifecycle |
+| `RunBeatDataFieldDelegate` (extends `WatchUi.BehaviorDelegate`) | Routes keys, taps, swipes to the field |
+| `MessageHandler` | JSON protocol codec (unchanged); `.equals()` for strings |
+| `WatchState` | Phone state holder (unchanged) |
+| `CadenceRingBuffer` | 60 s rolling cadence average (unchanged) |
 
 ## FIT contribution
 
-The data field declares `FitContributor` permission and writes two custom
-fields to the activity's FIT file (saved every 30 s):
-- `cadence` (spm) — live cadence from the watch sensor
-- `target_cadence` (spm) — the RunBeat target cadence
-
-These appear in Garmin Connect after the run.
+`FitContributor` permission: writes `cadence` (spm) and `target_cadence` (spm)
+to the FIT activity file every 30 s — visible in Garmin Connect after the run.
 
 ## Lifecycle
 
 ```
 Activity start -> onShow() -> registerForPhoneAppMessages + request_state
      |
-onUpdate() @ 1 Hz -> sample cadence, write FIT, draw
+onUpdate() @ 1 Hz -> sample cadence, write FIT, draw current screen
      |
-Activity pause -> onTimerPause() -> send bye (phone drops push window)
-Activity resume -> onTimerResume() -> request_state (re-arm push window)
-LAP -> onTimerLap() -> send next
-Activity stop -> onTimerStop() -> send bye + unregister listener + save FIT
+Activity pause -> onTimerPause() -> bye (phone drops push window)
+Activity resume -> onTimerResume() -> request_state (re-arm)
+LAP -> onTimerLap() -> next
+Activity stop -> onTimerStop() -> bye + unregister + save FIT
      |
-onHide() -> send bye + unregister (belt-and-suspenders)
+onHide() -> bye + unregister
 ```
 
-The phone side (`GarminCompanionManager`) is unchanged: the existing push-window
-gating (30 s per device, armed by request_state, dropped by bye) already handles
-"watch active only during activity" correctly.
-
-## Build
-
-Same as before: Garmin Connect IQ SDK (VS Code extension or Eclipse), `monkeyc`
-compile + package produces one `.prg` per device. See `garmin-watch/monkey.jungle`.
-Data fields run on all Connect IQ devices (no music-capable restriction — the
-product list now includes plain fr245/fr255).
+Phone side (`GarminCompanionManager`) unchanged: 30 s push-window gating handles
+activity-scoped watch correctly.
