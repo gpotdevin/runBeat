@@ -169,6 +169,15 @@ object GarminMessageCodec {
     private const val KEY_IS_FAVORITE = "isFavorite"
     private const val KEY_PLAYLIST_ID = "playlistId"
     private const val KEY_COUNT = "count"
+    private const val KEY_API_VERSION = "apiVersion"
+
+    /**
+     * Wire protocol API version. Bump on any incompatible change to the
+     * watch<->phone message format. The watch broadcasts its version in every
+     * message; the phone includes its own in state/ack pushes. Both sides
+     * can gate features on the peer's version.
+     */
+    const val PROTOCOL_API_VERSION = 1
 
     private const val TYPE_PLAY = "play"
     private const val TYPE_PAUSE = "pause"
@@ -209,6 +218,15 @@ object GarminMessageCodec {
     // ---------------------------------------------------------------
 
     /** Decodes a watch command message; null when malformed or of unknown type. */
+    /**
+     * Extracts the sender's protocol API version from a raw watch message
+     * (defaults to 0 = unknown/pre-versioning when absent).
+     */
+    fun decodeApiVersion(json: String): Int {
+        val obj = parse(json) ?: return 0
+        return obj.optInt(KEY_API_VERSION, 0)
+    }
+
     fun decodeCommand(json: String): GarminCommand? {
         val obj = parse(json) ?: return null
         return when (obj.optString(KEY_TYPE)) {
@@ -319,6 +337,7 @@ object GarminMessageCodec {
     fun encodeState(state: GarminWatchState): String {
         val obj = JSONObject()
             .put(KEY_TYPE, TYPE_STATE)
+            .put(KEY_API_VERSION, PROTOCOL_API_VERSION)
             .put(KEY_SOURCE, state.source)
             .put(KEY_IS_PLAYING, state.isPlaying)
         state.trackId?.let { obj.put(KEY_TRACK_ID, it) }
@@ -348,7 +367,10 @@ object GarminMessageCodec {
 
     /** Encodes an ack message. */
     fun encodeAck(ack: GarminAck): String = JSONObject()
+        .put(KEY_API_VERSION, PROTOCOL_API_VERSION)
         .put(KEY_TYPE, TYPE_ACK)
+
+
         .put(KEY_COMMAND, ack.command)
         .put(KEY_OK, ack.ok)
         .toString()

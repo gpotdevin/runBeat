@@ -49,6 +49,9 @@ class WatchState {
     var lastMessageAt as Number = 0;    // System.getTimer() of the last valid incoming message
     var phoneReachable as Boolean = false;
 
+    // Protocol API version reported by the phone in its state/ack pushes (0 = unknown).
+    var phoneApiVersion as Number = 0;
+
     // --- deferred repaint (battery: coalesce redraws) ---
     // Set when a "state" push changed nothing but the playback position:
     // nothing else on screen changed, so instead of a second full-screen

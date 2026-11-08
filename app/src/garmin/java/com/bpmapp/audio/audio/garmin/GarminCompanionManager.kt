@@ -190,6 +190,13 @@ class GarminCompanionManager @Inject constructor(
     private val watchAppActiveUntilMs = HashMap<Long, Long>()
 
     /**
+     * Per-device protocol API version broadcast by the watch in its messages
+     * (0 = unknown / pre-versioning watch app). Keyed by IQDevice.deviceIdentifier.
+     * Cleared on disconnect like the active window.
+     */
+    private val watchApiVersion = HashMap<Long, Int>()
+
+    /**
      * Per-device [SystemClock.elapsedRealtime] of the last state push, used
      * to deduplicate request_state answers against the ~1/5 s state push
      * stream.
@@ -211,11 +218,13 @@ class GarminCompanionManager @Inject constructor(
     private fun dropWatchAppActivity(device: IQDevice) {
         watchAppActiveUntilMs.remove(device.deviceIdentifier)
         lastStatePushAtMs.remove(device.deviceIdentifier)
+        watchApiVersion.remove(device.deviceIdentifier)
     }
 
     private fun dropAllWatchAppActivity() {
         watchAppActiveUntilMs.clear()
         lastStatePushAtMs.clear()
+        watchApiVersion.clear()
     }
 
     private var initializeCalled = false
@@ -362,6 +371,14 @@ class GarminCompanionManager @Inject constructor(
             // ANY watch message means the app is open on THIS device: arm
             // its active window so the state-push stream may flow to it.
             armWatchAppActivity(device)
+            val apiVer = GarminMessageCodec.decodeApiVersion(json)
+            if (apiVer > 0) {
+                val prev = watchApiVersion[device.deviceIdentifier]
+                if (prev == null || prev != apiVer) {
+                    Log.i(TAG, "Watch app on ${device.friendlyName} reports protocol API v$apiVer (phone supports v${GarminMessageCodec.PROTOCOL_API_VERSION})")
+                }
+                watchApiVersion[device.deviceIdentifier] = apiVer
+            }
             // Link-layer farewell, not a playback command: the watch app
             // is closing — drop this device's active window immediately so
             // pushes stop now instead of at window expiry. No answer.

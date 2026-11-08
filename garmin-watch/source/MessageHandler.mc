@@ -42,6 +42,8 @@ import Toybox.WatchUi;
 // malformed input are ignored instead of failing.
 class MessageHandler {
 
+    // Wire protocol API version broadcast in every outgoing message.
+    static const API_VERSION = 1;
     // Sanity bound for the "playlists" push: the phone sends at most this
     // many idN/nameN indexed pairs; a larger count is truncated.
     static const MAX_PLAYLISTS = 50;
@@ -250,6 +252,10 @@ class MessageHandler {
             s.playbackSpeed = null;
         }
 
+        var apiV = dict["apiVersion"];
+        if (apiV instanceof Number) {
+            s.phoneApiVersion = apiV as Number;
+        }
         s.markMessageReceived();
         var after = [s.source, s.isPlaying, s.title, s.artist,
             s.album, s.durationMs, s.targetCadence, s.speedCorrection,
@@ -352,10 +358,15 @@ class MessageHandler {
     }
 
     private function sendJson(json as String) as Void {
-        // transmit() reports failure through the ConnectionListener's
-        // onError() callback.
-        Communications.transmit(json, null, new RunBeatConnectionListener(_state));
+        // Inject apiVersion after the opening brace so the phone knows our protocol version.
+        var payload = "{\"apiVersion\":" + API_VERSION.format("%d") + "," + json.substring(1, json.length());
+        Communications.transmit(payload, null, new RunBeatConnectionListener(_state));
     }
+
+
+
+
+
 
     // Escapes a string for embedding as a JSON string value (used for the
     // playlist id in playlist_play).

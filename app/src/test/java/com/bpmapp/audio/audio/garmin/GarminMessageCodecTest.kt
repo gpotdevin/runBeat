@@ -543,7 +543,7 @@ class GarminMessageCodecTest {
         val ack = GarminAck(command = "speed_correction_toggle", ok = true)
         assertEquals(ack, GarminMessageCodec.decodeAck(GarminMessageCodec.encodeAck(ack)))
         assertEquals(
-            "{\"type\":\"ack\",\"command\":\"mark_not_for_running\",\"ok\":true}",
+            "{\"apiVersion\":1,\"type\":\"ack\",\"command\":\"mark_not_for_running\",\"ok\":true}",
             GarminMessageCodec.encodeAck(GarminAck("mark_not_for_running", ok = true))
         )
     }
