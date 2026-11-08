@@ -219,16 +219,12 @@ class RunBeatTrackApp extends Application.AppBase {
 
 class RunBeatControlsField extends RunBeatFieldBase {
 
-    private var _strTargetPrefix as String;
-    private var _strAvgCaption as String;
     private var _strMarkLabel as String;
     private var _zonesT as Array = [];  // [minus, num, plus]
     private var _zonesB as Array = [];  // [avg, mark]
 
     function initialize() {
         RunBeatFieldBase.initialize();
-        _strTargetPrefix = WatchUi.loadResource(Rez.Strings.TargetPrefix) as String;
-        _strAvgCaption = WatchUi.loadResource(Rez.Strings.AvgCaption) as String;
         _strMarkLabel = WatchUi.loadResource(Rez.Strings.MarkNotForRunning) as String;
     }
 
@@ -240,22 +236,39 @@ class RunBeatControlsField extends RunBeatFieldBase {
 
         var fhTiny = dc.getFontHeight(Graphics.FONT_TINY);
         var fhSmall = dc.getFontHeight(Graphics.FONT_SMALL);
+        var fhLarge = dc.getFontHeight(Graphics.FONT_LARGE);
         var fhNum = dc.getFontHeight(Graphics.FONT_NUMBER_MEDIUM);
         var runBeat = _state.isRunBeatActive();
 
-        // Split into two rows.
-        var rowH = (h / 2).toNumber();
-        var row1Y = 0;
-        var row2Y = rowH;
+        // ---- Top: track title + artist/album ----
+        var topH = fhLarge + fhTiny + 6;
+        if (runBeat) {
+            var title = _state.title.length() > 0 ? _state.title : _strNoValue;
+            dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_BLACK);
+            dc.drawText(w / 2, fhLarge / 2 + 2, Graphics.FONT_LARGE,
+                truncate(dc, title, Graphics.FONT_LARGE, (w * 0.94).toNumber()),
+                Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
+            var sub = _state.artist;
+            if (_state.album.length() > 0) {
+                sub = sub.length() > 0 ? sub + " - " + _state.album : _state.album;
+            }
+            if (sub.length() > 0) {
+                dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
+                dc.drawText(w / 2, fhLarge + 4 + fhTiny / 2, Graphics.FONT_TINY,
+                    truncate(dc, sub, Graphics.FONT_TINY, (w * 0.90).toNumber()),
+                    Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
+            }
+        } else {
+            dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
+            dc.drawText(w / 2, topH / 2, Graphics.FONT_SMALL, _strNoPlayback,
+                Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
+        }
 
-        // ---- Row 1: TARGET [-] [num] [+] ----
-        var c1y = row1Y + rowH / 2;
-        dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
-        dc.drawText(w / 2, row1Y + fhTiny / 2 + 2, Graphics.FONT_TINY, _strTargetPrefix,
-            Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
-
+        // ---- Middle: [-] [num] [+] (no label, saves space) ----
+        var midY = topH;
+        var midH = h - topH - (h / 4).toNumber();
         var zw = (w / 3).toNumber();
-        var numY = row1Y + fhTiny + 4 + (rowH - fhTiny - 4 - fhNum) / 2 + fhNum / 2;
+        var numY = midY + midH / 2;
 
         dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
         dc.drawText((zw / 2).toNumber(), numY, Graphics.FONT_NUMBER_MEDIUM, "-",
@@ -274,26 +287,25 @@ class RunBeatControlsField extends RunBeatFieldBase {
             Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
 
         _zonesT = [
-            [0, row1Y, zw, rowH],
-            [zw, row1Y, zw, rowH],
-            [zw * 2, row1Y, w - zw * 2, rowH]
+            [0, midY, zw, midH],
+            [zw, midY, zw, midH],
+            [zw * 2, midY, w - zw * 2, midH]
         ];
 
-        // ---- Row 2: AVG/60s | NO GOOD RUN ----
-        var c2y = row2Y + rowH / 2;
+        // ---- Bottom quarter: AVG (blue, tap=set target) | NO GOOD RUN (red) ----
+        var botY = topH + midH;
+        var botH = h - botY;
         var halfW = (w / 2).toNumber();
+        var c2y = botY + botH / 2;
 
-        // Left half: AVG/60s (blue, tap = set as target).
-        dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
-        dc.drawText((halfW / 2).toNumber(), row2Y + fhTiny / 2 + 2, Graphics.FONT_TINY, _strAvgCaption,
-            Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
+        // Left half: avg number (blue, no label).
         var mean = _cadenceBuffer.mean(now);
         var meanText = mean == null ? _strNoValue : (mean as Float).format("%.0f");
         dc.setColor(Graphics.COLOR_BLUE, Graphics.COLOR_BLACK);
-        dc.drawText((halfW / 2).toNumber(), c2y + fhNum / 4, Graphics.FONT_NUMBER_MEDIUM, meanText,
+        dc.drawText((halfW / 2).toNumber(), c2y, Graphics.FONT_NUMBER_MEDIUM, meanText,
             Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
 
-        // Right half: NO GOOD RUN (red, tap = mark).
+        // Right half: NO GOOD RUN (red).
         var markColor = runBeat ? Graphics.COLOR_RED : Graphics.COLOR_DK_GRAY;
         dc.setColor(markColor, Graphics.COLOR_BLACK);
         dc.drawText(halfW + (halfW / 2).toNumber(), c2y, Graphics.FONT_SMALL,
@@ -301,13 +313,12 @@ class RunBeatControlsField extends RunBeatFieldBase {
             Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
 
         _zonesB = [
-            [0, row2Y, halfW, rowH],
-            [halfW, row2Y, halfW, rowH]
+            [0, botY, halfW, botH],
+            [halfW, botY, halfW, botH]
         ];
     }
 
     function onTap(x as Number, y as Number) as Boolean {
-        var h = 0;  // we don't have h here, use zones to determine row
         var zt = _zonesT;
         if (zt.size() >= 3) {
             if (hitTest(zt[0], x, y)) { _messages.sendCadenceDelta(-1); return true; }
@@ -331,6 +342,7 @@ class RunBeatControlsField extends RunBeatFieldBase {
         return false;
     }
 }
+
 
 class RunBeatControlsApp extends Application.AppBase {
     function initialize() { AppBase.initialize(); }

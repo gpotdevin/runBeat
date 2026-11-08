@@ -18,8 +18,6 @@
     <string id="Paused">Paused</string>
 
     <!-- Field labels. -->
-    <string id="AvgCaption">AVG/60s</string>
-    <string id="TargetPrefix">TARGET</string>
     <string id="MarkNotForRunning">NO GOOD RUN</string>
 
     <!-- Ack messages (from phone). -->
