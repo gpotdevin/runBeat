@@ -220,6 +220,7 @@ class RunBeatTrackApp extends Application.AppBase {
 class RunBeatControlsField extends RunBeatFieldBase {
 
     private var _strMarkLabel as String;
+    private var _zoneTop;              // title/artist tap zone (play/pause)
     private var _zonesT as Array = [];  // [minus, num, plus]
     private var _zonesB as Array = [];  // [avg, mark]
 
@@ -240,12 +241,21 @@ class RunBeatControlsField extends RunBeatFieldBase {
         var fhNum = dc.getFontHeight(Graphics.FONT_NUMBER_MEDIUM);
         var runBeat = _state.isRunBeatActive();
 
-        // ---- Top: track title + artist/album ----
-        var topH = fhLarge + fhTiny + 6;
+        // Three compact sections, all close to center:
+        // top = title+artist, mid = [- num +], bot = avg | mark
+        var topH = fhLarge + fhTiny + 4;
+        var botH = fhNum + 4;
+        var midH = h - topH - botH;
+        var topY = 0;
+        var midY = topH;
+        var botY = topH + midH;
+
+        // ---- Top: track title + artist/album (tap = play/pause) ----
+        var topCy = topY + topH / 2;
         if (runBeat) {
             var title = _state.title.length() > 0 ? _state.title : _strNoValue;
             dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_BLACK);
-            dc.drawText(w / 2, fhLarge / 2 + 2, Graphics.FONT_LARGE,
+            dc.drawText(w / 2, topY + fhLarge / 2 + 1, Graphics.FONT_LARGE,
                 truncate(dc, title, Graphics.FONT_LARGE, (w * 0.94).toNumber()),
                 Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
             var sub = _state.artist;
@@ -254,19 +264,18 @@ class RunBeatControlsField extends RunBeatFieldBase {
             }
             if (sub.length() > 0) {
                 dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
-                dc.drawText(w / 2, fhLarge + 4 + fhTiny / 2, Graphics.FONT_TINY,
+                dc.drawText(w / 2, topY + fhLarge + 2 + fhTiny / 2, Graphics.FONT_TINY,
                     truncate(dc, sub, Graphics.FONT_TINY, (w * 0.90).toNumber()),
                     Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
             }
         } else {
             dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
-            dc.drawText(w / 2, topH / 2, Graphics.FONT_SMALL, _strNoPlayback,
+            dc.drawText(w / 2, topCy, Graphics.FONT_SMALL, _strNoPlayback,
                 Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
         }
+        _zoneTop = [0, topY, w, topH];
 
-        // ---- Middle: [-] [num] [+] (no label, saves space) ----
-        var midY = topH;
-        var midH = h - topH - (h / 4).toNumber();
+        // ---- Middle: [-] [num] [+] ----
         var zw = (w / 3).toNumber();
         var numY = midY + midH / 2;
 
@@ -292,20 +301,16 @@ class RunBeatControlsField extends RunBeatFieldBase {
             [zw * 2, midY, w - zw * 2, midH]
         ];
 
-        // ---- Bottom quarter: AVG (blue, tap=set target) | NO GOOD RUN (red) ----
-        var botY = topH + midH;
-        var botH = h - botY;
+        // ---- Bottom: AVG (blue, tap=set target) | NO GOOD RUN (red) ----
         var halfW = (w / 2).toNumber();
         var c2y = botY + botH / 2;
 
-        // Left half: avg number (blue, no label).
         var mean = _cadenceBuffer.mean(now);
         var meanText = mean == null ? _strNoValue : (mean as Float).format("%.0f");
         dc.setColor(Graphics.COLOR_BLUE, Graphics.COLOR_BLACK);
         dc.drawText((halfW / 2).toNumber(), c2y, Graphics.FONT_NUMBER_MEDIUM, meanText,
             Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
 
-        // Right half: NO GOOD RUN (red).
         var markColor = runBeat ? Graphics.COLOR_RED : Graphics.COLOR_DK_GRAY;
         dc.setColor(markColor, Graphics.COLOR_BLACK);
         dc.drawText(halfW + (halfW / 2).toNumber(), c2y, Graphics.FONT_SMALL,
@@ -319,6 +324,11 @@ class RunBeatControlsField extends RunBeatFieldBase {
     }
 
     function onTap(x as Number, y as Number) as Boolean {
+        // Top zone first: title/artist tap = play/pause.
+        if (_zoneTop != null && hitTest(_zoneTop, x, y)) {
+            _messages.sendToggle();
+            return true;
+        }
         var zt = _zonesT;
         if (zt.size() >= 3) {
             if (hitTest(zt[0], x, y)) { _messages.sendCadenceDelta(-1); return true; }
@@ -342,7 +352,6 @@ class RunBeatControlsField extends RunBeatFieldBase {
         return false;
     }
 }
-
 
 class RunBeatControlsApp extends Application.AppBase {
     function initialize() { AppBase.initialize(); }
