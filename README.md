@@ -48,7 +48,7 @@ See [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) for detailed legal analysis.
 
 ### Google Play Store
 
-[Get RunBeat on Google Play](https://play.google.com/store/apps/details?id=com.RunBeat.run.audio) — `v2.0_garmin` build, includes the experimental Garmin watch support.
+[Get RunBeat on Google Play](https://play.google.com/store/apps/details?id=com.RunBeat.run.audio) — currently v1.8. v2.0 (`v2.0_garmin` tag) with experimental Garmin watch support is rolling out.
 
 ### F-Droid
 
