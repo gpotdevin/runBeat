@@ -1,7 +1,7 @@
 # F-Droid inclusion request (sample metadata)
 
 Copy this into the [F-Droid data repository](https://gitlab.com/fdroid/fdroiddata)
-as `metadata/com.RunBeat.run.audio.yml` and submit a merge request.
+as `metadata/com.runBeat.run.audio.fdroid.yml` and submit a merge request.
 
 ```yaml
 Categories:
@@ -18,7 +18,7 @@ AutoName: RunBeat
 RepoType: git
 Repo: https://github.com/gpotdevin/runBeat.git
 
-Binaries: https://github.com/gpotdevin/runBeat/releases/download/v%v/app-release.apk
+Binaries: https://github.com/gpotdevin/runBeat/releases/download/v%v/app-fdroid-release.apk
 
 Builds:
   - versionName: 1.5.4
@@ -29,9 +29,10 @@ Builds:
       - assembleFdroidRelease
     ndk: r26b
 
+  # v2.0_fdroid tag (tag name matches versionName, so Binaries v%v resolves)
   - versionName: 2.0
-    versionCode: 47
-    commit: bd1ca37
+    versionCode: 48
+    commit: v2.0_fdroid
     subdir: app
     gradle:
       - assembleFdroidRelease
@@ -43,7 +44,7 @@ AutoUpdateMode: Version
 UpdateCheckMode: Tags
 UpdateCheckData: build-counter.txt|(\d+)
 CurrentVersion: 2.0
-CurrentVersionCode: 47
+CurrentVersionCode: 48
 ```
 
 > The versionCode is read from `build-counter.txt` — a manually incremented counter, not the

@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.0] - 2026-11-13
+
 ### Added
 
 - **Library**: tracks can be marked "Not for running" — a marker meaning the
@@ -42,6 +44,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   failures retry with backoff; single-track "Add to Upcoming" honors the
   "not for running" filter like the batch path; the watch only receives acks
   for state-changing commands (cadence, speed correction, mark).
+
+### Changed
+
+- **Build flavors**: the `fdroid` flavor now uses applicationId
+  `com.runBeat.run.audio.fdroid` (was `com.RunBeat.run.audio`, shared with the
+  `garmin` flavor), so the F-Droid and Play Store builds are co-installable.
+  versionName is 2.0; versionCode comes from `build-counter.txt` (48).
 
 ## [1.8] - 2026-10-17
 

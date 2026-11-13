@@ -51,14 +51,15 @@ android {
 
     // Companion flavors: 'fdroid' is the default and stays free of any
     // proprietary dependency (it is the build F-Droid ships); 'garmin' adds
-    // the Connect IQ Mobile SDK for the watch companion app. Both flavors
-    // share the applicationId com.RunBeat.run.audio (no suffix): the garmin
-    // build is the same app with the Connect IQ integration, so the two
-    // flavors are NOT co-installable side by side.
+    // the Connect IQ Mobile SDK for the watch companion app. The garmin
+    // flavor keeps applicationId com.RunBeat.run.audio (the Play Store
+    // listing); the fdroid flavor uses the .fdroid suffix, so the two
+    // flavors ARE co-installable side by side.
     flavorDimensions += 'companion'
     productFlavors {
         fdroid {
             dimension 'companion'
+            applicationId "com.runBeat.run.audio.fdroid"
         }
         garmin {
             dimension 'companion'
