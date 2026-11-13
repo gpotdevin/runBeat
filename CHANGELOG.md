@@ -4,6 +4,45 @@ All notable changes to RunBeat are documented in this file. Format based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Library**: tracks can be marked "Not for running" — a marker meaning the
+  track does not feel right to run on (not a quality rating). Flagged tracks
+  show a "Not for running" badge in the library and can be unmarked at any
+  time; they are never deleted.
+- **Playback**: tracks marked "Not for running" are excluded from the play
+  queue (Play All, playlist play, batch add-to-upcoming) behind a new Settings
+  toggle "Exclude tracks marked 'not for running' from playback", on by default.
+- **Library**: database version 7 adds the `notForRunning` column to the tracks
+  table (migration from version 6).
+- **Garmin watch companion (groundwork)**: new Gradle product flavors `fdroid`
+  (default; no proprietary dependencies — the F-Droid build) and `garmin`
+  (adds Garmin's Connect IQ Mobile SDK for the future watch companion app).
+  The SDK-free companion core — the watch/phone message codec matching the
+  watch app's wire protocol, a 60-second cadence averager, a media-key
+  dispatcher for controlling other music apps, and a no-op companion
+  initializer — lives in the main source set and is unit-tested in every
+  flavor.
+- **Garmin watch companion (manager)**: the `garmin` flavor now links the watch
+  to the player through Garmin Connect Mobile. Watch commands (transport,
+  cadence target, speed correction, volume, mark "not for running") are routed
+  by the new SDK-free `GarminCommandRouter` (main source set, unit-tested in
+  every flavor): to RunBeat while it is playing or buffering, to the phone's
+  current music app via media key events otherwise; volume always adjusts the
+  global media stream. Only the thin Connect IQ SDK shell
+  (`GarminCompanionManager`, garmin source set) imports `com.garmin.*`; it
+  pushes playback state and acks back to the watch and reports the watch
+  connection state, shown in Settings (garmin flavor only). The fdroid flavor
+  is unchanged and stays free of Garmin SDK references.
+- **Garmin watch companion (robustness)**: the companion is now process-scoped
+  (started from the Application and the audio service, no longer tied to the
+  activity lifecycle, with no explicit shutdown); transient device-registration
+  failures retry with backoff; single-track "Add to Upcoming" honors the
+  "not for running" filter like the batch path; the watch only receives acks
+  for state-changing commands (cadence, speed correction, mark).
+
 ## [1.8] - 2026-10-17
 
 ### Added

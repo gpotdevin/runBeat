@@ -1,0 +1,95 @@
+
+---
+Error: Invalid Value
+Details: 'Failed invoking <symbol>'
+Time: 2026-10-28T19:07:02Z
+Part-Number: 006-B3703-00
+Firmware-Version: '19.05'
+Language-Code: eng
+ConnectIQ-Version: 6.0.4
+Filename: venu2
+Appname: RunBeat
+Stack: 
+  - pc: 0x10003b74
+    File: 'C:\Users\guill\dev\tools\garmin-build\out-debug\gen\006-B3703-00\source\Rez.mcgen'
+    Line: 78
+    Function: initialize
+  - pc: 0x10002597
+    File: 'C:\Users\guill\dev\runBeat-wt\integration\garmin-watch\source\RunBeatCompanionApp.mc'
+    Line: 150
+    Function: getView
+---
+Error: Illegal Access (Out of Bounds)
+Details: "Class not available to 'Background'"
+Time: 2026-10-29T06:58:00Z
+Part-Number: 006-B3703-00
+Firmware-Version: '19.05'
+Language-Code: eng
+ConnectIQ-Version: 6.0.4
+Filename: venu2
+Appname: RunBeat
+Stack: 
+  - pc: 0x1000044b
+    File: 'C:\Users\guill\dev\runBeat-wt\integration\garmin-watch\source\RunBeatCompanionApp.mc'
+    Line: 94
+    Function: initialize
+---
+Error: Illegal Access (Out of Bounds)
+Details: "Class not available to 'Background'"
+Time: 2026-10-29T07:10:50Z
+Part-Number: 006-B3703-00
+Firmware-Version: '19.05'
+Language-Code: eng
+ConnectIQ-Version: 6.0.4
+Filename: venu2
+Appname: RunBeat
+Stack: 
+  - pc: 0x1000044b
+    File: 'C:\Users\guill\dev\runBeat-wt\integration\garmin-watch\source\RunBeatCompanionApp.mc'
+    Line: 94
+    Function: initialize
+---
+Error: Illegal Access (Out of Bounds)
+Details: "Class not available to 'Background'"
+Time: 2026-10-29T07:22:46Z
+Part-Number: 006-B3703-00
+Firmware-Version: '19.05'
+Language-Code: eng
+ConnectIQ-Version: 6.0.4
+Filename: venu2
+Appname: RunBeat
+Stack: 
+  - pc: 0x100003ee
+    File: 'C:\Users\guill\dev\runBeat-wt\integration\garmin-watch\source\RunBeatCompanionApp.mc'
+    Line: 88
+    Function: initialize
+---
+Error: Illegal Access (Out of Bounds)
+Details: "Class not available to 'Background'"
+Time: 2026-10-29T07:23:29Z
+Part-Number: 006-B3703-00
+Firmware-Version: '19.05'
+Language-Code: eng
+ConnectIQ-Version: 6.0.4
+Filename: venu2
+Appname: RunBeat
+Stack: 
+  - pc: 0x100003ee
+    File: 'C:\Users\guill\dev\runBeat-wt\integration\garmin-watch\source\RunBeatCompanionApp.mc'
+    Line: 88
+    Function: initialize
+---
+Error: Illegal Access (Out of Bounds)
+Details: "Class not available to 'Background'"
+Time: 2026-10-29T07:37:03Z
+Part-Number: 006-B3703-00
+Firmware-Version: '19.05'
+Language-Code: eng
+ConnectIQ-Version: 6.0.4
+Filename: venu2
+Appname: RunBeat
+Stack: 
+  - pc: 0x10000461
+    File: 'C:\Users\guill\dev\runBeat-wt\integration\garmin-watch\source\RunBeatCompanionApp.mc'
+    Line: 94
+    Function: initialize

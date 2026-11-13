@@ -1,136 +1,37 @@
 # RunBeat Requirements
 
-> **Note**: This is the consolidated requirements document. For the original raw requirements, see [requirements/requirements.md](../requirements/requirements.md). For detailed analysis, see [requirements/REQUIREMENTS_ANALYSIS.md](../requirements/REQUIREMENTS_ANALYSIS.md).
-
-
-## Functional Requirements
-
+## Functional
 | ID | Requirement | Priority | Status |
 |----|-------------|----------|--------|
-| FR-001 | Audio playback (MP3, WAV, FLAC, AAC, OGG) | Core |
-| FR-002 | Tempo adjustment +/-20% with pitch preservation | Core |
-| FR-003 | BPM:Cadence ratios: 1:1, 2:1, 3:2, 6:2 | Core | 
-| FR-004 | Target cadence: 172 BPM (range: 160-195, increments: +/-1) | Core |
-| FR-005 | OS integration (MediaSession, Bluetooth controls) | Core | 
-| FR-006 | Automatic BPM detection | High | 
-| FR-007 | Manual BPM input (tap-to-beat) | Core |
-| FR-008 | Playback controls (play/pause/ff/rew/seek) | Core |
-| FR-009 | Playlist management (create/edit/import) | Core |
-| FR-010 | Shuffle/random play | Expected |
-| FR-011 | Streaming (Qobuz/Spotify) | Low | ❌ **NOT FEASIBLE - Legal Restrictions** |
-| FR-012 | Export modified music files | Low |
+| FR-001 | Playback: MP3, WAV, FLAC, AAC, OGG | Core | done |
+| FR-002 | Tempo adjustment ±20% with pitch preservation | Core | done |
+| FR-003 | BPM:cadence ratios 1:1, 2:1, 3:2, 6:2 | Core | done |
+| FR-004 | Target cadence 172 spm (range 160–195, ±1) | Core | done |
+| FR-005 | OS integration (MediaSession, Bluetooth controls) | Core | done |
+| FR-006 | Automatic BPM detection | High | done |
+| FR-007 | Manual BPM input (tap-to-beat) | Core | done |
+| FR-008 | Playback controls (play/pause/ff/rew/seek) | Core | done |
+| FR-009 | Playlist management (create/edit/import) | Core | done (M3U/PLS import, repeat modes pending) |
+| FR-010 | Shuffle/random play | Expected | done |
+| FR-011 | Streaming (Qobuz/Spotify/…) | Low | **not feasible — legal** (see below) |
+| FR-012 | Export modified music files | Low | not done |
 
-## Non-Functional Requirements
+## Non-functional
+Android only (v1); MIT-style permissive license (repo is GPL v3+); < 100 ms tempo-change latency;
+runner-friendly UI (large targets, clear BPM/cadence display) — UI details in
+[UI_ARCHITECTURE.md](UI_ARCHITECTURE.md).
 
-| ID | Requirement | Details |
-|----|-------------|---------|
-| NFR-001 | Target Platform | Android (v1), designed for future cross-platform |
-| NFR-002 | License | MIT (permissive) |
-| NFR-003 | Performance | <100ms latency for tempo changes |
-| NFR-004 | User Interface | Runner-friendly (large buttons, clear BPM/cadence/ratio display) |
+## BPM sources
+1. CSV import (pre-analyzed library), 2. tap-to-beat in the app, 3. automatic Aubio detection;
+   system-scanned tracks start as `bpm = null`. BPM can be written back to file metadata (ID3 TBPM,
+   see [ID3_TAG_INTEGRATION.md](ID3_TAG_INTEGRATION.md)). Track model: see
+   [HIGH_LEVEL_ARCHITECTURE.md](HIGH_LEVEL_ARCHITECTURE.md).
 
-## Decisions Affecting Requirements
+## Not feasible: streaming integration (FR-011)
+Spotify, Qobuz, Amazon Music and Deezer all prohibit modifying their streamed content in their
+developer terms — incompatible with RunBeat's core tempo-changing feature (API termination,
+copyright risk). The app therefore focuses on **local files**, which users own and may process.
 
-### LibraryScreen
-All features implemented:
-- Clear Library button in TopAppBar with confirmation
-- CSV import with duplicate detection (filename + filesize)
-- System library scan with duplicate detection
-- Search field for filename, relativePath, album, artist, title
-- Play All button for filtered tracks
-- BPM displayed in green for known tracks, "unknown" for null
-- Stats card showing total/known/unknown counts
-- Filter by BPM status (known/unknown)
-- Sort by BPM, Album, Artist
-- Speed factor filter [0.9-1.1]
-- Speed factor display per track
-- Compact track cards
-- Compact FilterBar (2 rows with overflow menu)
-- Multi-select tracks (long press + click)
-- Add selected tracks to playlist
-
-### PlayerScreen
-All features implemented:
-- Open Audio File and Open Music Library buttons side-by-side (icon buttons)
-- Tap BPM Section and Tempo/Cadence Section side-by-side with equal height (140dp)
-- Upcoming Songs section connected to playlist
-- Clear playlist button
-- BPM transfer from library to player
-- Unknown BPM shows "Tap Here" instead of "0"
-- Save BPM to Library button with confirmation
-- Speed correction toggle button (rightmost)
-- Compact playback controls (all touch targets 48dp minimum)
-
-### Pending Features
-
-#### Playlist Management
-- [ ] Import existing playlists (M3U, PLS formats)
-- [ ] Repeat modes (none, one, all)
-- [x] Drag-and-drop reordering (handles added, implementation deferred)
-
-#### Testing
-- [ ] Unit tests for BPM calculations
-- [ ] Unit tests for tempo adjustment logic
-- [ ] Integration tests for audio pipeline
-- [ ] Performance testing
-
-## Technical Notes
-
-### Track Model
-```kotlin
-data class Track(
-    val id: String,
-    val relativePath: String,
-    val fileName: String,
-    val bpm: Float?,  // Known BPM from CSV import or manual tap-to-beat
-    val fileSizeBytes: Long?,
-    val durationMs: Long?,
-    val source: TrackSource,  // SYSTEM or APP
-    val metadataTitle: String?,
-    val metadataArtist: String?,
-    val metadataAlbum: String?
-)
-```
-
-### BPM Sources
-1. **CSV Import**: Pre-analyzed BPM data from external library analyzer
-2. **Manual Entry**: Tap-to-beat in PlayerScreen
-3. **System**: Unknown (null) until imported or manually entered
-
-
-## UI/UX Guidelines
-
-1. **Consistency**: Use Material Design 3 system throughout
-2. **Accessibility**: Ensure touch targets are at least 48dp
-3. **Feedback**: Visual confirmation for all actions
-4. **Error Handling**: Clear error messages with recovery options
-5. **Performance**: Lazy loading for large lists, virtualization
-
----
-
-## 🚫 Deprecated/Not Feasible Features
-
-### Streaming Integration (FR-011)
-
-**Status:** ❌ **NOT FEASIBLE - Legal Restrictions**
-
-**Providers Researched:** Spotify, Qobuz, Deezer, Amazon Music
-
-**Legal Analysis:**
-After comprehensive research of each provider's Terms of Service and API policies:
-
-- **Spotify**: Developer Terms §10 explicitly prohibits "modifying, editing, altering, creating derivative works... from Spotify Content"
-- **Qobuz**: API Terms §xi prohibits any "modification, deletion, commercial use... of the various elements of the QOBUZ Applications"
-- **Amazon Music**: Program Requirements §2.15 prohibits "modifying any content delivered through the Amazon Music Service"
-- **Deezer**: Standard API prohibits modification; their "Remix Lab" feature allows tempo changes but requires special artist-approved licensing
-
-**Conclusion:**
-All major streaming providers explicitly prohibit third-party applications from modifying audio playback (tempo/pitch changes), which is RunBeat's core functionality. Integrating any of these APIs would violate their Terms of Service and could result in:
-- Immediate API access termination
-- Copyright infringement lawsuits
-- Legal action from music labels
-
-**Alternative:**
-The app will continue to focus on **local file playback** with tempo adjustment using the SoundTouch library, which is legally permissible as users own the files they process.
-
-
+## UI/UX guidelines
+Material Design 3 throughout; touch targets ≥ 48dp; visual confirmation for all actions; clear
+error messages with recovery; lazy-loaded lists.

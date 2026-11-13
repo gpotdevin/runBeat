@@ -7,7 +7,12 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.bpmapp.audio.BuildConfig
 import com.bpmapp.audio.audio.PlayerRepository
+import com.bpmapp.audio.audio.garmin.CompanionInitializer
+import com.bpmapp.audio.audio.garmin.GarminConnectionState
+import com.bpmapp.audio.audio.garmin.GarminWatchConnection
+import com.bpmapp.audio.audio.garmin.SimulatorAdbMode
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,7 +29,8 @@ import javax.inject.Inject
 @SuppressLint("StaticFieldLeak") // @ApplicationContext field is application-scoped
 class SettingsViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val playerRepository: PlayerRepository
+    private val playerRepository: PlayerRepository,
+    private val companionInitializer: CompanionInitializer,
 ) : ViewModel() {
     
     companion object {
@@ -36,6 +42,7 @@ class SettingsViewModel @Inject constructor(
         
         // Library settings keys
         private const val KEY_AUTO_SCAN_ON_STARTUP = "auto_scan_on_startup"
+        private const val KEY_EXCLUDE_NOT_FOR_RUNNING_TRACKS = "exclude_not_for_running_tracks"
         
         // Appearance settings keys
         private const val KEY_DYNAMIC_COLORS = "dynamic_colors"
@@ -44,6 +51,7 @@ class SettingsViewModel @Inject constructor(
         private const val DEFAULT_DEFAULT_CADENCE = 172
         private const val DEFAULT_AUTO_APPLY_CADENCE_MATCH = true
         private const val DEFAULT_AUTO_SCAN_ON_STARTUP = true
+        private const val DEFAULT_EXCLUDE_NOT_FOR_RUNNING_TRACKS = true
         private const val DEFAULT_DYNAMIC_COLORS = true
     }
     
@@ -59,10 +67,23 @@ class SettingsViewModel @Inject constructor(
     // Library settings
     private val _autoScanOnStartup = MutableStateFlow(getAutoScanOnStartup())
     val autoScanOnStartup: StateFlow<Boolean> = _autoScanOnStartup.asStateFlow()
-    
+
+    private val _excludeNotForRunningTracks = MutableStateFlow(getExcludeNotForRunningTracks())
+    val excludeNotForRunningTracks: StateFlow<Boolean> = _excludeNotForRunningTracks.asStateFlow()
+
     // Appearance settings
     private val _dynamicColors = MutableStateFlow(getDynamicColors())
     val dynamicColors: StateFlow<Boolean> = _dynamicColors.asStateFlow()
+
+    // Garmin watch companion (garmin flavor only; the fdroid flavor has no
+    // companion SDK and must not show the section).
+    val isGarminFlavor: Boolean = BuildConfig.FLAVOR == "garmin"
+    val garminConnectionState: StateFlow<GarminConnectionState> = GarminWatchConnection.state
+
+    // Developer setting (debug builds, garmin flavor): talk to the Connect IQ
+    // simulator on a PC over ADB instead of to a real watch via GCM.
+    private val _simulatorAdbMode = MutableStateFlow(SimulatorAdbMode.isEnabled(context))
+    val simulatorAdbMode: StateFlow<Boolean> = _simulatorAdbMode.asStateFlow()
 
     // Playback: rhythm-mode beep signal at track start (delegated to the repository,
     // which is the single source of truth at playback time).
@@ -72,6 +93,7 @@ class SettingsViewModel @Inject constructor(
     private fun getDefaultCadence(): Int = prefs.getInt(KEY_DEFAULT_CADENCE, DEFAULT_DEFAULT_CADENCE)
     private fun getAutoApplyCadenceMatch(): Boolean = prefs.getBoolean(KEY_AUTO_APPLY_CADENCE_MATCH, DEFAULT_AUTO_APPLY_CADENCE_MATCH)
     private fun getAutoScanOnStartup(): Boolean = prefs.getBoolean(KEY_AUTO_SCAN_ON_STARTUP, DEFAULT_AUTO_SCAN_ON_STARTUP)
+    private fun getExcludeNotForRunningTracks(): Boolean = prefs.getBoolean(KEY_EXCLUDE_NOT_FOR_RUNNING_TRACKS, DEFAULT_EXCLUDE_NOT_FOR_RUNNING_TRACKS)
     private fun getDynamicColors(): Boolean = prefs.getBoolean(KEY_DYNAMIC_COLORS, DEFAULT_DYNAMIC_COLORS)
     
     // Setters for SharedPreferences
@@ -95,6 +117,13 @@ class SettingsViewModel @Inject constructor(
             prefs.edit().putBoolean(KEY_AUTO_SCAN_ON_STARTUP, value).apply()
         }
     }
+
+    fun setExcludeNotForRunningTracks(value: Boolean) {
+        viewModelScope.launch {
+            _excludeNotForRunningTracks.value = value
+            prefs.edit().putBoolean(KEY_EXCLUDE_NOT_FOR_RUNNING_TRACKS, value).apply()
+        }
+    }
     
     fun setDynamicColors(value: Boolean) {
         viewModelScope.launch {
@@ -105,6 +134,14 @@ class SettingsViewModel @Inject constructor(
 
     fun setModeBeepSignal(value: Boolean) {
         playerRepository.setModeBeepSignal(value)
+    }
+
+    fun setSimulatorAdbMode(enabled: Boolean) {
+        viewModelScope.launch {
+            _simulatorAdbMode.value = enabled
+            SimulatorAdbMode.setEnabled(context, enabled)
+            companionInitializer.onSimulatorAdbModeChanged(enabled)
+        }
     }
     
     // Get version info

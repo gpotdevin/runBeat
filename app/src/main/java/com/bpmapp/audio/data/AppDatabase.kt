@@ -15,7 +15,7 @@ import androidx.room.TypeConverters
         PlaylistTrack::class
         // UserPreferences::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 @TypeConverters(TrackTypeConverters::class)

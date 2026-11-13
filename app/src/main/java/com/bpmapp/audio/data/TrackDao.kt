@@ -51,6 +51,24 @@ interface TrackDao {
      */
     @Query("UPDATE tracks SET isFavorite = :isFavorite WHERE id IN (:trackIds)")
     suspend fun updateFavorites(trackIds: List<String>, isFavorite: Boolean): Int
+
+    /**
+     * Update the "not for running" flag for a track
+     */
+    @Query("UPDATE tracks SET notForRunning = :notForRunning WHERE id = :trackId")
+    suspend fun updateNotForRunning(trackId: String, notForRunning: Boolean): Int
+
+    /**
+     * Get all tracks not marked as "not for running"
+     */
+    @Query("SELECT * FROM tracks WHERE notForRunning = 0 ORDER BY fileName COLLATE NOCASE")
+    fun getTracksExcludingNotForRunning(): Flow<List<Track>>
+
+    /**
+     * Get all tracks marked as "not for running"
+     */
+    @Query("SELECT * FROM tracks WHERE notForRunning = 1 ORDER BY fileName COLLATE NOCASE")
+    fun getNotForRunningTracks(): Flow<List<Track>>
     
     /**
      * Insert a track, or replace if it already exists

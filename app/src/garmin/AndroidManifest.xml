@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Garmin flavor only. The Connect IQ Mobile SDK (ciq-companion-app-sdk) declares
+     no permissions of its own, and in simulator (TETHERED) mode its AdbConnection
+     opens a server socket to tether to the Connect IQ simulator over ADB. Creating
+     that socket requires INTERNET; without it socket creation fails with EPERM and
+     the companion crashes on startup. This manifest is merged only into the garmin
+     build, so the fdroid flavor keeps its no-network-permission guarantee. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+</manifest>

@@ -1,6 +1,6 @@
 # RunBeat Privacy Note
 
-**Last updated: 2026-10-17**
+**Last updated: 2026-10-23**
 
 RunBeat is an offline-first, BPM-based audio player for runners. This note explains what data the app handles and which permissions it uses.
 
@@ -12,6 +12,27 @@ RunBeat is an offline-first, BPM-based audio player for runners. This note expla
 - The app does not even declare the `INTERNET` permission: no network requests are made on your behalf, and the app works fully offline.
 - Your music library, BPM values, playlists, and settings are stored **only on your device**, in a local Room database.
 - Nothing leaves your device. There is no server-side component operated by the developer.
+
+## Optional Garmin watch companion (garmin build flavor)
+
+RunBeat can optionally act as the phone side of a Garmin watch companion app
+(a Connect IQ watch app that remote-controls playback and adjusts the target
+cadence from the wrist). This integration exists only in the `garmin` build
+flavor of the app; the F-Droid build (`fdroid` flavor) does not contain it.
+
+- Watch-to-phone messages transit **Garmin Connect Mobile** over Bluetooth.
+  RunBeat itself still declares no `INTERNET` permission and makes no network
+  requests.
+- Message content is limited to **playback state** (play/pause, current track
+  title, BPM, target cadence, speed correction, playback speed, media volume)
+  and **cadence** values measured on the watch. No location, health, or other
+  personal data is exchanged.
+- The integration requires **no new phone permissions**: transport commands
+  for other apps use media key events and the media volume stream, and the
+  cadence is measured by the watch.
+- The `garmin` flavor embeds Garmin's proprietary Connect IQ Mobile SDK. It is
+  not the build published on F-Droid, which stays free of proprietary
+  dependencies.
 
 ## Permissions
 

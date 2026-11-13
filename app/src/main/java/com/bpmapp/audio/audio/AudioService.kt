@@ -8,6 +8,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.view.KeyEvent
 import android.os.Build
 import android.os.IBinder
 import android.app.Service.STOP_FOREGROUND_REMOVE
@@ -20,6 +21,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.bpmapp.audio.R
+import com.bpmapp.audio.audio.garmin.CompanionInitializer
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -57,6 +59,7 @@ class AudioService : MediaSessionService() {
 
     @Inject lateinit var playerRepository: PlayerRepository
     @Inject lateinit var exoPlayer: ExoPlayer
+    @Inject lateinit var companionInitializer: CompanionInitializer
 
     private lateinit var notificationManager: NotificationManager
     private lateinit var mediaSession: MediaSession
@@ -69,13 +72,19 @@ class AudioService : MediaSessionService() {
     override fun onCreate() {
         super.onCreate()
         Log.d("AudioService", "onCreate called")
-        
+
+        // Bring the watch companion up in service-started processes too; a
+        // no-op when the Application already initialized it (no-op in the
+        // fdroid flavor, which has no companion SDK).
+        companionInitializer.initialize(this)
+
         // Initialize notification manager
         notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         createNotificationChannel()
         
         // Initialize MediaSession for Bluetooth controls and notification
         mediaSession = MediaSession.Builder(this, exoPlayer)
+            .setCallback(AudioSessionCallback())
             .setSessionActivity(
                 PendingIntent.getActivity(
                     this, 
@@ -130,6 +139,28 @@ class AudioService : MediaSessionService() {
         // Return the existing MediaSession
         // Bluetooth controls are automatically handled through the player
         return mediaSession
+    }
+
+    /** Routes Bluetooth/headset skip commands through the repository so the custom shuffle order is honored (the ExoPlayer timeline holds a single item, so the default seekToNext is a no-op). */
+    private inner class AudioSessionCallback : MediaSession.Callback {
+        override fun onMediaButtonEvent(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            intent: Intent
+        ): Boolean {
+            val keyEvent = intent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT)
+            when (keyEvent?.keyCode) {
+                KeyEvent.KEYCODE_MEDIA_NEXT -> {
+                    playerRepository.playNext()
+                    return true
+                }
+                KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
+                    playerRepository.playPrevious()
+                    return true
+                }
+            }
+            return super.onMediaButtonEvent(session, controller, intent)
+        }
     }
 
     private fun createNotificationChannel() {
@@ -252,6 +283,7 @@ class AudioService : MediaSessionService() {
         
         val trackTitle = currentTrack?.mediaMetadata?.title ?: getString(R.string.now_playing)
         val trackArtist = currentTrack?.mediaMetadata?.artist ?: ""
+        val trackAlbum = currentTrack?.mediaMetadata?.albumTitle ?: ""
         val contentText = if (trackArtist.isNotEmpty()) {
             "$trackTitle - $trackArtist"
         } else {
@@ -260,7 +292,7 @@ class AudioService : MediaSessionService() {
         
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(contentText)
-            .setContentText(getString(R.string.app_name))
+            .setContentText(trackAlbum)
             .setSubText(getString(R.string.app_name))
             .setSmallIcon(R.drawable.ic_music_note)
             .setContentIntent(contentPendingIntent)

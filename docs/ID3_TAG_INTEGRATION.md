@@ -1,56 +1,31 @@
-# ID3 Tag Integration Guide
+# ID3 Tag / Metadata Integration
 
-## Purpose
-Store BPM values in audio file metadata for interoperability with other music players.
+Store BPM in audio file metadata (ID3v2 `TBPM` frame) for interoperability with other players.
+Uses Android's `MediaMetadataEditor` (API 33+); no extra libraries. Writes go through per-file
+MediaStore write grants — the app does **not** declare `MANAGE_EXTERNAL_STORAGE` (legacy
+`WRITE_EXTERNAL_STORAGE` covers API ≤ 29 only).
+
+## API
+```kotlin
+// TrackRepository
+saveBpmToFileMetadata(trackId, bpm): Boolean
+readBpmFromFileMetadata(trackId): Float?
+syncBpmToFileMetadata(trackId): Boolean
+syncAllBpmToFileMetadata(concurrency = 4): Int
+canModifyTrackFileMetadata(trackId): Boolean
+// LibraryViewModel: same operations + hasFileModificationPermission(), isMetadataEditingAvailable()
+```
 
 ## Implementation
-- Uses MediaMetadataEditor (Android 13+) for ID3 tag modification
-- Stores BPM in standard TBPM frame
-- Parallel processing for batch operations
-- Runtime permission handling
+- `audio/MetadataEditor.kt` — save/read BPM, `canHandleFile`, `isFileWritable` (reflection for API compat)
+- `audio/MetadataWorker.kt` — batch processing, 4 concurrent workers, sequential fallback, max 2 retries
+- `util/PermissionUtils.kt` — runtime permission checks
+- UI: sync button in Library toolbar, long-press context menu, permission/progress/confirmation dialogs
 
-## API Reference
+## Requirements & limits
+- API 33+ for MediaMetadataEditor; supported types: MP3, FLAC, OGG, WAV, M4A, AAC
+- Below API 33, full support would need an extra tag library (jaudiotagger) — not shipped
+- User grants file access at runtime; denying it only disables metadata writes, not playback
 
-### TrackRepository
-```kotlin
-saveBpmToFileMetadata(trackId: String, bpm: Float): Boolean
-readBpmFromFileMetadata(trackId: String): Float?
-syncBpmToFileMetadata(trackId: String): Boolean
-syncAllBpmToFileMetadata(concurrency: Int = 4): Int
-canModifyTrackFileMetadata(trackId: String): Boolean
-```
-
-### LibraryViewModel
-```kotlin
-saveBpmToFileMetadata(trackId: String, bpm: Float)
-syncBpmToFileMetadata(trackId: String)
-syncAllBpmToFileMetadata()
-hasFileModificationPermission(): Boolean
-isMetadataEditingAvailable(): Boolean
-canModifyTrackFileMetadata(trackId: String): Boolean
-```
-
-## UI Integration
-- Sync button in LibraryScreen toolbar
-- Track context menu on long-press
-- Permission dialogs with explanations
-- Progress indicators for batch operations
-
-## Technical Details
-- ID3v2 TBPM frame for BPM storage
-- Reflection for API compatibility
-- Coroutine-based parallel processing
-- Automatic retry on failures (max 2)
-
-## Dependencies
-- AndroidX Media3 (already included)
-- No additional libraries required for API 33+
-
-## Testing Checklist
-- [ ] Android 13+ device with test files
-- [ ] Permission request flow
-- [ ] Single track BPM save
-- [ ] Batch BPM sync
-- [ ] Progress tracking
-- [ ] Error handling
-- [ ] Various file formats (MP3, FLAC, etc.)
+## Test checklist
+Android 13+ device → permission flow → single save → batch sync with progress → error handling → MP3/FLAC/…

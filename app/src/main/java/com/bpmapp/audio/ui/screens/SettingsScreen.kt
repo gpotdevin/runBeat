@@ -45,7 +45,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.bpmapp.audio.BuildConfig
 import com.bpmapp.audio.R
+import com.bpmapp.audio.audio.garmin.GarminConnectionState
 import com.bpmapp.audio.ui.theme.AppSpacing
 import com.bpmapp.audio.viewmodel.LibraryViewModel
 import com.bpmapp.audio.viewmodel.SettingsViewModel
@@ -69,7 +71,15 @@ fun SettingsScreen(
     val autoApplyCadenceMatch by viewModel.autoApplyCadenceMatch.collectAsState()
     val modeBeepSignal by viewModel.modeBeepSignal.collectAsState()
     val autoScanOnStartup by viewModel.autoScanOnStartup.collectAsState()
+    val excludeNotForRunningTracks by viewModel.excludeNotForRunningTracks.collectAsState()
     val dynamicColors by viewModel.dynamicColors.collectAsState()
+    val garminConnectionState by viewModel.garminConnectionState.collectAsState()
+    val simulatorAdbMode by viewModel.simulatorAdbMode.collectAsState()
+    val garminStatusText = when (garminConnectionState) {
+        GarminConnectionState.CONNECTED -> stringResource(R.string.settings_garmin_watch_connected)
+        GarminConnectionState.CONNECTING -> stringResource(R.string.settings_garmin_watch_connecting)
+        GarminConnectionState.DISCONNECTED -> stringResource(R.string.settings_garmin_watch_disconnected)
+    }
     
     val uriHandler = LocalUriHandler.current
     val versionInfo = remember { viewModel.getVersionInfo(context) }
@@ -180,10 +190,48 @@ fun SettingsScreen(
                         modifier = Modifier.padding(end = AppSpacing.sm)
                     )
                 }
+                // Exclude tracks marked "not for running" from playback
+                SettingItem(
+                    title = stringResource(R.string.settings_exclude_not_for_running_title),
+                    description = stringResource(R.string.settings_exclude_not_for_running_desc)
+                ) {
+                    Switch(
+                        checked = excludeNotForRunningTracks,
+                        onCheckedChange = { viewModel.setExcludeNotForRunningTracks(it) },
+                        modifier = Modifier.padding(end = AppSpacing.sm)
+                    )
+                }
             }
             
             
             
+            // GARMIN Section (garmin flavor only — the fdroid flavor has no companion SDK)
+            if (viewModel.isGarminFlavor) {
+                SettingsSection(title = "⌚ ${stringResource(R.string.settings_section_garmin)}") {
+                    SettingItem(
+                        title = stringResource(R.string.settings_garmin_watch_title),
+                        description = garminStatusText
+                    ) {
+                        // Display only - no interactive element
+                    }
+                    // Developer toggle (debug builds only): Connect IQ simulator over ADB.
+                    if (BuildConfig.DEBUG) {
+                        SettingItem(
+                            title = stringResource(R.string.settings_garmin_simulator_adb_title),
+                            description = stringResource(R.string.settings_garmin_simulator_adb_desc)
+                        ) {
+                            Switch(
+                                checked = simulatorAdbMode,
+                                onCheckedChange = { viewModel.setSimulatorAdbMode(it) },
+                                modifier = Modifier.padding(end = AppSpacing.sm)
+                            )
+                        }
+                    }
+                }
+            }
+
+
+
             // APPEARANCE Section
             SettingsSection(title = "🎨 ${stringResource(R.string.settings_section_appearance)}") {
                 // Dynamic Colors

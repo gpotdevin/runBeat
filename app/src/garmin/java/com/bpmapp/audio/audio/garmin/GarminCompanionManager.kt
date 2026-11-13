@@ -1,0 +1,781 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+package com.bpmapp.audio.audio.garmin
+
+import android.content.Context
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
+import android.util.Log
+import com.bpmapp.audio.audio.PlayerRepository
+import com.garmin.android.connectiq.ConnectIQ
+import com.garmin.android.connectiq.IQApp
+import com.garmin.android.connectiq.IQDevice
+import com.garmin.android.connectiq.adb.AdbConnection
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import java.net.ServerSocket
+import javax.inject.Inject
+import javax.inject.Singleton
+
+/**
+ * Thin Connect IQ Mobile SDK shell for the Garmin watch companion. This is
+ * the only class in the app that imports `com.garmin.*`; everything else
+ * (command routing, message codec, connection-state holder) lives in the main
+ * source set and is unit-testable without the SDK.
+ *
+ * Responsibilities:
+ *  - initialize ConnectIQ and register/listen for the RunBeat IQ app
+ *    ([IQ_APP_ID]) on every known (paired) Garmin device;
+ *  - decode watch messages with [GarminMessageCodec] and delegate them to
+ *    [GarminCommandRouter] (serialized through a mutex), then push an ack
+ *    back to the watch;
+ *  - push [GarminWatchState] to the watch whenever any underlying flow
+ *    changes (playerState, currentTrack, targetCadence, speedCorrectionEnabled,
+ *    playbackSpeed), and right after volume commands (volume is not a
+ *    repository flow, so it is pushed immediately after volume commands) — but ONLY while
+ *    the RunBeat watch app is active on that device (open; see
+ *    [watchAppActiveUntilMs], armed by any incoming watch message and dropped
+ *    by "bye"): a closed watch app
+ *    must not be pushed at, the BLE wakeups drained its battery. The phone
+ *    NEVER initiates contact with the watch (no wake message): the watch app
+ *    connects only when the user starts it manually, which arms the window
+ *    via its request_state handshake;
+ *  - one extra push when the pause resume grace expires (a paused RunBeat
+ *    stays resumable from the watch for
+ *    [GarminCommandRouter.PAUSE_RESUME_GRACE_MS]; see
+ *    [schedulePauseGraceExpiryPush]) — still only to an open watch;
+ *  - answer a watch's request_state with one state push to that device (the
+ *    watch sends it on app start, as a 20 s keepalive while playing, and as
+ *    a stale retry), deduplicated against state pushes sent in the last few
+ *    seconds so the ~1/5 s state push stream is not answered twice;
+ *  - expose the connection state via [connectionState].
+ *
+ * Threading: the Connect IQ SDK delivers its callbacks (onSdkReady,
+ * onDeviceStatusChanged, onMessageReceived, ...) on the main thread, so all
+ * mutable state below is main-thread confined. SDK failures — including a
+ * missing or outdated Garmin Connect Mobile — are logged and surfaced as
+ * DISCONNECTED; they never crash or block playback.
+ *
+ * Lifecycle: [initialize] is idempotent and called at process scope (BpmApp,
+ * plus AudioService for service-started processes), so the companion survives
+ * activity destruction and keeps working while the app is backgrounded during
+ * a run. There is deliberately no explicit shutdown wired to any lifecycle
+ * callback: the OS reclaims the SDK's receivers and service bindings when the
+ * process dies. [shutdown] remains as the release path (it also cancels
+ * pending device-refresh retries) but nothing invokes it.
+ *
+ * Debug builds only: [setSimulatorAdbMode] switches the ConnectIQ instance
+ * between WIRELESS (real watch via Garmin Connect Mobile) and TETHERED (the
+ * SDK's BLE simulation over ADB, for the Connect IQ simulator on a PC).
+ */
+@Singleton
+class GarminCompanionManager @Inject constructor(
+    @ApplicationContext private val context: Context,
+    private val playerRepository: PlayerRepository,
+    private val router: GarminCommandRouter,
+    sendDispatcher: CoroutineDispatcher,
+) : ConnectIQ.ConnectIQListener,
+    ConnectIQ.IQDeviceEventListener,
+    ConnectIQ.IQApplicationEventListener {
+
+    /** Watch connection state, mirrored to the main source set for the UI. */
+    val connectionState: StateFlow<GarminConnectionState> = GarminWatchConnection.state
+
+    // Debug-only developer setting: talk to the Connect IQ simulator on a PC
+    // over ADB instead of to a real watch via Garmin Connect Mobile.
+    private var simulatorAdbMode = false
+    private var connectIQInstance: ConnectIQ? = null
+
+    private val connectIQ: ConnectIQ
+        get() = connectIQInstance ?: createConnectIQ().also { connectIQInstance = it }
+
+    private fun createConnectIQ(): ConnectIQ = ConnectIQ.getInstance(
+        context,
+        // TETHERED is the SDK's BLE-simulation-over-ADB strategy (AdbConnection,
+        // default port 7381) used to talk to the Connect IQ simulator on a PC;
+        // WIRELESS talks to a real watch through Garmin Connect Mobile.
+        if (simulatorAdbMode && tetherPortBindable()) ConnectIQ.IQConnectType.TETHERED else ConnectIQ.IQConnectType.WIRELESS,
+    )
+
+    /**
+     * Pre-flight check for simulator (TETHERED) mode: the SDK AdbConnection
+     * opens its server socket (AdbConnection.DEFAULT_PORT) on a background
+     * thread and, when the bind fails, its cleanup path throws an NPE that
+     * kills the whole process. Probe the bind ourselves first and fall back
+     * to WIRELESS when the tether port cannot be bound (for example when the
+     * OS firewall denies this app the network), so a broken tether
+     * environment can never take playback down with it.
+     */
+    private fun tetherPortBindable(): Boolean = try {
+        ServerSocket(AdbConnection.DEFAULT_PORT).use { true }
+    } catch (e: Exception) {
+        Log.w(TAG, "Simulator tether port ${AdbConnection.DEFAULT_PORT} not bindable: ${e.message}; staying WIRELESS")
+        false
+    }
+
+    private val iqApps: List<IQApp> by lazy { IQ_APP_IDS.map { IQApp(it) } }
+
+    /**
+     * Incoming tether messages carry a hardcoded empty app UUID: the SDK's
+     * AdbDataHandler re-broadcasts every simulator message as
+     * IQApp("", "Simulator App"), and IQMessageReceiver dispatches by app id,
+     * so a listener registered under [IQ_APP_ID] never matches and every
+     * watch command is silently dropped. In simulator (ADB) mode the same
+     * [onMessageReceived] is therefore also registered under the empty id.
+     */
+    private val simulatorIqApp: IQApp by lazy { IQApp("") }
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    /**
+     * Serializes SDK sends and keeps them off the main thread:
+     * ConnectIQ.sendMessage performs a blocking socket write, and the SDK's
+     * StrictMode policy throws NetworkOnMainThreadException when it runs on
+     * the main thread, where this manager's scope and the SDK callbacks run.
+     * A single-threaded dispatcher also preserves message order (a stale
+     * state push must not overtake a newer one).
+     */
+    private val sendScope = CoroutineScope(SupervisorJob() + sendDispatcher)
+
+    /**
+     * Serializes watch-command handling. The mark-not-for-running path
+     * suspends on a Room write, so without this mutex two commands from the
+     * same BLE batch (or a fast double-press) could interleave: both would
+     * read the same current track and both would call playNext(), skipping
+     * two tracks.
+     */
+    private val commandMutex = Mutex()
+
+    // Main-thread confined (SDK callbacks arrive on the main thread).
+    private val devices = LinkedHashMap<Long, IQDevice>()
+    private val deviceStatuses = HashMap<Long, IQDevice.IQDeviceStatus>()
+    private var statePushJob: Job? = null
+
+    /**
+     * One-shot push for the end of the pause resume grace (see
+     * [schedulePauseGraceExpiryPush]); cancelled by the next state change
+     * (e.g. the resume) and by [stopStatePush].
+     */
+    private var pauseGraceExpiryPushJob: Job? = null
+
+    /**
+     * Per-device monotonic time until which the RunBeat watch app is
+     * considered active (open on that watch), keyed by
+     * [IQDevice.deviceIdentifier]. Armed by ANY incoming watch message
+     * from that device (request_state, commands — the watch app sends
+     * request_state on start, as a keepalive every 20 s while playing, and
+     * as a stale retry); cleared immediately by a "bye" (the watch's
+     * onStop farewell) from that device, when that device disconnects, and
+     * by expiry. State is pushed to a watch ONLY inside its own window:
+     * IQDevice CONNECTED means the watch is reachable via Garmin Connect
+     * Mobile, NOT that the app is open — pushing at ~1 Hz to a closed app
+     * kept the watch's BLE radio busy all day and drained its battery, and
+     * a single global window let one open watch keep a second, closed watch
+     * receiving pushes. Timestamps use [SystemClock.elapsedRealtime] so
+     * wall-clock changes cannot extend or shorten the window.
+     */
+    private val watchAppActiveUntilMs = HashMap<Long, Long>()
+
+    /**
+     * Per-device protocol API version broadcast by the watch in its messages
+     * (0 = unknown / pre-versioning watch app). Keyed by IQDevice.deviceIdentifier.
+     * Cleared on disconnect like the active window.
+     */
+    private val watchApiVersion = HashMap<Long, Int>()
+
+    /**
+     * Per-device [SystemClock.elapsedRealtime] of the last state push, used
+     * to deduplicate request_state answers against the ~1/5 s state push
+     * stream.
+     */
+    private val lastStatePushAtMs = HashMap<Long, Long>()
+
+    private fun isWatchAppActive(device: IQDevice): Boolean =
+        SystemClock.elapsedRealtime() < (watchAppActiveUntilMs[device.deviceIdentifier] ?: 0L)
+
+    private fun hasActiveWatchApp(): Boolean =
+        watchAppActiveUntilMs.values.any { SystemClock.elapsedRealtime() < it }
+
+    /** Arms the watch-app active window for [device] ([WATCH_APP_ACTIVE_WINDOW_MS] from now). */
+    private fun armWatchAppActivity(device: IQDevice) {
+        watchAppActiveUntilMs[device.deviceIdentifier] =
+            SystemClock.elapsedRealtime() + WATCH_APP_ACTIVE_WINDOW_MS
+    }
+
+    private fun dropWatchAppActivity(device: IQDevice) {
+        watchAppActiveUntilMs.remove(device.deviceIdentifier)
+        lastStatePushAtMs.remove(device.deviceIdentifier)
+        watchApiVersion.remove(device.deviceIdentifier)
+    }
+
+    private fun dropAllWatchAppActivity() {
+        watchAppActiveUntilMs.clear()
+        lastStatePushAtMs.clear()
+        watchApiVersion.clear()
+    }
+
+    private var initializeCalled = false
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var deviceRefreshRetryCount = 0
+    private val deviceRefreshRetryRunnable = Runnable {
+        Log.i(TAG, "Retrying device refresh (attempt $deviceRefreshRetryCount)")
+        refreshDevices()
+    }
+
+    private val sendMessageListener = object : ConnectIQ.IQSendMessageListener {
+        override fun onMessageStatus(device: IQDevice, app: IQApp, status: ConnectIQ.IQMessageStatus) {
+            if (status != ConnectIQ.IQMessageStatus.SUCCESS) {
+                Log.w(TAG, "Message to ${device.friendlyName} failed: $status")
+            }
+        }
+    }
+
+    /**
+     * Initializes the Connect IQ SDK (idempotent). Garmin Connect Mobile
+     * absence or an outdated version is reported through
+     * [onInitializeError] and leaves the companion DISCONNECTED.
+     */
+    fun initialize() {
+        if (initializeCalled) return
+        initializeCalled = true
+        GarminWatchConnection.update(GarminConnectionState.CONNECTING)
+        try {
+            // showGcmDialogs = false: GCM problems are reported via
+            // onInitializeError and surfaced as DISCONNECTED in Settings.
+            connectIQ.initialize(context, false, this)
+        } catch (e: Exception) {
+            Log.e(TAG, "ConnectIQ initialization failed", e)
+            GarminWatchConnection.update(GarminConnectionState.DISCONNECTED)
+        }
+    }
+
+    /**
+     * Unregisters the SDK listeners and shuts ConnectIQ down, cancelling any
+     * pending device-refresh retry. Not wired to any lifecycle callback — see
+     * the class KDoc for the shutdown policy. Playback is never affected.
+     */
+    fun shutdown() {
+        stopStatePush()
+        mainHandler.removeCallbacks(deviceRefreshRetryRunnable)
+        deviceRefreshRetryCount = 0
+        dropAllWatchAppActivity()
+        try {
+            connectIQ.unregisterAllForEvents()
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to unregister ConnectIQ events", e)
+        }
+        try {
+            connectIQ.shutdown(context)
+        } catch (e: Exception) {
+            Log.w(TAG, "ConnectIQ shutdown failed", e)
+        }
+        initializeCalled = false
+        devices.clear()
+        deviceStatuses.clear()
+        GarminWatchConnection.update(GarminConnectionState.DISCONNECTED)
+    }
+
+    /**
+     * Switches the Connect IQ connection between a real watch (WIRELESS, via
+     * Garmin Connect Mobile) and the Connect IQ simulator on a PC (TETHERED —
+     * the SDK's BLE simulation over ADB; needs USB debugging and
+     * `adb forward tcp:7381 tcp:7381`, no GCM). Debug builds only.
+     *
+     * Re-creates the ConnectIQ instance with the new connect type and
+     * re-initializes it when the companion was running; the SDK's
+     * getInstance shuts the previous instance down when the type changes.
+     */
+    fun setSimulatorAdbMode(enabled: Boolean) {
+        if (simulatorAdbMode == enabled) return
+        simulatorAdbMode = enabled
+        Log.i(TAG, "Connect IQ simulator (ADB) mode ${if (enabled) "enabled" else "disabled"}; re-creating ConnectIQ instance")
+        val wasInitialized = initializeCalled
+        if (wasInitialized) shutdown()
+        connectIQInstance = null
+        if (wasInitialized) initialize()
+    }
+
+    // ---------------------------------------------------------------
+    // ConnectIQ.ConnectIQListener
+    // ---------------------------------------------------------------
+
+    override fun onSdkReady() {
+        Log.i(TAG, "ConnectIQ SDK ready")
+        // A new SDK event re-arms the device-refresh retry cycle.
+        deviceRefreshRetryCount = 0
+        refreshDevices()
+        recomputeConnection(finalizeConnecting = true)
+    }
+
+    override fun onInitializeError(status: ConnectIQ.IQSdkErrorStatus) {
+        Log.w(TAG, "ConnectIQ init error: $status (Garmin Connect Mobile missing or outdated)")
+        if (simulatorAdbMode) {
+            Log.i(TAG, "Simulator (ADB) mode: init error — in the simulator use Connection > Start (CTRL-F1); on the phone run 'adb forward tcp:7381 tcp:7381'")
+        }
+        GarminWatchConnection.update(GarminConnectionState.DISCONNECTED)
+    }
+
+    override fun onSdkShutDown() {
+        Log.i(TAG, "ConnectIQ SDK shut down")
+        stopStatePush()
+        mainHandler.removeCallbacks(deviceRefreshRetryRunnable)
+        dropAllWatchAppActivity()
+        GarminWatchConnection.update(GarminConnectionState.DISCONNECTED)
+    }
+
+    // ---------------------------------------------------------------
+    // ConnectIQ.IQDeviceEventListener
+    // ---------------------------------------------------------------
+
+    override fun onDeviceStatusChanged(device: IQDevice, status: IQDevice.IQDeviceStatus) {
+        deviceStatuses[device.deviceIdentifier] = status
+        // A device that is no longer CONNECTED cannot have an open app:
+        // drop its active window so a reconnect within the old window
+        // does not resume pushes to a closed app.
+        if (status != IQDevice.IQDeviceStatus.CONNECTED) {
+            dropWatchAppActivity(device)
+        }
+        recomputeConnection()
+    }
+
+    // ---------------------------------------------------------------
+    // ConnectIQ.IQApplicationEventListener
+    // ---------------------------------------------------------------
+
+    override fun onMessageReceived(
+        device: IQDevice,
+        app: IQApp,
+        messages: List<Any>,
+        status: ConnectIQ.IQMessageStatus,
+    ) {
+        for (message in messages) {
+            val json = message as? String ?: continue
+            val command = GarminMessageCodec.decodeCommand(json)
+            if (command == null) {
+                Log.w(TAG, "Ignoring undecodable watch message: $json")
+                continue
+            }
+            // ANY watch message means the app is open on THIS device: arm
+            // its active window so the state-push stream may flow to it.
+            armWatchAppActivity(device)
+            val apiVer = GarminMessageCodec.decodeApiVersion(json)
+            if (apiVer > 0) {
+                val prev = watchApiVersion[device.deviceIdentifier]
+                if (prev == null || prev != apiVer) {
+                    Log.i(TAG, "Watch app on ${device.friendlyName} reports protocol API v$apiVer (phone supports v${GarminMessageCodec.PROTOCOL_API_VERSION})")
+                }
+                watchApiVersion[device.deviceIdentifier] = apiVer
+            }
+            // Link-layer farewell, not a playback command: the watch app
+            // is closing — drop this device's active window immediately so
+            // pushes stop now instead of at window expiry. No answer.
+            if (command is GarminCommand.Bye) {
+                Log.i(TAG, "Watch app bye from ${device.friendlyName}: dropping its active window")
+                dropWatchAppActivity(device)
+                continue
+            }
+            // Link-layer request, not a playback command: answer the sender
+            // with one state push. No ack and no command mutex — it only
+            // reads flows and sends, so it must not be serialized behind an
+            // unrelated command's Room write.
+            if (command is GarminCommand.RequestState) {
+                scope.launch {
+                    recomputeConnection()
+                    pushStateTo(device)
+                }
+                continue
+            }
+            // Link-layer request, not a playback command: answer the sender
+            // with one playlists push. No ack and no command mutex, exactly
+            // like request_state.
+            if (command is GarminCommand.PlaylistList) {
+                scope.launch {
+                    pushPlaylistsTo(device)
+                }
+                continue
+            }
+            Log.d(TAG, "Watch command from ${device.friendlyName}: $json")
+            scope.launch {
+                try {
+                    // Serialized: two commands must never run handleCommand
+                    // concurrently (see [commandMutex]).
+                    val ack = commandMutex.withLock { router.handleCommand(command) }
+                    // Ack only the state-changing RunBeat commands; transport and
+                    // volume are confirmed by the pushed state message.
+                    if (command.needsAck()) {
+                        sendToWatch(GarminMessageCodec.encodeAck(ack))
+                    }
+                    // Volume is not a repository flow, and the favorite flag is
+                    // not either: push the new state right away instead of
+                    // waiting for the next periodic state push.
+                    if (command is GarminCommand.VolumeDelta || command is GarminCommand.FavoriteToggle) pushState()
+                } catch (e: Exception) {
+                    // A failing watch command must never crash playback.
+                    Log.e(TAG, "Failed to handle watch command: $json", e)
+                }
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------
+    // Device registration / connection state
+    // ---------------------------------------------------------------
+
+    private fun refreshDevices() {
+        // A fresh refresh supersedes any pending retry.
+        mainHandler.removeCallbacks(deviceRefreshRetryRunnable)
+        try {
+            val known = connectIQ.getKnownDevices()
+            if (known.isEmpty()) {
+                // GCM is reachable but lists no paired devices (yet).
+                Log.i(TAG, "No known Garmin devices; will retry")
+                if (simulatorAdbMode) {
+                    Log.i(TAG, "Simulator (ADB) mode: no known devices — in the simulator use Connection > Start (CTRL-F1); on the phone run 'adb forward tcp:7381 tcp:7381'")
+                }
+                scheduleDeviceRefreshRetry()
+                return
+            }
+            var allRegistered = true
+            for (device in known) {
+                allRegistered = registerDevice(device) && allRegistered
+            }
+            // A (backoff-retry) refresh that registers a CONNECTED device must
+            // update the connection state even when no further SDK event
+            // arrives; only onSdkReady/onDeviceStatusChanged recompute it
+            // otherwise.
+            recomputeConnection()
+            if (allRegistered) {
+                deviceRefreshRetryCount = 0
+            } else {
+                scheduleDeviceRefreshRetry()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to list known Garmin devices", e)
+            scheduleDeviceRefreshRetry()
+        }
+    }
+
+    /** @return true when the device is registered for events. */
+    private fun registerDevice(device: IQDevice): Boolean {
+        if (devices.containsKey(device.deviceIdentifier)) return true
+        try {
+            // Device status events + messages from our IQ app on this device.
+            for (app in iqApps) {
+                connectIQ.registerForEvents(device, this, app, this)
+            }
+            if (simulatorAdbMode) {
+                // Simulator (ADB) mode: incoming messages are re-broadcast
+                // with an empty app UUID (see [simulatorIqApp]); without this
+                // second registration the SDK drops every watch command.
+                connectIQ.registerForAppEvents(device, simulatorIqApp, this)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to register for events on ${device.friendlyName}", e)
+            return false
+        }
+        devices[device.deviceIdentifier] = device
+        try {
+            deviceStatuses[device.deviceIdentifier] = connectIQ.getDeviceStatus(device)
+        } catch (e: Exception) {
+            Log.w(TAG, "Device status unavailable for ${device.friendlyName}", e)
+        }
+        return true
+    }
+
+    /**
+     * Retries a failed or empty device refresh with exponential backoff on the
+     * main looper (2s, 4s, 8s, 16s, 32s — about a minute in total), then stops
+     * until the next SDK event re-arms the cycle (see [onSdkReady]).
+     */
+    private fun scheduleDeviceRefreshRetry() {
+        if (deviceRefreshRetryCount >= MAX_DEVICE_REFRESH_RETRIES) {
+            Log.i(TAG, "Device refresh retries exhausted; waiting for the next SDK event")
+            return
+        }
+        deviceRefreshRetryCount++
+        val delayMs = DEVICE_REFRESH_RETRY_BASE_MS * (1L shl (deviceRefreshRetryCount - 1))
+        Log.i(TAG, "Scheduling device refresh retry $deviceRefreshRetryCount/$MAX_DEVICE_REFRESH_RETRIES in ${delayMs}ms")
+        mainHandler.postDelayed(deviceRefreshRetryRunnable, delayMs)
+    }
+
+    private fun recomputeConnection(finalizeConnecting: Boolean = false) {
+        val anyConnected = deviceStatuses.values.any { it == IQDevice.IQDeviceStatus.CONNECTED }
+        when (connectionState.value) {
+            GarminConnectionState.CONNECTED -> if (!anyConnected) setDisconnected()
+            GarminConnectionState.DISCONNECTED -> if (anyConnected) setConnected()
+            GarminConnectionState.CONNECTING -> {
+                if (anyConnected) {
+                    setConnected()
+                } else if (finalizeConnecting) {
+                    // SDK is up but no paired watch is in range.
+                    setDisconnected()
+                }
+            }
+        }
+    }
+
+    private fun setConnected() {
+        Log.i(TAG, "Garmin watch connected")
+        GarminWatchConnection.update(GarminConnectionState.CONNECTED)
+        startStatePush()
+        pushState()
+    }
+
+    private fun setDisconnected() {
+        Log.i(TAG, "Garmin watch disconnected")
+        GarminWatchConnection.update(GarminConnectionState.DISCONNECTED)
+        stopStatePush()
+        // No watch is connected any more: clear every active window so a
+        // reconnect within the old 30 s window does not resume pushes to a
+        // closed app.
+        dropAllWatchAppActivity()
+    }
+
+    // ---------------------------------------------------------------
+    // State push
+    // ---------------------------------------------------------------
+
+    private fun startStatePush() {
+        statePushJob?.cancel()
+        statePushJob = scope.launch {
+            watchStateFlow().collect { state ->
+                // Gated on watch-app activity (see [watchAppActiveUntilMs]):
+                // a closed watch app must not be pushed at — the BLE wakeups
+                // drained the watch battery. sendToWatch filters per device
+                // on connection AND active window.
+                if (hasActiveWatchApp()) {
+                    sendToWatch(GarminMessageCodec.encodeState(state), statePush = true)
+                }
+                schedulePauseGraceExpiryPush(state)
+            }
+        }
+    }
+
+    private fun stopStatePush() {
+        statePushJob?.cancel()
+        statePushJob = null
+        pauseGraceExpiryPushJob?.cancel()
+        pauseGraceExpiryPushJob = null
+    }
+
+    /**
+     * One-shot push when the pause resume grace ends: while RunBeat is
+     * paused the state flow emits once (the pause itself, source "RunBeat",
+     * isPlaying false — the watch shows the paused track and toggle resumes
+     * it) and then nothing, so without this the watch would keep showing
+     * the paused track until its own ~30 s stale probe happened to ask.
+     * The delayed [pushState] re-evaluates [GarminCommandRouter.currentState]
+     * at the grace boundary — now "none" — so the watch UI flips at the
+     * one-minute mark. [pushState] still gates on the aggregate connection
+     * state and per-device watch-app activity, so a closed watch is never
+     * woken for it. Cancelled and re-armed by every state change (the
+     * resume cancels it) and by [stopStatePush].
+     */
+    private fun schedulePauseGraceExpiryPush(state: GarminWatchState) {
+        pauseGraceExpiryPushJob?.cancel()
+        pauseGraceExpiryPushJob = null
+        if (state.source != GarminCommandRouter.SOURCE_RUNBEAT || state.isPlaying) {
+            return
+        }
+        pauseGraceExpiryPushJob = scope.launch {
+            delay(GarminCommandRouter.PAUSE_RESUME_GRACE_MS)
+            pushState()
+        }
+    }
+
+    /**
+     * Re-evaluates the watch state whenever any source flow emits.
+     * [distinctUntilChanged] keeps the BLE traffic to actual changes:
+     * playerState emits ~10x/s with the position, but the position is
+     * rounded to 5-second buckets first, so while playing the state (and the
+     * push) changes about once per 5 seconds. The watch extrapolates the
+     * position locally between pushes (positionMs + isPlaying +
+     * System.getTimer() delta), so the progress bar stays smooth at 1 Hz
+     * without a 1 Hz BLE push (docs/companion_garmin_app/architecture.md,
+     * Battery & lifecycle — watch repaint policy).
+     * Volume is not part of this flow (it is not a repository flow): volume
+     * commands push state immediately instead, so no 1 Hz ticker is needed —
+     * a ticker that re-emitted an unchanged state was a pure coroutine
+     * wakeup that distinctUntilChanged then dropped.
+     */
+    private fun watchStateFlow(): Flow<GarminWatchState> =
+        combine(
+            // Rounded before combining (the router rounds it too, for direct
+            // consumers of currentState): without the rounding the per-second
+            // position changes would dedupe to nothing and starve the push.
+            // 5 s buckets instead of whole seconds: ~12 pushes/min while
+            // playing instead of ~60, and the watch fills the gaps locally.
+            playerRepository.playerState
+                .map { it.copy(currentPosition = it.currentPosition / 5000L * 5000L) }
+                .distinctUntilChanged(),
+            playerRepository.currentTrack,
+            playerRepository.targetCadence,
+            playerRepository.speedCorrectionEnabled,
+            playerRepository.playbackSpeed,
+        ) { _, _, _, _, _ -> router.currentState() }
+            .distinctUntilChanged()
+
+    /**
+     * Pushes the current state to the watch. No-op while disconnected OR
+     * while no watch app is active — the stream is only for an open remote.
+     */
+    private fun pushState() {
+        if (connectionState.value != GarminConnectionState.CONNECTED) return
+        if (!hasActiveWatchApp()) return
+        sendToWatch(GarminMessageCodec.encodeState(router.currentState()), statePush = true)
+    }
+
+    /**
+     * Answers a watch's request_state: pushes the current state to that one
+     * device when it is connected. Independent of the aggregate
+     * [connectionState] gate used by [pushState] — a watch that just (re-)sent
+     * the request must get an answer even if the aggregate state has not
+     * caught up yet. Deduplicated against recent pushes to the same device:
+     * the state stream usually answered the request a moment ago, and
+     * answering every keepalive again would double the BLE traffic.
+     */
+    private fun pushStateTo(device: IQDevice) {
+        if (deviceStatuses[device.deviceIdentifier] != IQDevice.IQDeviceStatus.CONNECTED) {
+            Log.i(TAG, "request_state from ${device.friendlyName}: device not connected, not answering")
+            return
+        }
+        val now = SystemClock.elapsedRealtime()
+        val lastPush = lastStatePushAtMs[device.deviceIdentifier]
+        if (lastPush != null && now - lastPush < REQUEST_STATE_ANSWER_DEDUP_MS) {
+            Log.d(TAG, "request_state from ${device.friendlyName}: state pushed ${now - lastPush}ms ago, skipping duplicate answer")
+            return
+        }
+        sendStateTo(device, GarminMessageCodec.encodeState(router.currentState()))
+    }
+
+    /**
+     * Answers a watch's playlist_list: pushes the library playlists (flat
+     * indexed fields) to that one device when it is connected — same
+     * device-local path as [pushStateTo], independent of the aggregate
+     * [connectionState] gate. The send itself is still gated on the device
+     * being connected with an active app window (see [sendTo]).
+     */
+    private suspend fun pushPlaylistsTo(device: IQDevice) {
+        if (deviceStatuses[device.deviceIdentifier] != IQDevice.IQDeviceStatus.CONNECTED) {
+            Log.i(TAG, "playlist_list from ${device.friendlyName}: device not connected, not answering")
+            return
+        }
+        val playlists = router.currentPlaylists()
+        val payload = GarminMessageCodec.encodePlaylists(playlists)
+        Log.d(TAG, "playlists push: count=" + playlists.size + " payload=" + payload)
+        sendTo(device, payload)
+    }
+
+    /**
+     * Sends a JSON message to every connected, registered watch whose app is
+     * still inside its active window. With [statePush] the send time is
+     * recorded per device for request_state deduplication (see [pushStateTo]).
+     */
+    private fun sendToWatch(json: String, statePush: Boolean = false) {
+        val targets = devices.values.filter {
+            deviceStatuses[it.deviceIdentifier] == IQDevice.IQDeviceStatus.CONNECTED &&
+                isWatchAppActive(it)
+        }
+        val now = SystemClock.elapsedRealtime()
+        for (device in targets) {
+            if (statePush) lastStatePushAtMs[device.deviceIdentifier] = now
+            sendTo(device, json)
+        }
+    }
+
+    /** Records [device] as having just received a state push, then sends. */
+    private fun sendStateTo(device: IQDevice, json: String) {
+        lastStatePushAtMs[device.deviceIdentifier] = SystemClock.elapsedRealtime()
+        sendTo(device, json)
+    }
+
+    /**
+     * Performs one SDK send on [sendScope]. ConnectIQ.sendMessage blocks on a
+     * socket write, so it must never run on the main thread (see [sendScope]);
+     * failures are logged, never thrown, so a dead link cannot take the
+     * caller (playback, a watch command) down with it.
+     *
+     * The device status and the watch-app active window are re-checked inside
+     * the coroutine, not only by the caller: a send queued while the device
+     * was connected with an open app must be cancelled when the device
+     * disconnects or the watch sends "bye" while the send waits on the
+     * dispatcher.
+     */
+    private fun sendTo(device: IQDevice, json: String) {
+        sendScope.launch {
+            if (deviceStatuses[device.deviceIdentifier] != IQDevice.IQDeviceStatus.CONNECTED) return@launch
+            if (!isWatchAppActive(device)) return@launch
+            try {
+                for (app in iqApps) {
+                    connectIQ.sendMessage(device, app, json, sendMessageListener)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to send message to ${device.friendlyName}", e)
+            }
+        }
+    }
+
+    /** Commands the watch expects an ack for (state-changing RunBeat commands). */
+    private fun GarminCommand.needsAck(): Boolean = when (this) {
+        is GarminCommand.CadenceSet,
+        is GarminCommand.CadenceDelta,
+        is GarminCommand.CadenceUseCurrent,
+        is GarminCommand.SpeedCorrectionToggle,
+        is GarminCommand.ShuffleToggle,
+        is GarminCommand.MarkNotForRunning,
+        is GarminCommand.FavoriteToggle,
+        is GarminCommand.PlaylistPlay,
+        -> true
+        else -> false
+    }
+
+    companion object {
+        private const val TAG = "GarminCompanionManager"
+
+        /**
+         * Connect IQ app id of the RunBeat watch app. Must match the id in
+         * garmin-watch/manifest.xml.
+         */
+        val IQ_APP_IDS = listOf(
+            "06c14376-0c60-4e4c-a977-e93364ace3e1", // Track
+            "06c14376-0c60-4e4c-a977-e93364ace3e2", // Controls
+        )
+
+        /**
+         * Minimum gap between two state pushes to the same device for a
+         * request_state answer to be sent at all: while playing the ~1/5 s
+         * state pushes usually answered the keepalive a moment earlier, and
+         * answering it again would double the BLE traffic.
+         */
+        private const val REQUEST_STATE_ANSWER_DEDUP_MS = 3_000L
+
+        /**
+         * How long after the last incoming watch message from a device the
+         * watch app is considered active (open) on that device (per-device
+         * window, measured on [SystemClock.elapsedRealtime]). The watch
+         * sends request_state on start and every 20 s while playing
+         * (keepalive), and commands on every interaction, so 30 s is far
+         * longer than any legitimate gap while the app is open — and short
+         * enough that a closed app stops the state stream (and its BLE
+         * cost) within half a minute.
+         */
+        private const val WATCH_APP_ACTIVE_WINDOW_MS = 30_000L
+
+        /** Device-refresh retries after a transient failure (exponential backoff). */
+        private const val MAX_DEVICE_REFRESH_RETRIES = 5
+        private const val DEVICE_REFRESH_RETRY_BASE_MS = 2000L
+    }
+}

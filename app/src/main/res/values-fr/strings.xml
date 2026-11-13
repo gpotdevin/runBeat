@@ -153,6 +153,7 @@
     <!-- Library snackbar messages -->
     <string name="library_bpm_analysis_complete">Analyse BPM terminée ! %1$d pistes mises à jour</string>
     <string name="library_sync_complete">Synchronisation BPM réussie vers %1$d fichiers</string>
+    <string name="library_add_filtered_not_for_running">Non ajouté à la file — piste marquée \'Pas pour courir\'</string>
 
     <!-- Library dialogs — Clear Library -->
     <string name="dialog_clear_library_title">Effacer la bibliothèque</string>
@@ -258,6 +259,10 @@
     <string name="trackcard_play_replace">Lire (Remplacer l\'actuelle)</string>
     <string name="trackcard_play">Lire</string>
     <string name="trackcard_add_to_upcoming">Ajouter à venir</string>
+    <string name="trackcard_not_for_running">Pas pour courir</string>
+    <string name="trackcard_not_for_running_desc">Cette piste sera ignorée pendant les courses. Elle n\'est pas supprimée et vous pouvez retirer la marque à tout moment.</string>
+    <string name="trackcard_mark_not_for_running">Marquer comme pas pour courir</string>
+    <string name="trackcard_unmark_not_for_running">Retirer la marque pas pour courir</string>
     <string name="trackcard_edit_bpm">Modifier les BPM</string>
     <string name="trackcard_delete">Supprimer</string>
 
@@ -299,10 +304,19 @@
     <string name="settings_section_help">AIDE</string>
     <string name="settings_section_about">À PROPOS</string>
     <string name="settings_section_language">LANGUE</string>
+    <string name="settings_section_garmin">GARMIN</string>
     <string name="settings_auto_apply_title">Auto-appliquer la correspondance de cadence</string>
     <string name="settings_auto_apply_desc">Appliquer automatiquement la correspondance de cadence au changement de piste</string>
     <string name="settings_auto_scan_title">Scan automatique au démarrage</string>
     <string name="settings_auto_scan_desc">Scanner automatiquement les nouvelles pistes au démarrage de l\'application</string>
+    <string name="settings_exclude_not_for_running_title">Exclure les pistes marquées \'pas pour courir\' de la lecture</string>
+    <string name="settings_exclude_not_for_running_desc">Les pistes marquées \'Pas pour courir\' restent dans votre bibliothèque mais sont exclues de la file de lecture</string>
+    <string name="settings_garmin_watch_title">Montre Garmin</string>
+    <string name="settings_garmin_watch_connected">Connectée</string>
+    <string name="settings_garmin_watch_connecting">Connexion…</string>
+    <string name="settings_garmin_watch_disconnected">Non connectée</string>
+    <string name="settings_garmin_simulator_adb_title">Utiliser le simulateur Connect IQ (ADB)</string>
+    <string name="settings_garmin_simulator_adb_desc">Tester avec le simulateur Connect IQ sur PC (débogage USB requis et \"adb forward tcp:7381 tcp:7381\"). Laisser désactivé pour une vraie montre.</string>
     <string name="settings_dynamic_colors_title">Couleurs dynamiques</string>
     <string name="settings_dynamic_colors_desc">Utiliser les couleurs dynamiques du système (Android 12+)</string>
     <string name="settings_import_csv_title">Importer un CSV</string>
@@ -358,6 +372,7 @@
     <string name="error_failed_delete_track">Échec de la suppression de la piste : %1$s</string>
     <string name="error_failed_delete_tracks">Échec de la suppression des pistes : %1$s</string>
     <string name="error_failed_update_favorite">Échec de la mise à jour du favori : %1$s</string>
+    <string name="error_failed_update_not_for_running">Échec de la mise à jour de la marque pas pour courir : %1$s</string>
     <string name="error_failed_create_playlist">Échec de la création de la liste de lecture : %1$s</string>
     <string name="error_failed_rename_playlist">Échec du renommage de la liste de lecture : %1$s</string>
     <string name="error_failed_delete_playlist">Échec de la suppression de la liste de lecture : %1$s</string>

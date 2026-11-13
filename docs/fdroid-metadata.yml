@@ -26,17 +26,15 @@ Builds:
     commit: c7392859a6837ae84eee99f1b975fa9581eb123d
     subdir: app
     gradle:
-      - yes
+      - assembleFdroidRelease
     ndk: r26b
 
-  # v1.8 tag commit (tag name matches versionName, so Binaries v%v resolves)
-  # (v1.8 tag = 4f5b05f6087d844688dffd1a830d340bf333ae22)
-  - versionName: "1.8"
-    versionCode: 45
-    commit: 4f5b05f6087d844688dffd1a830d340bf333ae22
+  - versionName: 2.0
+    versionCode: 47
+    commit: bd1ca37
     subdir: app
     gradle:
-      - yes
+      - assembleFdroidRelease
     ndk: r26b
 
 AllowedAPKSigningKeys: 17c79696d6cd7f28e9ae9b8931dc8b7c402856318fe450ec777a23fddf12ca02
@@ -44,12 +42,10 @@ AllowedAPKSigningKeys: 17c79696d6cd7f28e9ae9b8931dc8b7c402856318fe450ec777a23fdd
 AutoUpdateMode: Version
 UpdateCheckMode: Tags
 UpdateCheckData: build-counter.txt|(\d+)
-CurrentVersion: "1.8"
-CurrentVersionCode: 45
+CurrentVersion: 2.0
+CurrentVersionCode: 47
 ```
 
-> Note: The versionCode is read from `build-counter.txt` to ensure consistency
-> with F-Droid's UpdateCheckData. `build-counter.txt` is a manually incremented
-> counter — not the git commit count — and must be bumped for each release. It is
-> the single source of truth for `versionCode` (`app/build.gradle` reads it at
-> build time).
+> The versionCode is read from `build-counter.txt` — a manually incremented counter, not the
+> git commit count — bumped once per release. It is the single source of truth for `versionCode`
+> (`app/build.gradle` reads it at build time) and for F-Droid's `UpdateCheckData`.

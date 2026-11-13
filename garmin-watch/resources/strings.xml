@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<strings>
+    <string id="AppName">RunBeat</string>
+
+    <!-- Data field names (shown in the field picker). -->
+    <string id="FieldTrack">RunBeat Track</string>
+    <string id="FieldControls">RunBeat Controls</string>
+    
+    
+    
+
+    <!-- Status / display. -->
+    <string id="NoPlayback">Nothing playing</string>
+    <string id="PhoneNotConnected">Phone not connected</string>
+    <string id="Connecting">Connecting...</string>
+    <string id="NoValue">--</string>
+    <string id="Playing">Playing</string>
+    <string id="Paused">Paused</string>
+
+    <!-- Field labels. -->
+    <string id="MarkNotForRunning">NO GOOD RUN</string>
+
+    <!-- Ack messages (from phone). -->
+    <string id="AckOk">OK</string>
+    <string id="AckFailed">Failed</string>
+    <string id="AckCadenceApplied">Target set</string>
+    <string id="AckCadenceFailed">Not applied</string>
+    <string id="AckMarked">Marked: not for running</string>
+    <string id="AckMarkFailed">Mark failed</string>
+    <string id="AckSpeedCorrection">Toggled</string>
+    <string id="AckRunBeatOnly">RunBeat only</string>
+    <string id="AckPlaylistStarted">Playlist started</string>
+    <string id="AckPlaylistFailed">Playlist failed</string>
+</strings>

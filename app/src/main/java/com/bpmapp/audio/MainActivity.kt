@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -51,7 +52,6 @@ import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowForward
-import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.ToggleOff
 import androidx.compose.material.icons.filled.ToggleOn
 import androidx.compose.material.icons.filled.DragHandle
@@ -93,6 +93,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import kotlinx.coroutines.flow.firstOrNull
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -115,6 +116,7 @@ import com.bpmapp.audio.ui.theme.bpmColor
 import com.bpmapp.audio.ui.theme.speedFactorColor
 import com.bpmapp.audio.ui.theme.touchTarget
 import com.bpmapp.audio.util.PermissionUtils
+import com.bpmapp.audio.viewmodel.LibraryViewModel
 import com.bpmapp.audio.viewmodel.PlayerViewModel
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -133,26 +135,32 @@ class MainActivity : ComponentActivity() {
     lateinit var playerRepository: PlayerRepository
 
     private val notificationPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
-    private val mediaPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    private val mediaPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) autoScanRequested = true
+    }
+
+    // Set when media permission is granted (startup or interactively); consumed by the auto-scan LaunchedEffect
+    private var autoScanRequested = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
+
         // The AudioService is started lazily by PlayerRepository when playback
         // actually begins, so the app does not run in the background when idle.
-        
+
         requestNotificationPermissionIfNeeded()
         requestMediaPermissionIfNeeded()
-        
+        if (PermissionUtils.hasReadMediaAudioPermission(this)) autoScanRequested = true
+
         enableEdgeToEdge()
-        
+
         setContent {
             BpmAppTheme {
                 val context = LocalContext.current
                 val prefs = remember { context.getSharedPreferences("AppSettings", Context.MODE_PRIVATE) }
                 var showIntro by remember { mutableStateOf(!prefs.getBoolean("intro_seen", false)) }
                 val snackbarHostState = remember { SnackbarHostState() }
-                
+
                 Box(modifier = Modifier.fillMaxSize()) {
                     Surface(
                         modifier = Modifier.fillMaxSize(),
@@ -160,6 +168,18 @@ class MainActivity : ComponentActivity() {
                     ) {
                         val navController = rememberNavController()
                         val libraryViewModel: com.bpmapp.audio.viewmodel.LibraryViewModel = hiltViewModel()
+
+                        // Auto-scan the system music library on startup when enabled in Settings,
+                        // permission is granted, the library was never scanned, and it is empty.
+                        LaunchedEffect(autoScanRequested) {
+                            if (!autoScanRequested) return@LaunchedEffect
+                            if (!prefs.getBoolean("auto_scan_on_startup", true)) return@LaunchedEffect
+                            val runbeatPrefs = context.getSharedPreferences("runbeat", Context.MODE_PRIVATE)
+                            if (runbeatPrefs.getBoolean("has_scanned_library", false)) return@LaunchedEffect
+                            if (!PermissionUtils.hasReadMediaAudioPermission(context)) return@LaunchedEffect
+                            val tracks = libraryViewModel.allTracks.firstOrNull() ?: emptyList()
+                            if (tracks.isEmpty()) libraryViewModel.scanSystemLibrary()
+                        }
                         
                         Scaffold(
                             bottomBar = {
@@ -257,6 +277,7 @@ class MainActivity : ComponentActivity() {
         if (PermissionUtils.hasReadMediaAudioPermission(this)) return
         mediaPermissionLauncher.launch(PermissionUtils.requiredReadMediaAudioPermission())
     }
+
 }
 
 
@@ -271,6 +292,8 @@ fun PlayerScreenWrapper(
     playerViewModel: PlayerViewModel,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+
     var showLibrary by remember { mutableStateOf(false) }
     var selectedTrackForPlayback: Track? by remember { mutableStateOf(null) }
     var selectedTrackBpm: Int? by remember { mutableStateOf(null) }
@@ -293,24 +316,32 @@ fun PlayerScreenWrapper(
                 },
                 onBack = { showLibrary = false },
                 onAddToUpcoming = { track ->
-                    val mediaItem = libraryViewModel.getMediaItemForTrack(track)
-                    playerRepository.addToPlaylist(mediaItem)
-                    libraryViewModel.resolveBpmForTrackIfNeeded(track) { bpm ->
-                        if (bpm != null && bpm > 0) {
-                            playerViewModel.updateMusicBpm(bpm.roundToInt())
+                    // Same filter as the batch path: tracks marked "not for
+                    // running" are left out when the exclusion setting is on.
+                    val mediaItems = libraryViewModel.getPlayableMediaItems(listOf(track))
+                    if (mediaItems.isEmpty()) {
+                        Toast.makeText(
+                            context,
+                            R.string.library_add_filtered_not_for_running,
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    } else {
+                        playerRepository.addToPlaylist(mediaItems.first())
+                        libraryViewModel.resolveBpmForTrackIfNeeded(track) { bpm ->
+                            if (bpm != null && bpm > 0) {
+                                playerViewModel.updateMusicBpm(bpm.roundToInt())
+                            }
                         }
                     }
                 },
                 onAddToUpcomingBatch = { tracks ->
-                    val mediaItems = tracks.map { libraryViewModel.getMediaItemForTrack(it) }
+                    val mediaItems = libraryViewModel.getPlayableMediaItems(tracks)
                     playerRepository.addAllToPlaylist(mediaItems)
                     libraryViewModel.resolveBmpsForTracksIfNeeded(tracks)
                 },
                 onPlayAllTracks = { tracks ->
                     // Load all tracks into playlist and play first
-                    val mediaItems = tracks.map { track ->
-                        libraryViewModel.getMediaItemForTrack(track)
-                    }
+                    val mediaItems = libraryViewModel.getPlayableMediaItems(tracks)
                     if (mediaItems.isNotEmpty()) {
                         playerRepository.loadPlaylist(mediaItems)
                         playerRepository.play()
@@ -320,7 +351,7 @@ fun PlayerScreenWrapper(
                     libraryViewModel.resolveBmpsForTracksIfNeeded(tracks)
                 },
                 targetCadence = targetCadence,
-                viewModel = libraryViewModel
+                libraryViewModel = libraryViewModel
             )
         } else {
             // Check if we have a track to load
@@ -357,6 +388,7 @@ fun LibraryScreenWrapper(
     navController: NavHostController,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val playerViewModel: PlayerViewModel = hiltViewModel()
     val targetCadence = playerViewModel.targetCadence
 
@@ -372,24 +404,32 @@ fun LibraryScreenWrapper(
             },
             onBack = { navController.popBackStack() },
             onAddToUpcoming = { track ->
-                val mediaItem = libraryViewModel.getMediaItemForTrack(track)
-                playerRepository.addToPlaylist(mediaItem)
-                libraryViewModel.resolveBpmForTrackIfNeeded(track) { bpm ->
-                    if (bpm != null && bpm > 0) {
-                        playerViewModel.updateMusicBpm(bpm.roundToInt())
+                // Same filter as the batch path: tracks marked "not for
+                // running" are left out when the exclusion setting is on.
+                val mediaItems = libraryViewModel.getPlayableMediaItems(listOf(track))
+                if (mediaItems.isEmpty()) {
+                    Toast.makeText(
+                        context,
+                        R.string.library_add_filtered_not_for_running,
+                        Toast.LENGTH_SHORT
+                    ).show()
+                } else {
+                    playerRepository.addToPlaylist(mediaItems.first())
+                    libraryViewModel.resolveBpmForTrackIfNeeded(track) { bpm ->
+                        if (bpm != null && bpm > 0) {
+                            playerViewModel.updateMusicBpm(bpm.roundToInt())
+                        }
                     }
                 }
             },
             onAddToUpcomingBatch = { tracks ->
-                val mediaItems = tracks.map { libraryViewModel.getMediaItemForTrack(it) }
+                val mediaItems = libraryViewModel.getPlayableMediaItems(tracks)
                 playerRepository.addAllToPlaylist(mediaItems)
                 libraryViewModel.resolveBmpsForTracksIfNeeded(tracks)
             },
             onPlayAllTracks = { tracks ->
                 // Load all tracks into playlist and play first
-                val mediaItems = tracks.map { track ->
-                    libraryViewModel.getMediaItemForTrack(track)
-                }
+                val mediaItems = libraryViewModel.getPlayableMediaItems(tracks)
                 if (mediaItems.isNotEmpty()) {
                     playerRepository.loadPlaylist(mediaItems)
                     playerRepository.play()
@@ -399,7 +439,7 @@ fun LibraryScreenWrapper(
                 libraryViewModel.resolveBmpsForTracksIfNeeded(tracks)
             },
             targetCadence = targetCadence,
-            viewModel = libraryViewModel
+            libraryViewModel = libraryViewModel
         )
     }
 }
@@ -421,6 +461,15 @@ fun PlayerScreen(
     val trackBpms by playerRepository.trackBpms.collectAsState()
     val error by playerRepository.error.collectAsState()
     val shuffleEnabled by playerRepository.shuffleEnabled.collectAsState()
+    val shuffleOrder by playerRepository.shuffleOrder.collectAsState()
+    // When shuffle is on, show the upcoming tracks in the actual play order
+    // (shuffleOrder indices into playlist) so the list reflects what will play.
+    val displayPlaylist = if (shuffleEnabled && shuffleOrder.isNotEmpty()) {
+        val shown = shuffleOrder.filter { it in playlist.indices }.map { playlist[it] }
+        shown + playlist.filterIndexed { i, _ -> i !in shuffleOrder }
+    } else {
+        playlist
+    }
     val existingPlaylists = libraryViewModel?.playlists?.collectAsState()?.value ?: emptyList()
 
     // Track ids from the current playlist, used to save/update a library playlist
@@ -529,7 +578,6 @@ fun PlayerScreen(
             position = currentPosition,
             onPlay = { playerRepository.play() },
             onPause = { playerRepository.pause() },
-            onStop = { playerRepository.stop() },
             onPrevious = { playerRepository.playPrevious() },
             onNext = { playerRepository.playNext() },
             onSeek = { newPosition -> playerRepository.seekTo(newPosition) },
@@ -628,7 +676,7 @@ fun PlayerScreen(
             }
         }
         PlaylistSection(
-            mediaItems = playlist,
+            mediaItems = displayPlaylist,
             selectedMediaItem = currentTrack,
             onItemSelected = { mediaItem ->
                 playerRepository.playMediaItem(mediaItem)
@@ -766,7 +814,6 @@ fun PlaybackControlsSection(
     position: Long,
     onPlay: () -> Unit,
     onPause: () -> Unit,
-    onStop: () -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onSeek: (Long) -> Unit,
@@ -775,7 +822,7 @@ fun PlaybackControlsSection(
     modifier: Modifier = Modifier
 ) {
     Card(
-        modifier = modifier.heightIn(min = 150.dp),
+        modifier = modifier,
         shape = MaterialTheme.shapes.large,
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
@@ -798,7 +845,8 @@ fun PlaybackControlsSection(
                 )
                 Text(
                     text = trackName,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f).padding(horizontal = AppSpacing.xxs),
                     textAlign = TextAlign.Center,
                     maxLines = 1,
@@ -822,10 +870,11 @@ fun PlaybackControlsSection(
                 valueRange = 0f..1f,
                 modifier = Modifier
                     .fillMaxWidth()
+                    .padding(top = AppSpacing.xxs)
                     .height(8.dp) // Thicker track
             )
             
-            // Playback controls: Previous, Play/Pause, Stop, Next
+            // Playback controls: Previous, Play/Pause, Next
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.Center,
@@ -865,25 +914,7 @@ fun PlaybackControlsSection(
                 }
                 
                 Spacer(modifier = Modifier.width(AppSpacing.xxs))
-                
-                // Stop button
-                IconButton(
-                    onClick = onStop,
-                    modifier = Modifier.size(48.dp),
-                    colors = IconButtonDefaults.iconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                        contentColor = MaterialTheme.colorScheme.error
-                    )
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Stop,
-                        contentDescription = stringResource(R.string.stop),
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-                
-                Spacer(modifier = Modifier.width(AppSpacing.xxs))
-                
+
                 // Next button
                 IconButton(
                     onClick = onNext,
@@ -1088,6 +1119,14 @@ fun PlaylistSection(
                 )
             } else {
                 val lazyListState = rememberLazyListState()
+                // Auto-scroll to the currently playing track so the list follows playback.
+                LaunchedEffect(selectedMediaItem) {
+                    val selected = selectedMediaItem ?: return@LaunchedEffect
+                    val index = mediaItems.indexOfFirst { it == selected }
+                    if (index >= 0) {
+                        lazyListState.animateScrollToItem(index = maxOf(0, index - 2))
+                    }
+                }
                 val reorderableLazyColumnState = rememberReorderableLazyColumnState(lazyListState) { from, to ->
                     onMove(from.index, to.index)
                 }

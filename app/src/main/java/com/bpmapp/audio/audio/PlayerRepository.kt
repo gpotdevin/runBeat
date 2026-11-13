@@ -45,6 +45,9 @@ class PlayerRepository @Inject constructor(
         // Rhythm-mode beep signal at track start (2 = binary, 3 = ternary).
         private const val KEY_MODE_BEEP_SIGNAL = "mode_beep_signal"
         private const val DEFAULT_MODE_BEEP_SIGNAL = true
+
+        // Interval of the playback-position poll (only while playing).
+        private const val POSITION_UPDATE_INTERVAL_MS = 100L
     }
     
     // State management
@@ -96,6 +99,7 @@ class PlayerRepository @Inject constructor(
 
     // Shuffled order of playlist indices used when shuffle is enabled
     private val _shuffleOrder = MutableStateFlow<List<Int>>(emptyList())
+    val shuffleOrder: StateFlow<List<Int>> = _shuffleOrder.asStateFlow()
 
     // Whether to play a binary/ternary beep signal when a track starts.
     // Persisted to SharedPreferences. Default: on.
@@ -111,9 +115,56 @@ class PlayerRepository @Inject constructor(
     // cannot mistake an already-ducked volume for the original one.
     private var volumeBeforeDuck: Float? = null
 
+    // Volume actually applied by the current mode-beep ducking (null = not
+    // ducked). The restore only fires while the player still holds this
+    // value, so a volume change made during the beeps is left untouched.
+    private var duckedVolumeApplied: Float? = null
+
     // Throttle for the periodic playback-state diagnostic log in the position
     // poller (at most one log every 5 seconds).
     private var lastPlaybackStateLogMs = 0L
+
+    // Periodic position updates run ONLY while actually playing: a 100 ms
+    // poll reposted forever meant 10 Handler wakeups/s for the whole process
+    // lifetime, even with no playback and no watch connected. The poll stops
+    // itself when playback pauses/stops and restarts from the player
+    // listener (see ensurePositionPollRunning).
+    private val positionHandler = Handler(Looper.getMainLooper())
+    private var positionPollRunning = false
+    private val positionUpdateRunnable = object : Runnable {
+        override fun run() {
+            if (!exoPlayer.isPlaying) {
+                // Paused or stopped: stop the poll until playback resumes.
+                positionPollRunning = false
+                return
+            }
+            _playerState.update { currentState ->
+                currentState.copy(
+                    isPlaying = exoPlayer.isPlaying,
+                    currentPosition = exoPlayer.currentPosition
+                )
+            }
+            _currentPosition.value = exoPlayer.currentPosition
+            val now = SystemClock.elapsedRealtime()
+            if (now - lastPlaybackStateLogMs >= 5000L) {
+                lastPlaybackStateLogMs = now
+                Log.d(
+                    "PlayerRepository",
+                    "Playback state: isPlaying=${exoPlayer.isPlaying}, playbackState=${exoPlayer.playbackState}, " +
+                        "position=${exoPlayer.currentPosition}, duration=${exoPlayer.duration}, " +
+                        "speed=${exoPlayer.playbackParameters.speed}, volume=${exoPlayer.volume}"
+                )
+            }
+            positionHandler.postDelayed(this, POSITION_UPDATE_INTERVAL_MS)
+        }
+    }
+
+    /** Starts the 100 ms position poll if it is not already running. */
+    private fun ensurePositionPollRunning() {
+        if (positionPollRunning) return
+        positionPollRunning = true
+        positionHandler.post(positionUpdateRunnable)
+    }
 
     init {
         updatePlayerState()
@@ -148,9 +199,32 @@ class PlayerRepository @Inject constructor(
             
             override fun onPlaybackStateChanged(state: Int) {
                 updatePlayerState()
+                // The position poll only runs during active playback.
+                ensurePositionPollRunning()
                 // Auto-advance to next track when current track ends
                 if (state == androidx.media3.common.Player.STATE_ENDED) {
                     playNext()
+                }
+            }
+
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                // Pausing keeps playbackState == STATE_READY, so
+                // onPlaybackStateChanged does NOT fire on pause (including
+                // pauses not initiated here, e.g. audio-focus loss handled
+                // by the media session). Without this, playerState.isPlaying
+                // could stay stale true and the watch router would believe
+                // RunBeat is still the active player.
+                updatePlayerState()
+            }
+
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                updatePlayerState()
+                // Pausing/resuming while STATE_READY does not change playbackState,
+                // so onPlaybackStateChanged never fires for it. The poll runnable
+                // stops itself once isPlaying is false; restart it here when
+                // playback is resumed so the progress bar keeps updating.
+                if (playWhenReady) {
+                    ensurePositionPollRunning()
                 }
             }
             
@@ -160,35 +234,9 @@ class PlayerRepository @Inject constructor(
             }
         })
         
-        // Use a Handler to post periodic position updates
-        val handler = Handler(Looper.getMainLooper())
-        val positionUpdateInterval = 100L // ms
-        val positionUpdateRunnable = object : Runnable {
-            override fun run() {
-                if (exoPlayer.isPlaying) {
-                    _playerState.update { currentState ->
-                        currentState.copy(
-                            isPlaying = exoPlayer.isPlaying,
-                            currentPosition = exoPlayer.currentPosition
-                        )
-                    }
-                    _currentPosition.value = exoPlayer.currentPosition
-                }
-                val now = SystemClock.elapsedRealtime()
-                if (now - lastPlaybackStateLogMs >= 5000L) {
-                    lastPlaybackStateLogMs = now
-                    Log.d(
-                        "PlayerRepository",
-                        "Playback state: isPlaying=${exoPlayer.isPlaying}, playbackState=${exoPlayer.playbackState}, " +
-                            "position=${exoPlayer.currentPosition}, duration=${exoPlayer.duration}, " +
-                            "speed=${exoPlayer.playbackParameters.speed}, volume=${exoPlayer.volume}"
-                    )
-                }
-                handler.postDelayed(this, positionUpdateInterval)
-            }
-        }
-        // Start periodic position updates
-        handler.post(positionUpdateRunnable)
+        // The position poll is started by the player listener when playback
+        // actually begins (see ensurePositionPollRunning); it is not started
+        // here so an idle app does not wake the main looper 10x/s.
     }
     
     private fun updatePlayerState() {
@@ -357,6 +405,7 @@ class PlayerRepository @Inject constructor(
      * Set target cadence for speed correction
      */
     fun setTargetCadence(cadence: Float) {
+        if (!cadence.isFinite()) return
         _targetCadence.value = cadence.coerceIn(150f, 195f)
         reapplySpeedCorrection()
     }
@@ -426,6 +475,25 @@ class PlayerRepository @Inject constructor(
             targetCadence,
             _selectedRhythmPatterns.value
         )
+    }
+
+    /**
+     * Back-calculate the original track BPM from the watch's 60 s mean cadence:
+     * correctedBpm = cadenceAvg / (rhythmFactor x playbackSpeed).
+     * Updates the current track's stored BPM so the next speed-correction cycle uses it.
+     */
+    fun correctBpmFromCadence(cadenceAvg: Float) {
+        val track = _currentTrack.value ?: return
+        val trackId = track.mediaMetadata.extras?.getString("trackId") ?: return
+        val bpm = currentTrackBpm()
+        if (bpm == null || bpm <= 0f) return
+        val match = bestCadenceMatch(bpm, _targetCadence.value)
+        val rhythmFactor = match.rhythmPattern.factor
+        val speed = _playbackSpeed.value
+        val divisor = rhythmFactor * speed
+        if (divisor <= 0f) return
+        val corrected = (cadenceAvg / divisor).coerceIn(40f, 200f)
+        updateBpmForTrack(trackId, corrected)
     }
     
     /**
@@ -510,14 +578,21 @@ class PlayerRepository @Inject constructor(
                     if (volumeBeforeDuck == null) volumeBeforeDuck = exoPlayer.volume
                     val duckedVolume = (volumeBeforeDuck!! * 0.3f).coerceIn(0f, 1f)
                     Log.d("PlayerRepository", "Mode beep duck: before=${volumeBeforeDuck}, ducked=$duckedVolume")
+                    duckedVolumeApplied = duckedVolume
                     exoPlayer.volume = duckedVolume
                 },
                 onFinish = {
-                    volumeBeforeDuck?.let {
-                        exoPlayer.volume = it
-                        Log.d("PlayerRepository", "Mode beep restore: volume=$it")
+                    val before = volumeBeforeDuck
+                    val ducked = duckedVolumeApplied
+                    // Restore only while the player still holds the ducked
+                    // volume; if the volume changed during the beeps, that
+                    // change wins and is left untouched.
+                    if (before != null && ducked != null && exoPlayer.volume == ducked) {
+                        exoPlayer.volume = before
+                        Log.d("PlayerRepository", "Mode beep restore: volume=$before")
                     }
                     volumeBeforeDuck = null
+                    duckedVolumeApplied = null
                 }
             )
         }

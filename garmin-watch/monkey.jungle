@@ -1,0 +1,23 @@
+# Build configuration for the RunBeat data field (Monkey C).
+# This project is NOT part of the Android Gradle build. Build it with the
+# Garmin Connect IQ SDK (VS Code extension or Eclipse + SDK Manager):
+# monkeyc compile + package produces one .prg per device family.
+
+# App manifest.
+project.manifest = manifest.xml
+
+# Device targets (product ids; must be a subset of manifest.xml <iq:products>).
+# Data fields run on all Connect IQ devices — no music-capable restriction.
+product = fr245,fr245m,fr255,fr255m,fr265,fr955,fr965,fenix7,fenix7s,fenix7x,fenix8solar47mm,fenix8solar51mm,fenix843mm,fenix847mm,epix2,venu2,venu3,venu3s
+
+# Minimum Connect IQ API level: data fields are supported since API 1.0;
+# 3.2.0 covers all current target devices.
+minSdkVersion = 3.2.0
+
+# Developer key (free, from Garmin) — required to produce a signed .prg.
+# Get one via the Connect IQ SDK Manager, then set it here (or pass it to
+# the build):
+# developer.key = /path/to/developer_key.der
+
+# Output directory for the built .prg files.
+# output.dir = bin

@@ -44,9 +44,25 @@ android {
         minSdk 26
         targetSdk 36
         versionCode buildNumber
-        versionName "1.8"
+        versionName "2.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    // Companion flavors: 'fdroid' is the default and stays free of any
+    // proprietary dependency (it is the build F-Droid ships); 'garmin' adds
+    // the Connect IQ Mobile SDK for the watch companion app. Both flavors
+    // share the applicationId com.RunBeat.run.audio (no suffix): the garmin
+    // build is the same app with the Connect IQ integration, so the two
+    // flavors are NOT co-installable side by side.
+    flavorDimensions += 'companion'
+    productFlavors {
+        fdroid {
+            dimension 'companion'
+        }
+        garmin {
+            dimension 'companion'
+        }
     }
 
     signingConfigs {
@@ -83,6 +99,9 @@ android {
     buildFeatures {
         compose true
         viewBinding true
+        // Generates BuildConfig (FLAVOR) — used to gate the Garmin companion
+        // section in Settings to the garmin flavor.
+        buildConfig true
     }
     
     composeOptions {
@@ -161,6 +180,11 @@ dependencies {
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3"
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3"
     implementation "androidx.lifecycle:lifecycle-runtime-ktx:2.6.2"
+
+    // Garmin Connect IQ Mobile SDK — garmin flavor only. The fdroid flavor
+    // must stay free of proprietary dependencies (it is the F-Droid build).
+    // Resolved from Maven Central (already declared in this module).
+    garminImplementation 'com.garmin.connectiq:ciq-companion-app-sdk:2.4.0'
     
     // Testing
     testImplementation 'junit:junit:4.13.2'

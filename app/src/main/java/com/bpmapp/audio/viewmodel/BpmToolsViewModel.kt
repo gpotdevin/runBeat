@@ -206,7 +206,12 @@ class BpmToolsViewModel @Inject constructor(
         val avgInterval = filteredIntervals.average()
         
         // Convert to BPM: 60000ms per minute / average interval in ms
-        val bpm = (60000.0 / avgInterval).toInt()
+        // When tempo correction is active the tapped beat is the stretched
+        // tempo, so divide by the current playback speed to recover the
+        // original track BPM.
+        val speed = playerRepository.playbackSpeed.value
+        val correction = if (speed.isFinite() && speed > 0f) speed else 1f
+        val bpm = (60000.0 / avgInterval / correction).toInt()
         
         // Only update if BPM is in reasonable range
         if (bpm in 40..200) {

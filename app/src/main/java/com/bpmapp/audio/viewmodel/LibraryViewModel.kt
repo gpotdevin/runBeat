@@ -9,7 +9,6 @@ import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
-import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
@@ -21,6 +20,8 @@ import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem
 import com.bpmapp.audio.audio.BpmResolver
 import com.bpmapp.audio.audio.CadenceMatcher
+import com.bpmapp.audio.audio.M3uExporter
+import com.bpmapp.audio.audio.MediaItemFactory
 import com.bpmapp.audio.audio.MetadataEditor
 import com.bpmapp.audio.audio.PlayerRepository
 import com.bpmapp.audio.audio.TrackRepository
@@ -29,6 +30,7 @@ import com.bpmapp.audio.data.Playlist
 import com.bpmapp.audio.data.PlaylistDao
 import com.bpmapp.audio.data.PlaylistTrack
 import com.bpmapp.audio.data.Track
+import com.bpmapp.audio.audio.garmin.SettingsKeys
 import com.bpmapp.audio.data.TrackSource
 import com.bpmapp.audio.util.WriteAccess
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -59,6 +61,7 @@ class LibraryViewModel @Inject constructor(
     private val trackRepository: TrackRepository,
     private val bpmResolver: BpmResolver,
     private val playerRepository: PlayerRepository,
+    private val mediaItemFactory: MediaItemFactory,
     appDatabase: AppDatabase,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
@@ -119,6 +122,12 @@ class LibraryViewModel @Inject constructor(
     private val _filterByWideSpeedFactor = MutableStateFlow(false)
     val filterByWideSpeedFactor: StateFlow<Boolean> = _filterByWideSpeedFactor.asStateFlow()
     
+    private val _filterExcludeNotForRunning = MutableStateFlow(false)
+    val filterExcludeNotForRunning: StateFlow<Boolean> = _filterExcludeNotForRunning.asStateFlow()
+    
+    private val _filterFavoritesOnly = MutableStateFlow(false)
+    val filterFavoritesOnly: StateFlow<Boolean> = _filterFavoritesOnly.asStateFlow()
+    
     private val _sortByBpm = MutableStateFlow(false)
     val sortByBpm: StateFlow<Boolean> = _sortByBpm.asStateFlow()
     
@@ -156,11 +165,12 @@ class LibraryViewModel @Inject constructor(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
     
     // Base filter: search query + BPM-known + speed factor (0.9-1.1 and/or
-    // 0.85-1.15 windows, ANDed when both are enabled). Everything that is
-    // NOT a category/dimension filter. Dimension option flows and the final
-    // track list both build on top of this, so the chip rows reflect the
-    // BPM/speed filters exactly as the track list does.
-    // Six source flows exceed the largest typed combine overload, so the
+    // 0.85-1.15 windows, ANDed when both are enabled) + not-for-running
+    // exclusion + favorites-only. Everything that is NOT a category/dimension
+    // filter. Dimension option flows and the final track list both build on
+    // top of this, so the chip rows reflect the BPM/speed filters exactly as
+    // the track list does.
+    // Eight source flows exceed the largest typed combine overload, so the
     // vararg form with explicit casts is used here.
     @Suppress("UNCHECKED_CAST")
     private val baseFilteredTrackFlow: Flow<List<Track>> = combine(
@@ -169,6 +179,8 @@ class LibraryViewModel @Inject constructor(
         _showOnlyKnownBpm,
         _filterBySpeedFactor,
         _filterByWideSpeedFactor,
+        _filterExcludeNotForRunning,
+        _filterFavoritesOnly,
         playerRepository.targetCadence
     ) { values ->
         val tracks = values[0] as List<Track>
@@ -176,7 +188,9 @@ class LibraryViewModel @Inject constructor(
         val showKnownBpm = values[2] as Boolean
         val filterSpeed = values[3] as Boolean
         val filterWideSpeed = values[4] as Boolean
-        val targetCadence = values[5] as Float
+        val filterExcludeNotForRunning = values[5] as Boolean
+        val filterFavoritesOnly = values[6] as Boolean
+        val targetCadence = values[7] as Float
         tracks.filter { track ->
             val matchesQuery = query.isBlank() || track.matchesSearch(query)
             val matchesBpm = !showKnownBpm || (track.bpm != null && track.bpm > 0)
@@ -184,7 +198,9 @@ class LibraryViewModel @Inject constructor(
                 track.matchesSpeedFactor(targetCadence, SPEED_WINDOW_MIN, SPEED_WINDOW_MAX)) &&
                 (!filterWideSpeed ||
                     track.matchesSpeedFactor(targetCadence, WIDE_SPEED_WINDOW_MIN, WIDE_SPEED_WINDOW_MAX))
-            matchesQuery && matchesBpm && matchesSpeed
+            val matchesNotForRunning = !filterExcludeNotForRunning || !track.notForRunning
+            val matchesFavorites = !filterFavoritesOnly || track.isFavorite
+            matchesQuery && matchesBpm && matchesSpeed && matchesNotForRunning && matchesFavorites
         }
     }
 
@@ -318,6 +334,40 @@ class LibraryViewModel @Inject constructor(
     private fun setHasScannedLibrary(value: Boolean) {
         prefs.edit().putBoolean("has_scanned_library", value).apply()
         _hasScannedLibrary.value = value
+    }
+
+    // Persisted flag: the user dismissed the "scan library" offer dialog and
+    // should not be asked again. Stored in the same "runbeat" prefs file.
+    private val _scanOfferDismissed = MutableStateFlow(
+        prefs.getBoolean("scan_offer_dismissed", false)
+    )
+    val scanOfferDismissed: StateFlow<Boolean> = _scanOfferDismissed.asStateFlow()
+
+    /**
+     * Permanently dismiss the scan library offer dialog ("Not Now").
+     */
+    fun dismissScanOffer() {
+        prefs.edit().putBoolean("scan_offer_dismissed", true).apply()
+        _scanOfferDismissed.value = true
+    }
+
+    // Persisted setting: exclude tracks marked "not for running" from the play
+    // queue (default ON). Stored in the "AppSettings" SharedPreferences, the
+    // same file the Settings screen toggle writes to.
+    private val settingsPrefs = context.getSharedPreferences(SettingsKeys.PREFS_NAME, Context.MODE_PRIVATE)
+
+    private val _excludeNotForRunningTracks = MutableStateFlow(
+        settingsPrefs.getBoolean(
+            SettingsKeys.KEY_EXCLUDE_NOT_FOR_RUNNING_TRACKS,
+            SettingsKeys.DEFAULT_EXCLUDE_NOT_FOR_RUNNING_TRACKS
+        )
+    )
+
+    val excludeNotForRunningTracks: StateFlow<Boolean> = _excludeNotForRunningTracks.asStateFlow()
+
+    fun setExcludeNotForRunningTracks(value: Boolean) {
+        settingsPrefs.edit().putBoolean(SettingsKeys.KEY_EXCLUDE_NOT_FOR_RUNNING_TRACKS, value).apply()
+        _excludeNotForRunningTracks.value = value
     }
     
     // Import count (number of tracks imported in last operation)
@@ -510,13 +560,16 @@ class LibraryViewModel @Inject constructor(
                 } else {
                     Log.i(TAG, "Scanned $count tracks from system library")
                 }
-                
+
+                // Only mark the library as scanned when the scan completed
+                // without throwing; a failed scan must not suppress the offer.
+                setHasScannedLibrary(true)
+
             } catch (e: Exception) {
                 _errorMessage.value = context.getString(R.string.error_failed_scan_library, e.message ?: "")
                 Log.e(TAG, "System library scan error", e)
             } finally {
                 _isLoading.value = false
-                setHasScannedLibrary(true)
             }
         }
     }
@@ -691,6 +744,20 @@ class LibraryViewModel @Inject constructor(
     }
     
     /**
+     * Update the "exclude not for running" filter
+     */
+    fun setFilterExcludeNotForRunning(enabled: Boolean) {
+        _filterExcludeNotForRunning.value = enabled
+    }
+    
+    /**
+     * Update the "favorites only" filter
+     */
+    fun setFilterFavoritesOnly(enabled: Boolean) {
+        _filterFavoritesOnly.value = enabled
+    }
+    
+    /**
      * Set the primary sort key (true = sort by BPM, mutually exclusive with album/artist)
      */
     fun setSortByBpm(enabled: Boolean) {
@@ -738,6 +805,8 @@ class LibraryViewModel @Inject constructor(
         _showOnlyKnownBpm.value = false
         _filterBySpeedFactor.value = false
         _filterByWideSpeedFactor.value = false
+        _filterExcludeNotForRunning.value = false
+        _filterFavoritesOnly.value = false
         _sortByBpm.value = false
         _sortByAlbum.value = false
         _sortByArtist.value = false
@@ -763,6 +832,25 @@ class LibraryViewModel @Inject constructor(
         }
     }
     
+    // ==================== Not for running ====================
+
+    /**
+     * Toggle the "not for running" flag for a track
+     */
+    fun toggleNotForRunning(trackId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val track = trackDao.getTrackById(trackId).firstOrNull()
+                if (track != null) {
+                    trackDao.updateNotForRunning(trackId, !track.notForRunning)
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = context.getString(R.string.error_failed_update_not_for_running, e.message ?: "")
+                Log.e(TAG, "Not-for-running toggle error", e)
+            }
+        }
+    }
+
     // ==================== Playlists ====================
     
     /**
@@ -812,6 +900,30 @@ class LibraryViewModel @Inject constructor(
             } catch (e: Exception) {
                 _errorMessage.value = context.getString(R.string.error_failed_delete_playlist, e.message ?: "")
                 Log.e(TAG, "Playlist deletion error", e)
+            }
+        }
+    }
+
+    /**
+     * Export a playlist to an M3U file at the given (SAF) target URI.
+     * Tracks are taken from [playlistTrackMap], which is already ordered by position.
+     */
+    suspend fun exportPlaylistToM3u(playlistId: String, targetUri: Uri): Result<Unit> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val tracks = playlistTrackMap.value[playlistId].orEmpty()
+                val playlistName = playlists.value.firstOrNull { it.id == playlistId }?.name
+                    ?: playlistId
+                val content = M3uExporter.buildM3uContent(playlistName, tracks, includeMetadata = true)
+                context.contentResolver.openOutputStream(targetUri)?.use { output ->
+                    output.write(content.toByteArray(Charsets.UTF_8))
+                    output.flush()
+                } ?: return@withContext Result.failure(IllegalStateException("Could not open output stream for $targetUri"))
+                Log.d(TAG, "Exported playlist $playlistName (${tracks.size} tracks) to $targetUri")
+                Result.success(Unit)
+            } catch (e: Exception) {
+                Log.e(TAG, "M3U export error", e)
+                Result.failure(e)
             }
         }
     }
@@ -938,46 +1050,32 @@ class LibraryViewModel @Inject constructor(
     }
     
     /**
+     * Tracks eligible for the play queue. When the "exclude not for running"
+     * setting is on (default), tracks flagged as not for running are left out.
+     * The setting is read fresh from SharedPreferences so a change made on the
+     * Settings screen applies even though this ViewModel is Activity-scoped.
+     */
+    fun playableTracks(tracks: List<Track>): List<Track> {
+        val exclude = settingsPrefs.getBoolean(
+            SettingsKeys.KEY_EXCLUDE_NOT_FOR_RUNNING_TRACKS,
+            SettingsKeys.DEFAULT_EXCLUDE_NOT_FOR_RUNNING_TRACKS
+        )
+        return if (exclude) tracks.filterNot { it.notForRunning } else tracks
+    }
+
+    /**
+     * Build the MediaItem play queue for the given tracks, leaving out tracks
+     * marked "not for running" when the exclusion setting is on.
+     */
+    fun getPlayableMediaItems(tracks: List<Track>): List<MediaItem> =
+        playableTracks(tracks).map { getMediaItemForTrack(it) }
+
+    /**
      * Get a MediaItem for a track to play it
      * Includes BPM information in the media metadata for display in playlist
      */
-    fun getMediaItemForTrack(track: Track): MediaItem {
-        // Use track.id directly if it's already a valid URI
-        // For APP tracks from CSV import, track.id contains the full file:// URI
-        val uriString = if (track.id.startsWith("file://") || track.id.startsWith("content://")) {
-            track.id
-        } else if (track.source == TrackSource.APP) {
-            // Fallback: construct file URI from relativePath and fileName
-            val path = if (track.relativePath == ".") {
-                track.fileName
-            } else {
-                "${track.relativePath}/${track.fileName}"
-            }
-            "file:///$path"
-        } else {
-            track.id
-        }
-        
-        return MediaItem.Builder()
-            .setUri(Uri.parse(uriString))
-            .setMediaMetadata(
-                androidx.media3.common.MediaMetadata.Builder()
-                    .setTitle(track.metadataTitle ?: track.fileName)
-                    .setArtist(track.metadataArtist ?: "Unknown")
-                    .setAlbumTitle(track.metadataAlbum ?: "Unknown")
-                    .apply {
-                        val extras = Bundle().apply {
-                            putString("trackId", track.id)
-                            putString("bpm", track.bpm?.toString() ?: "")
-                            putString("fileName", track.fileName)
-                            putLong("durationMs", track.durationMs ?: 0L)
-                        }
-                        setExtras(extras)
-                    }
-                    .build()
-            )
-            .build()
-    }
+    fun getMediaItemForTrack(track: Track): MediaItem =
+        mediaItemFactory.mediaItemFor(track)
     
     /**
      * Analyze BPM for all tracks in library
