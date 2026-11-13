@@ -18,6 +18,9 @@
 - **Cadence Matching**: Automatically adjusts playback to match your running cadence (default: 172 BPM, range: 160-195 BPM). Choose **Binary** (1x / 2x) or **Ternary** (1.5x / 3x) beat subdivisions to keep your steps in time with the music.
 - **Find Your Music**: Easy filtering of your tracks by Genre, Artist, Album, Name (leveraging Android Library metadata).
 - **Playlist Support**: Playlists and CSV-based BPM import (Settings → Advanced).
+- **Favorites & Filters**: star tracks as favorites, filter the library by favorites or "not for running", export playlists with metadata (M3U).
+- **Not for Running**: mark tracks that don't feel right to run on; they are excluded from playback by default (toggle in Settings).
+- **Garmin Watch (experimental)**: control playback from a Garmin watch (Connect IQ data fields: transport, cadence target, speed correction, volume, favorites). Only in the `v2.0_garmin` build — not in the F-Droid flavor.
 - **Offline-First**: All data stored locally (Room database).
 - **Background Playback**: Foreground service with notifications and Bluetooth controls.
 
@@ -45,11 +48,11 @@ See [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) for detailed legal analysis.
 
 ### Google Play Store
 
-*Upcoming*
+[Get RunBeat on Google Play](https://play.google.com/store/apps/details?id=com.RunBeat.run.audio) — `v2.0_garmin` build, includes the experimental Garmin watch support.
 
 ### F-Droid
 
-*Upcoming*
+*Upcoming* — `fdroid` flavor (`com.runBeat.run.audio.fdroid`), no Garmin SDK.
 
 ### Build from Source
 
