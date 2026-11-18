@@ -64,6 +64,10 @@
     <string name="player_next">Weiter</string>
     <string name="player_disable_speed">Tempokorrektur deaktivieren</string>
     <string name="player_enable_speed">Tempokorrektur aktivieren</string>
+    <string name="player_mark_not_for_running">Aktuellen Titel als nicht fürs Laufen markieren</string>
+    <string name="player_unmark_not_for_running">Markierung „nicht fürs Laufen“ vom aktuellen Titel entfernen</string>
+    <string name="player_not_for_running_marked">Als nicht fürs Laufen markiert</string>
+    <string name="player_not_for_running_unmarked">Markierung „nicht fürs Laufen“ entfernt</string>
     <string name="player_target_cadence">Ziel-Kadenz</string>
     <string name="player_decrease_bpm">BPM verringern</string>
     <string name="player_increase_bpm">BPM erhöhen</string>

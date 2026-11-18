@@ -54,6 +54,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.ToggleOff
 import androidx.compose.material.icons.filled.ToggleOn
+import androidx.compose.material.icons.filled.DirectionsRun
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -475,6 +476,20 @@ fun PlayerScreen(
     // Track ids from the current playlist, used to save/update a library playlist
     val trackIds = libraryViewModel?.trackIdsFromMediaItems(playlist) ?: emptyList()
 
+    // Track id of the currently playing track, used for the "not for running" toggle
+    val currentTrackId = currentTrack?.mediaMetadata?.extras?.getString("trackId")
+
+    // Reactive "not for running" flag of the current track (false when no track or no view model)
+    var isNotForRunning by remember { mutableStateOf(false) }
+    LaunchedEffect(currentTrackId, libraryViewModel) {
+        val vm = libraryViewModel
+        if (currentTrackId == null || vm == null) {
+            isNotForRunning = false
+        } else {
+            vm.notForRunningState(currentTrackId).collect { isNotForRunning = it }
+        }
+    }
+
     // Dialog state for saving the current playlist to the library
     var showSavePlaylistDialog by remember { mutableStateOf(false) }
     var playlistNameInput by remember { mutableStateOf("") }
@@ -583,6 +598,27 @@ fun PlayerScreen(
             onSeek = { newPosition -> playerRepository.seekTo(newPosition) },
             onToggleSpeedCorrection = { viewModel.toggleApplyCadenceMatch() },
             speedCorrectionEnabled = viewModel.applyCadenceMatch,
+            canMarkNotForRunning = currentTrackId != null && libraryViewModel != null,
+            isNotForRunning = isNotForRunning,
+            onToggleNotForRunning = {
+                val id = currentTrackId
+                val vm = libraryViewModel
+                if (id != null && vm != null) {
+                    val wasMarked = isNotForRunning
+                    vm.toggleNotForRunning(id)
+                    // Marking a track mid-playback skips it immediately, same as
+                    // the watch command; unmarking keeps the current track.
+                    if (!wasMarked) playerRepository.playNext()
+                    Toast.makeText(
+                        context,
+                        context.getString(
+                            if (wasMarked) R.string.player_not_for_running_unmarked
+                            else R.string.player_not_for_running_marked
+                        ),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            },
             modifier = Modifier.fillMaxWidth()
         )
         
@@ -819,6 +855,9 @@ fun PlaybackControlsSection(
     onSeek: (Long) -> Unit,
     onToggleSpeedCorrection: () -> Unit,
     speedCorrectionEnabled: Boolean,
+    canMarkNotForRunning: Boolean = false,
+    isNotForRunning: Boolean = false,
+    onToggleNotForRunning: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -949,6 +988,25 @@ fun PlaybackControlsSection(
                             tint = MaterialTheme.colorScheme.primary
                         )
                     }
+                }
+
+                // Not-for-running toggle button - 48dp touch target
+                Spacer(modifier = Modifier.width(AppSpacing.xxs))
+                IconButton(
+                    onClick = onToggleNotForRunning,
+                    enabled = canMarkNotForRunning,
+                    modifier = Modifier.touchTarget()
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.DirectionsRun,
+                        contentDescription = stringResource(
+                            if (isNotForRunning) R.string.player_unmark_not_for_running
+                            else R.string.player_mark_not_for_running
+                        ),
+                        modifier = Modifier.size(48.dp),
+                        tint = if (isNotForRunning) MaterialTheme.colorScheme.error
+                        else MaterialTheme.colorScheme.primary
+                    )
                 }
             }
         }

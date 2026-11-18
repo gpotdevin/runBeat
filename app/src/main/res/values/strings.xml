@@ -64,6 +64,10 @@
     <string name="player_next">Next</string>
     <string name="player_disable_speed">Disable speed correction</string>
     <string name="player_enable_speed">Enable speed correction</string>
+    <string name="player_mark_not_for_running">Mark current track as not for running</string>
+    <string name="player_unmark_not_for_running">Remove not-for-running mark from current track</string>
+    <string name="player_not_for_running_marked">Marked as not for running</string>
+    <string name="player_not_for_running_unmarked">Removed not-for-running mark</string>
     <string name="player_target_cadence">Target Cadence</string>
     <string name="player_decrease_bpm">Decrease BPM</string>
     <string name="player_increase_bpm">Increase BPM</string>

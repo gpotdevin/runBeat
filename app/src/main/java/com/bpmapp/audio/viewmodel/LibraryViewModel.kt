@@ -43,6 +43,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -833,6 +834,12 @@ class LibraryViewModel @Inject constructor(
     }
     
     // ==================== Not for running ====================
+
+    /**
+     * Reactive "not for running" state for a track (false when the track is unknown)
+     */
+    fun notForRunningState(trackId: String): Flow<Boolean> =
+        trackDao.getTrackById(trackId).map { it?.notForRunning ?: false }
 
     /**
      * Toggle the "not for running" flag for a track

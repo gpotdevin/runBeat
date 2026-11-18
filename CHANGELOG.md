@@ -6,6 +6,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-11-18
+
+### Added
+
+- **Player**: "not for running" toggle on the player screen marks the currently
+  playing track directly from the phone UI (run icon next to the speed toggle,
+  red when marked). Marking skips to the next track immediately, matching the
+  watch's `mark_not_for_running` command; unmarking keeps playback.
+
+### Fixed
+
+- **Companion**: the Connect IQ simulator-over-ADB debug mode can no longer be
+  activated in release builds — the setting is evaluated only when
+  `BuildConfig.DEBUG` is true, so a stale `ciq_simulator_adb_mode` preference
+  can never put a release build into tethered simulator mode.
+
 ## [2.0] - 2026-11-13
 
 ### Added

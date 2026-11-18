@@ -3,6 +3,7 @@
 package com.bpmapp.audio.audio.garmin
 
 import android.content.Context
+import com.bpmapp.audio.BuildConfig
 
 /**
  * Developer setting (debug builds, garmin flavor): talk to the Connect IQ
@@ -10,6 +11,10 @@ import android.content.Context
  * Mobile. Stored in the shared "AppSettings" preferences, like the other
  * app settings; owned here so the Settings screen and the companion manager
  * share one key definition.
+ *
+ * Release builds NEVER use simulator mode: the stored pref is ignored unless
+ * [BuildConfig.DEBUG], so a pref left over from a debug install can never
+ * hijack a release build.
  */
 object SimulatorAdbMode {
 
@@ -18,7 +23,8 @@ object SimulatorAdbMode {
     const val DEFAULT = false
 
     fun isEnabled(context: Context): Boolean =
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getBoolean(KEY, DEFAULT)
+        BuildConfig.DEBUG &&
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getBoolean(KEY, DEFAULT)
 
     fun setEnabled(context: Context, enabled: Boolean) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
