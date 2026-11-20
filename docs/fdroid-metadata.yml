@@ -18,35 +18,40 @@ AutoName: RunBeat
 RepoType: git
 Repo: https://github.com/gpotdevin/runBeat.git
 
-Binaries: https://github.com/gpotdevin/runBeat/releases/download/v%v/app-fdroid-release.apk
+Binaries: 
+  https://github.com/gpotdevin/runBeat/releases/download/v%v/app-fdroid-release.apk
 
 Builds:
-  - versionName: 1.5.4
-    versionCode: 33
-    commit: c7392859a6837ae84eee99f1b975fa9581eb123d
+  # gradle entries are FLAVOR names, not task names: fdroidserver runs
+  # `assemble<Flavors>Release`, so the fdroid flavor is just `- fdroid`
+  # (never `- assembleFdroidRelease`, which would become
+  # `assembleAssembleFdroidReleaseRelease` and fail).
+  - versionName: 2.0.1
+    versionCode: 49
+    commit: v2.0.1
     subdir: app
     gradle:
-      - assembleFdroidRelease
-    ndk: r26b
-
-  # v2.0_fdroid tag (tag name matches versionName, so Binaries v%v resolves)
-  - versionName: 2.0
-    versionCode: 48
-    commit: v2.0_fdroid
-    subdir: app
-    gradle:
-      - assembleFdroidRelease
+      - fdroid
     ndk: r26b
 
 AllowedAPKSigningKeys: 17c79696d6cd7f28e9ae9b8931dc8b7c402856318fe450ec777a23fddf12ca02
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags
-UpdateCheckData: build-counter.txt|(\d+)
-CurrentVersion: 2.0
-CurrentVersionCode: 48
+# 4 parts required by fdroid lint (check_update_check_data_int): file|regex-in-file|file|regex-in-file
+UpdateCheckData: build-counter.txt|(\d+)|app/build.gradle|versionName\s+"([^"]+)"
+CurrentVersion: 2.0.1
+CurrentVersionCode: 49
 ```
 
+> GitHub (`github.com/gpotdevin/runBeat`) remains the reference source repo —
+> the GitLab `fdroiddata` fork exists only to carry the merge request.
+> `Repo:`/`SourceCode:` must keep pointing at GitHub.
+>
 > The versionCode is read from `build-counter.txt` — a manually incremented counter, not the
 > git commit count — bumped once per release. It is the single source of truth for `versionCode`
 > (`app/build.gradle` reads it at build time) and for F-Droid's `UpdateCheckData`.
+>
+> Verified against fdroiddata CI (private-fork test run before updating the MR):
+> `schema validation`, `fdroid lint`, `fdroid rewritemeta`, `checkupdates`,
+> `git redirect` and the real `fdroid build` (assembleFdroidRelease @ v2.0.1) all pass.
