@@ -136,10 +136,49 @@ object PermissionUtils {
         return try {
             MediaStore.createWriteRequest(context.contentResolver, uris).intentSender
         } catch (e: Exception) {
+            android.util.Log.e(
+                "PermissionUtils",
+                "createWriteRequest failed for ${uris.size} URIs: ${e.javaClass.name}: ${e.message}"
+            )
             null
         }
     }
     
+    /**
+     * Take persistable write grants for the URIs returned by a
+     * [MediaStore.createWriteRequest] dialog (Android 11+).
+     *
+     * Without this, the write grant only lives until the next reboot/process
+     * change and tag writing to the same files fails later with a silent
+     * SecurityException. Must be called with the result Intent of the write
+     * request; does nothing when the result carries no persistable grant.
+     */
+    fun takePersistableWriteGrants(context: Context, resultData: Intent?) {
+        if (resultData == null) return
+        if (resultData.flags and Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION == 0) return
+        val uris = mutableListOf<Uri>()
+        resultData.clipData?.let { clip ->
+            for (i in 0 until clip.itemCount) {
+                clip.getItemAt(i)?.uri?.let { uris.add(it) }
+            }
+        }
+        androidx.core.content.IntentCompat.getParcelableExtra(
+            resultData, Intent.EXTRA_STREAM, Uri::class.java
+        )?.let { uris.add(it) }
+        uris.distinct().forEach { uri ->
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    uri, Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+            } catch (e: Exception) {
+                android.util.Log.w(
+                    "PermissionUtils",
+                    "Could not take persistable write grant for $uri: ${e.message}"
+                )
+            }
+        }
+    }
+
     /**
      * Check if the app can modify files at the given URI
      */

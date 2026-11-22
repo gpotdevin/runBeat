@@ -314,7 +314,6 @@
     <string name="settings_section_advanced">ADVANCED</string>
     <string name="settings_section_help">HELP</string>
     <string name="settings_section_about">ABOUT</string>
-    <string name="settings_section_language">LANGUAGE</string>
     <string name="settings_section_garmin">GARMIN</string>
     <string name="settings_auto_apply_title">Auto-Apply Cadence Match</string>
     <string name="settings_auto_apply_desc">Automatically apply cadence matching when track changes</string>
@@ -337,19 +336,17 @@
     <string name="settings_csv_format_spec">relative_path,filename,bpm,file_size_bytes[,title,artist,album,genre]</string>
     <string name="settings_csv_example">Example: GoGo_Penguin/A_Humdrum_Star,1-2-Raven-320.mp3,152.0,12166665,Song Title,Artist Name,Album Name</string>
     <string name="settings_csv_quoted">Filenames containing commas must be quoted.</string>
+    <string name="settings_export_csv_title">Export library to CSV</string>
+    <string name="settings_export_csv_desc">Export all tracks with BPM values and flags to a CSV file</string>
+    <string name="settings_export_button">Export</string>
+    <string name="settings_exported_tracks">Exported %1$d tracks</string>
+    <string name="settings_export_failed">Export failed</string>
     <string name="settings_version">Version</string>
     <string name="settings_license">App license</string>
     <string name="settings_libraries">Libraries</string>
     <string name="settings_libraries_desc">Third-party libraries used by this app</string>
     <string name="settings_view">View</string>
     <string name="settings_imported_tracks">Imported %1$d tracks</string>
-    <string name="settings_language_title">App Language</string>
-    <string name="settings_language_desc">Choose the app display language</string>
-    <string name="settings_language_system">System default</string>
-    <string name="settings_language_english">English</string>
-    <string name="settings_language_french">Français</string>
-    <string name="settings_language_german">Deutsch</string>
-    <string name="settings_language_spanish">Español</string>
 
     <!-- ==================== Cadence Matcher (domain) ==================== -->
     <string name="rhythm_quarter">Quarter</string>
@@ -405,6 +402,12 @@
     <string name="info_bpm_saved_to_file">BPM saved to track and file ID3 tag</string>
     <string name="info_bpm_saved_library_only">BPM saved to track library (could not write to file metadata)</string>
     <string name="error_failed_save_bpm">Failed to save BPM: %1$s</string>
+    <string name="error_write_access_grant_in_dialog">Grant write access to the file in the system dialog to save the BPM to its ID3 tag.</string>
+    <string name="error_tag_write_no_permission">No write permission for the file (grant write access in the system dialog). BPM saved to the library only.</string>
+    <string name="error_tag_write_security">The system blocked writing to the file (SecurityException). BPM saved to the library only.</string>
+    <string name="error_tag_write_size_mismatch">File size mismatch after writing the tag (stale data left by a non-truncating write). BPM saved to the library only.</string>
+    <string name="error_tag_write_commit_failed">Could not write the ID3 tag to the file (tag commit failed). BPM saved to the library only.</string>
+    <string name="error_tag_write_failed">Could not write to the file: %1$s. BPM saved to the library only.</string>
     <string name="error_player_error">Error: %1$s</string>
     <string name="error_player_permission">Audio access denied. Allow music access in Settings and try again.</string>
     <string name="error_could_not_prepare_media">Error: Could not prepare media for playback</string>

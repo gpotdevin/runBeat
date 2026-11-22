@@ -125,14 +125,14 @@ class MetadataWorker(
                 val bpm = track.bpm ?: return@withContext
                 
                 val result = metadataEditor.saveBpmToFile(uri, bpm)
-                
-                if (result) {
+
+                if (result.isSuccess) {
                     success = true
                     batchSuccess.incrementAndGet()
                     Log.d(TAG, "Successfully processed track: ${track.fileName} (BPM: $bpm)")
                 } else {
                     retries++
-                    Log.w(TAG, "Failed to process track: ${track.fileName} (attempt $retries)")
+                    Log.w(TAG, "Failed to process track: ${track.fileName} (attempt $retries, reason: $result)")
                 }
                 
             } catch (e: Exception) {

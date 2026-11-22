@@ -5,10 +5,14 @@ package com.bpmapp.audio.audio
 import android.content.Context
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import android.os.Build
+import android.provider.OpenableColumns
 import android.util.Log
+import com.bpmapp.audio.R
 import com.bpmapp.audio.util.PermissionUtils
 import org.jaudiotagger.audio.AudioFile
 import org.jaudiotagger.audio.AudioFileIO
+import org.jaudiotagger.audio.exceptions.CannotWriteException
 import org.jaudiotagger.tag.FieldKey
 import org.jaudiotagger.tag.Tag
 import org.jaudiotagger.tag.id3.AbstractID3v2Frame
@@ -86,18 +90,21 @@ class MetadataEditor(private val context: Context) {
      *
      * @param uri The URI of the audio file (file:// or content://)
      * @param bpm The BPM value to save
-     * @return true if successful, false otherwise
+     * @return the detailed [TagWriteResult] describing success or the failure reason
      */
-    suspend fun saveBpmToFile(uri: Uri, bpm: Float): Boolean {
+    suspend fun saveBpmToFile(uri: Uri, bpm: Float): TagWriteResult {
+        if (!isUriWritableNow(uri)) {
+            Log.w(TAG, "No write access to file: $uri")
+            return TagWriteResult.NoWritePermission(uri)
+        }
         return try {
-            if (!PermissionUtils.canWriteUriNow(context, uri)) {
-                Log.w(TAG, "No write access to file: $uri")
-                return false
-            }
             writeTagsToUri(uri, bpm = bpm, flags = null)
+        } catch (e: SecurityException) {
+            Log.e(TAG, "SecurityException while saving BPM to file: $uri", e)
+            TagWriteResult.SecurityError(e.message)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to save BPM to file: $uri", e)
-            false
+            TagWriteResult.Other("${e.javaClass.simpleName}: ${e.message}")
         }
     }
     
@@ -107,18 +114,21 @@ class MetadataEditor(private val context: Context) {
      * @param uri The URI of the audio file (file:// or content://)
      * @param notForRunning The "not for running" flag to save
      * @param isFavorite The favorite flag to save
-     * @return true if successful, false otherwise
+     * @return the detailed [TagWriteResult] describing success or the failure reason
      */
-    suspend fun saveFlagsToFile(uri: Uri, notForRunning: Boolean, isFavorite: Boolean): Boolean {
+    suspend fun saveFlagsToFile(uri: Uri, notForRunning: Boolean, isFavorite: Boolean): TagWriteResult {
+        if (!isUriWritableNow(uri)) {
+            Log.w(TAG, "No write access to file: $uri")
+            return TagWriteResult.NoWritePermission(uri)
+        }
         return try {
-            if (!PermissionUtils.canWriteUriNow(context, uri)) {
-                Log.w(TAG, "No write access to file: $uri")
-                return false
-            }
             writeTagsToUri(uri, bpm = null, flags = notForRunning to isFavorite)
+        } catch (e: SecurityException) {
+            Log.e(TAG, "SecurityException while saving flags to file: $uri", e)
+            TagWriteResult.SecurityError(e.message)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to save flags to file: $uri", e)
-            false
+            TagWriteResult.Other("${e.javaClass.simpleName}: ${e.message}")
         }
     }
     
@@ -130,23 +140,26 @@ class MetadataEditor(private val context: Context) {
      * @param bpm The BPM value to save
      * @param notForRunning The "not for running" flag to save
      * @param isFavorite The favorite flag to save
-     * @return true if successful, false otherwise
+     * @return the detailed [TagWriteResult] describing success or the failure reason
      */
     suspend fun saveBpmAndFlagsToFile(
         uri: Uri,
         bpm: Float,
         notForRunning: Boolean,
         isFavorite: Boolean
-    ): Boolean {
+    ): TagWriteResult {
+        if (!isUriWritableNow(uri)) {
+            Log.w(TAG, "No write access to file: $uri")
+            return TagWriteResult.NoWritePermission(uri)
+        }
         return try {
-            if (!PermissionUtils.canWriteUriNow(context, uri)) {
-                Log.w(TAG, "No write access to file: $uri")
-                return false
-            }
             writeTagsToUri(uri, bpm = bpm, flags = notForRunning to isFavorite)
+        } catch (e: SecurityException) {
+            Log.e(TAG, "SecurityException while saving BPM+flags to file: $uri", e)
+            TagWriteResult.SecurityError(e.message)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to save BPM+flags to file: $uri", e)
-            false
+            TagWriteResult.Other("${e.javaClass.simpleName}: ${e.message}")
         }
     }
     
@@ -154,28 +167,69 @@ class MetadataEditor(private val context: Context) {
      * Write the BPM tag using JAudiotagger.
      *
      * For file:// URIs the file is tagged in place. For content:// URIs the
-     * file is copied to a temp file, tagged, and written back through the
+     * absolute file path is first resolved via MediaStore.Audio.Media.DATA;
+     * when a writable path is found the file is tagged IN PLACE, avoiding the
+     * fragile temp-copy + writeback entirely. Only content:// URIs that
+     * cannot be resolved to a writable file path fall back to copying the
+     * file to a temp file, tagging it, and writing it back through the
      * ContentResolver (truncating write).
      */
-    private fun writeTagsToUri(uri: Uri, bpm: Float?, flags: Pair<Boolean, Boolean>?): Boolean {
+    private fun writeTagsToUri(uri: Uri, bpm: Float?, flags: Pair<Boolean, Boolean>?): TagWriteResult {
+        // On Android 11+ scoped storage blocks direct writes to file:// paths
+        // in shared storage (File.canWrite() is false there even for media
+        // files), and MediaStore write-request grants only apply to content
+        // URIs. Route file:// URIs through their MediaStore content URI so the
+        // grant + write-back path is used. Below Android 11 the legacy
+        // storage permission makes the raw path writable, so tag in place.
+        if (uri.scheme == "file" && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val contentUri = UriUtils.toMediaStoreAudioUri(context, uri)
+            if (contentUri != uri) {
+                Log.d(TAG, "Routing file URI $uri through content URI $contentUri (scoped storage)")
+                return writeTagsToUri(contentUri, bpm, flags)
+            }
+        }
         return if (uri.scheme == "file") {
-            val file = File(uri.path ?: return false)
+            val file = File(uri.path ?: return TagWriteResult.Other("No path in URI: $uri"))
             if (!file.exists() || !file.canWrite()) {
                 Log.e(TAG, "File not writable: $uri")
-                return false
+                return TagWriteResult.NoWritePermission(uri)
             }
             writeTagTo(file, bpm, flags)
         } else {
+            // Preferred strategy: resolve the content URI to an absolute file
+            // path and tag the real file in place when it is writable.
+            val filePath = UriUtils.getFilePath(context, uri)
+            if (filePath != null) {
+                val file = File(filePath)
+                if (file.exists() && file.canWrite()) {
+                    Log.d(TAG, "Resolved $uri to file path $filePath; tagging in place")
+                    return writeTagTo(file, bpm, flags)
+                }
+                Log.d(TAG, "Resolved $uri to $filePath but it is missing or not writable; " +
+                    "falling back to temp-copy write-back")
+            } else {
+                Log.d(TAG, "Could not resolve $uri to a file path; using temp-copy write-back")
+            }
+            // Fallback: temp copy + write-back through the ContentResolver
+            val extension = getExtension(uri)
+            if (extension == null) {
+                Log.e(TAG, "Cannot determine file extension for $uri (display name and MIME type unavailable); cannot tag")
+            }
             val tempPath = UriUtils.copyUriToTempFile(
                 context, uri,
-                getExtension(uri) ?: "bin"
+                extension ?: "bin"
             ) ?: run {
                 Log.e(TAG, "Could not copy file for tagging: $uri")
-                return false
+                return TagWriteResult.Other("Could not copy URI to temp file: $uri")
             }
             val tempFile = File(tempPath)
+            Log.d(TAG, "Tagging temp copy ${tempFile.name} (${tempFile.length()} bytes, ext=${extension ?: "bin"}) for $uri")
             try {
-                if (!writeTagTo(tempFile, bpm, flags)) return false
+                val tagResult = writeTagTo(tempFile, bpm, flags)
+                if (tagResult !is TagWriteResult.Success) {
+                    Log.e(TAG, "Tagging temp copy failed ($tagResult), aborting write-back for $uri")
+                    return tagResult
+                }
                 writeTempFileBackToUri(tempFile, uri)
             } finally {
                 tempFile.delete()
@@ -184,10 +238,13 @@ class MetadataEditor(private val context: Context) {
     }
     
     /**
-     * Apply the BPM and/or RunBeat flags to a local file with JAudiotagger
+     * Apply the BPM and/or RunBeat flags to a local file with JAudiotagger.
+     * The returned [TagWriteResult] distinguishes a blocked write
+     * (SecurityException), a JAudiotagger commit failure, and other errors.
      */
-    private fun writeTagTo(file: File, bpm: Float?, flags: Pair<Boolean, Boolean>?): Boolean {
+    private fun writeTagTo(file: File, bpm: Float?, flags: Pair<Boolean, Boolean>?): TagWriteResult {
         return try {
+            val sizeBefore = file.length()
             val audioFile = AudioFileIO.read(file)
             val tag = audioFile.tagOrCreateAndSetDefault
             if (bpm != null) {
@@ -197,11 +254,20 @@ class MetadataEditor(private val context: Context) {
                 writeFlagsToTag(tag, flags.first, flags.second)
             }
             audioFile.commit()
-            Log.d(TAG, "Saved tags (bpm=$bpm, flags=$flags) to file: ${file.name}")
-            true
+            Log.d(TAG, "Saved tags (bpm=$bpm, flags=$flags) to file: ${file.name} " +
+                "(${sizeBefore} -> ${file.length()} bytes, tag=${tag.javaClass.simpleName})")
+            TagWriteResult.Success
+        } catch (e: SecurityException) {
+            Log.e(TAG, "Write blocked by system for ${file.name}: ${e.message}", e)
+            TagWriteResult.SecurityError(e.message)
+        } catch (e: CannotWriteException) {
+            Log.e(TAG, "JAudiotagger commit failed for ${file.name} (${file.length()} bytes): " +
+                "${e.javaClass.name}: ${e.message}", e)
+            TagWriteResult.CommitFailed(e.message)
         } catch (e: Exception) {
-            Log.e(TAG, "Tag write failed for ${file.name}", e)
-            false
+            Log.e(TAG, "Tag write failed for ${file.name} (${file.length()} bytes): " +
+                "${e.javaClass.name}: ${e.message}", e)
+            TagWriteResult.Other("${e.javaClass.simpleName}: ${e.message}")
         }
     }
     
@@ -231,19 +297,71 @@ class MetadataEditor(private val context: Context) {
     }
     
     /**
-     * Write the tagged temp file back over the content URI
+     * Write the tagged temp file back over the content URI.
+     *
+     * The stream is opened with an explicit truncating mode ("wt"/"rwt",
+     * falling back to "w"): some providers do not truncate on plain "w",
+     * which would leave stale trailing bytes and corrupt the audio file
+     * whenever the tagged copy is shorter than the original. After writing,
+     * the resulting size is verified against the temp file size.
      */
-    private fun writeTempFileBackToUri(tempFile: File, uri: Uri): Boolean {
-        return try {
-            context.contentResolver.openOutputStream(uri)?.use { output ->
-                tempFile.inputStream().use { input ->
-                    input.copyTo(output)
+    private fun writeTempFileBackToUri(tempFile: File, uri: Uri): TagWriteResult {
+        val expectedSize = tempFile.length()
+        var lastError: Exception? = null
+        for (mode in listOf("wt", "rwt", "w")) {
+            try {
+                val output = context.contentResolver.openOutputStream(uri, mode) ?: run {
+                    Log.e(TAG, "openOutputStream($mode) returned null for $uri")
+                    return TagWriteResult.NoWritePermission(uri)
                 }
-                output.flush()
-            } != null
+                output.use { out ->
+                    tempFile.inputStream().use { input ->
+                        input.copyTo(out)
+                    }
+                    out.flush()
+                }
+                Log.d(TAG, "Wrote $expectedSize bytes back to $uri (mode=$mode)")
+                return when (val actual = queryContentSize(uri)) {
+                    null -> {
+                        Log.d(TAG, "Could not query SIZE for $uri after write-back; skipping size verification")
+                        TagWriteResult.Success
+                    }
+                    expectedSize -> TagWriteResult.Success
+                    else -> {
+                        Log.e(TAG, "Size mismatch after write-back to $uri: expected $expectedSize, got $actual " +
+                            "(stale bytes — the provider did not truncate)")
+                        TagWriteResult.SizeMismatch(expectedSize, actual)
+                    }
+                }
+            } catch (e: SecurityException) {
+                // The grant check is identical for every mode; no point retrying.
+                Log.e(TAG, "Write-back to $uri blocked by system (mode=$mode): ${e.message}", e)
+                return TagWriteResult.SecurityError(e.message)
+            } catch (e: Exception) {
+                lastError = e
+                Log.w(TAG, "Write-back to $uri with mode=$mode failed: " +
+                    "${e.javaClass.name}: ${e.message}")
+            }
+        }
+        Log.e(TAG, "Failed to write back to URI: $uri (all modes failed); " +
+            "last error: ${lastError?.javaClass?.name}: ${lastError?.message}", lastError)
+        return TagWriteResult.Other("${lastError?.javaClass?.simpleName}: ${lastError?.message}")
+    }
+
+    /**
+     * Query the size of the content behind [uri] after a write-back.
+     * Returns null when the provider does not expose SIZE.
+     */
+    private fun queryContentSize(uri: Uri): Long? {
+        return try {
+            context.contentResolver.query(
+                uri, arrayOf(OpenableColumns.SIZE), null, null, null
+            )?.use { cursor ->
+                if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getLong(0) else null
+            }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to write back to URI: $uri", e)
-            false
+            Log.w(TAG, "Size query for $uri failed: ${e.message}")
+            null
         }
     }
     
@@ -442,18 +560,65 @@ class MetadataEditor(private val context: Context) {
     }
     
     /**
-     * Get the file extension for a URI from its display name
+     * Get the file extension for a URI, first from its display name, then
+     * from the URI path, then from the MIME type. JAudiotagger picks the
+     * tag format from the file extension, so a wrong/missing extension
+     * ("bin") makes AudioFileIO.read() fail — this fallback prevents that.
      */
     private fun getExtension(uri: Uri): String? {
-        val displayName = UriUtils.getDisplayName(context, uri) ?: return null
-        return displayName.substringAfterLast('.', "").lowercase().takeIf { it.isNotEmpty() }
+        UriUtils.getDisplayName(context, uri)
+            ?.substringAfterLast('.', "")
+            ?.lowercase()
+            ?.takeIf { it.isNotEmpty() && it.length <= 5 }
+            ?.let { return it }
+        uri.path?.substringAfterLast('.', "")?.lowercase()
+            ?.takeIf { it.isNotEmpty() && it.length <= 5 }
+            ?.let { return it }
+        return extensionFromMimeType(context.contentResolver.getType(uri))
+    }
+
+    /**
+     * Map a content MIME type to a file extension JAudiotagger can handle
+     */
+    private fun extensionFromMimeType(mimeType: String?): String? {
+        val mime = mimeType?.substringBefore(';')?.trim()?.lowercase() ?: return null
+        return when (mime) {
+            "audio/mpeg", "audio/mp3", "audio/x-mpeg", "audio/x-mp3" -> "mp3"
+            "audio/flac", "audio/x-flac" -> "flac"
+            "audio/ogg", "application/ogg", "audio/vorbis", "audio/x-ogg" -> "ogg"
+            "audio/wav", "audio/x-wav", "audio/wave", "audio/vnd.wave", "audio/vnd.wav" -> "wav"
+            "audio/mp4", "audio/m4a", "audio/x-m4a", "audio/mp4a-latm" -> "m4a"
+            "audio/aac", "audio/x-aac", "audio/aacp" -> "aac"
+            else -> null
+        }
     }
     
+    /**
+     * Check if a URI can be written right now, either through the
+     * ContentResolver (URI grant) or via its resolved absolute file path
+     * (MediaStore.Audio.Media.DATA) when that file is directly writable.
+     */
+    private fun isUriWritableNow(uri: Uri): Boolean {
+        if (PermissionUtils.canWriteUriNow(context, uri)) return true
+        if (uri.scheme == "content") {
+            val path = UriUtils.getFilePath(context, uri)
+            if (path != null && File(path).canWrite()) return true
+        }
+        // file:// URIs (CSV-imported tracks): on Android 11+ the raw path is
+        // not writable under scoped storage, but a write grant on the
+        // equivalent MediaStore content URI covers the file.
+        if (uri.scheme == "file") {
+            val contentUri = UriUtils.toMediaStoreAudioUri(context, uri)
+            if (contentUri != uri && PermissionUtils.canWriteUriNow(context, contentUri)) return true
+        }
+        return false
+    }
+
     /**
      * Check if a file is writable for metadata modification
      */
     fun isFileWritable(uri: Uri): Boolean {
-        return PermissionUtils.canWriteUriNow(context, uri)
+        return isUriWritableNow(uri)
     }
     
     /**
@@ -471,5 +636,48 @@ class MetadataEditor(private val context: Context) {
      */
     fun isTagEditingAvailable(): Boolean {
         return true
+    }
+}
+
+/**
+ * Detailed outcome of a tag write ([MetadataEditor.saveBpmToFile] and
+ * friends), so callers can surface the actual failure reason to the user
+ * instead of a silent boolean.
+ */
+sealed class TagWriteResult {
+    /** The tag was written successfully */
+    object Success : TagWriteResult()
+
+    /** No write permission: a MediaStore write-request dialog grant is needed */
+    data class NoWritePermission(val uri: Uri) : TagWriteResult()
+
+    /** The system blocked the write (SecurityException) */
+    data class SecurityError(val message: String?) : TagWriteResult()
+
+    /** The content size after write-back did not match the tagged temp file */
+    data class SizeMismatch(val expectedBytes: Long, val actualBytes: Long) : TagWriteResult()
+
+    /** JAudiotagger could not commit the tag to the file */
+    data class CommitFailed(val message: String?) : TagWriteResult()
+
+    /** Any other failure */
+    data class Other(val message: String?) : TagWriteResult()
+
+    val isSuccess: Boolean get() = this is Success
+}
+
+/**
+ * Map a [TagWriteResult] to a user-facing message that distinguishes the
+ * failure reason (no write permission, SecurityException, size mismatch,
+ * commit failure, other).
+ */
+fun TagWriteResult.userMessage(context: Context): String {
+    return when (this) {
+        is TagWriteResult.Success -> context.getString(R.string.info_bpm_saved_to_file)
+        is TagWriteResult.NoWritePermission -> context.getString(R.string.error_tag_write_no_permission)
+        is TagWriteResult.SecurityError -> context.getString(R.string.error_tag_write_security)
+        is TagWriteResult.SizeMismatch -> context.getString(R.string.error_tag_write_size_mismatch)
+        is TagWriteResult.CommitFailed -> context.getString(R.string.error_tag_write_commit_failed)
+        is TagWriteResult.Other -> context.getString(R.string.error_tag_write_failed, message ?: "")
     }
 }

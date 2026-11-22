@@ -3,12 +3,8 @@ package com.bpmapp.audio.ui.screens
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AppCompatDelegate
-import androidx.core.os.LocaleListCompat
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -36,6 +32,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,12 +48,13 @@ import com.bpmapp.audio.audio.garmin.GarminConnectionState
 import com.bpmapp.audio.ui.theme.AppSpacing
 import com.bpmapp.audio.viewmodel.LibraryViewModel
 import com.bpmapp.audio.viewmodel.SettingsViewModel
+import kotlinx.coroutines.launch
 
 /**
  * Settings Screen
  * Application settings and preferences
  */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     modifier: Modifier = Modifier,
@@ -108,6 +106,23 @@ fun SettingsScreen(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         uri?.let { libVm.importFromCsv(it) }
+    }
+    
+    val scope = rememberCoroutineScope()
+    val csvExportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri: Uri? ->
+        if (uri != null) {
+            scope.launch {
+                val result = libVm.exportLibraryToCsv(uri)
+                snackbarHostState.showSnackbar(
+                    context.getString(
+                        if (result.isSuccess) R.string.settings_exported_tracks else R.string.settings_export_failed,
+                        result.getOrNull() ?: 0
+                    )
+                )
+            }
+        }
     }
     
     Scaffold(
@@ -291,6 +306,19 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+                SettingItem(
+                    title = stringResource(R.string.settings_export_csv_title),
+                    description = stringResource(R.string.settings_export_csv_desc)
+                ) {
+                    TextButton(onClick = { csvExportLauncher.launch("runbeat-library.csv") }) {
+                        Text(
+                            text = stringResource(R.string.settings_export_button),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
             }
             
             
@@ -317,82 +345,6 @@ fun SettingsScreen(
             
             
             
-            // LANGUAGE Section
-            SettingsSection(title = "🌐 ${stringResource(R.string.settings_section_language)}") {
-                SettingItem(
-                    title = stringResource(R.string.settings_language_title),
-                    description = stringResource(R.string.settings_language_desc),
-                    contentBelow = true
-                ) {
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(AppSpacing.xxs),
-                        verticalArrangement = Arrangement.spacedBy(AppSpacing.xxxs),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        TextButton(onClick = {
-                            AppCompatDelegate.setApplicationLocales(
-                                LocaleListCompat.getEmptyLocaleList()
-                            )
-                        }) {
-                            Text(
-                                text = stringResource(R.string.settings_language_system),
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Medium,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                        TextButton(onClick = {
-                            AppCompatDelegate.setApplicationLocales(
-                                LocaleListCompat.forLanguageTags("en")
-                            )
-                        }) {
-                            Text(
-                                text = stringResource(R.string.settings_language_english),
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Medium,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                        TextButton(onClick = {
-                            AppCompatDelegate.setApplicationLocales(
-                                LocaleListCompat.forLanguageTags("fr")
-                            )
-                        }) {
-                            Text(
-                                text = stringResource(R.string.settings_language_french),
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Medium,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                        TextButton(onClick = {
-                            AppCompatDelegate.setApplicationLocales(
-                                LocaleListCompat.forLanguageTags("de")
-                            )
-                        }) {
-                            Text(
-                                text = stringResource(R.string.settings_language_german),
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Medium,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                        TextButton(onClick = {
-                            AppCompatDelegate.setApplicationLocales(
-                                LocaleListCompat.forLanguageTags("es")
-                            )
-                        }) {
-                            Text(
-                                text = stringResource(R.string.settings_language_spanish),
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Medium,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-                }
-            }
-
             // ABOUT Section
             SettingsSection(title = "ℹ️ ${stringResource(R.string.settings_section_about)}") {
                 // Project repository
@@ -428,48 +380,49 @@ fun SettingsScreen(
                     // Display only - no interactive element
                 }
 
-                // Libraries
-                SettingItem(
-                    title = stringResource(R.string.settings_libraries),
-                    description = stringResource(R.string.settings_libraries_desc)
-                ) {
-                    // Display only - no interactive element
-                }
-                libraries.forEach { library ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = AppSpacing.xxxs),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(AppSpacing.xxxs)
+            }
+            // LIBRARIES Section
+            SettingsSection(title = "📚 ${stringResource(R.string.settings_libraries)}") {
+                Text(
+                    text = stringResource(R.string.settings_libraries_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                    libraries.forEach { library ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = AppSpacing.xxxs),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = library.name,
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = library.license,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        TextButton(
-                            onClick = { uriHandler.openUri(library.url) }
-                        ) {
-                            Text(
-                                text = stringResource(R.string.settings_view),
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Medium,
-                                color = MaterialTheme.colorScheme.primary
-                            )
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(AppSpacing.xxxs)
+                            ) {
+                                Text(
+                                    text = library.name,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = library.license,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            TextButton(
+                                onClick = { uriHandler.openUri(library.url) }
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.settings_view),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
                         }
                     }
-                }
             }
         }
     }

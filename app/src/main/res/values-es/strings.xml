@@ -303,7 +303,6 @@
     <string name="settings_section_advanced">AVANZADO</string>
     <string name="settings_section_help">AYUDA</string>
     <string name="settings_section_about">ACERCA DE</string>
-    <string name="settings_section_language">IDIOMA</string>
     <string name="settings_section_garmin">GARMIN</string>
     <string name="settings_auto_apply_title">Auto-aplicar coincidencia de cadencia</string>
     <string name="settings_auto_apply_desc">Aplicar automáticamente la coincidencia de cadencia al cambiar de pista</string>
@@ -326,19 +325,17 @@
     <string name="settings_csv_format_spec">relative_path,filename,bpm,file_size_bytes[,title,artist,album,genre]</string>
     <string name="settings_csv_example">Ejemplo: GoGo_Penguin/A_Humdrum_Star,1-2-Raven-320.mp3,152.0,12166665,Song Title,Artist Name,Album Name</string>
     <string name="settings_csv_quoted">Los nombres de archivo que contengan comas deben ir entre comillas.</string>
+    <string name="settings_export_csv_title">Exportar biblioteca a CSV</string>
+    <string name="settings_export_csv_desc">Exportar todas las pistas con valores BPM e indicadores a un archivo CSV</string>
+    <string name="settings_export_button">Exportar</string>
+    <string name="settings_exported_tracks">%1$d pistas exportadas</string>
+    <string name="settings_export_failed">Error al exportar</string>
     <string name="settings_version">Versión</string>
     <string name="settings_license">Licencia de la aplicación</string>
     <string name="settings_libraries">Bibliotecas</string>
     <string name="settings_libraries_desc">Bibliotecas de terceros usadas por esta aplicación</string>
     <string name="settings_view">Ver</string>
     <string name="settings_imported_tracks">%1$d pistas importadas</string>
-    <string name="settings_language_title">Idioma de la aplicación</string>
-    <string name="settings_language_desc">Elegir el idioma de visualización de la aplicación</string>
-    <string name="settings_language_system">Predeterminado del sistema</string>
-    <string name="settings_language_english">English</string>
-    <string name="settings_language_french">Français</string>
-    <string name="settings_language_german">Deutsch</string>
-    <string name="settings_language_spanish">Español</string>
 
     <!-- ==================== Cadence Matcher (domain) ==================== -->
     <string name="rhythm_quarter">Negra</string>

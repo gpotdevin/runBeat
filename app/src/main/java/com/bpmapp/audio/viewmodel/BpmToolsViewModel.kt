@@ -4,6 +4,7 @@ import com.bpmapp.audio.R
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.IntentSender
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem
@@ -12,6 +13,7 @@ import com.bpmapp.audio.audio.CadenceMatcher
 import com.bpmapp.audio.audio.PlayerRepository
 import com.bpmapp.audio.audio.TrackRepository
 import com.bpmapp.audio.audio.UriUtils
+import com.bpmapp.audio.audio.userMessage
 import com.bpmapp.audio.data.Track
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -85,6 +87,25 @@ class BpmToolsViewModel @Inject constructor(
     // Shared state
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
+
+    // One-shot event: a MediaStore write-request IntentSender that the UI must
+    // launch so the system dialog appears before the file write is attempted.
+    private val _pendingWriteRequest = MutableStateFlow<IntentSender?>(null)
+    val pendingWriteRequest: StateFlow<IntentSender?> = _pendingWriteRequest.asStateFlow()
+
+    fun clearPendingWriteRequest() {
+        _pendingWriteRequest.value = null
+    }
+
+    // One-shot event: on Android 10 and below there is no MediaStore write
+    // request; the UI must launch the legacy WRITE_EXTERNAL_STORAGE runtime
+    // permission dialog before the file write is attempted.
+    private val _pendingLegacyWritePermission = MutableStateFlow(false)
+    val pendingLegacyWritePermission: StateFlow<Boolean> = _pendingLegacyWritePermission.asStateFlow()
+
+    fun clearPendingLegacyWritePermission() {
+        _pendingLegacyWritePermission.value = false
+    }
     
     private val _currentTrack = MutableStateFlow<MediaItem?>(null)
     val currentTrack: StateFlow<MediaItem?> = _currentTrack.asStateFlow()
@@ -318,12 +339,33 @@ class BpmToolsViewModel @Inject constructor(
                 viewModelScope.launch(Dispatchers.IO) {
                     try {
                         trackRepository.updateBpm(trackId, bpm.toFloat())
-                        val written = trackRepository.saveBpmToFileMetadata(trackId, bpm.toFloat())
-                        _errorMessage.value = if (written) {
-                            context.getString(R.string.info_bpm_saved_to_file)
-                        } else {
-                            context.getString(R.string.info_bpm_saved_library_only)
+                        // Gate the file write on actual write access: when the
+                        // track's URI is not writable right now, route through
+                        // the MediaStore.createWriteRequest system dialog BEFORE
+                        // attempting the write, instead of failing silently.
+                        if (!trackRepository.canWriteTrackFileNow(trackId)) {
+                            val uri = trackRepository.getTrackUri(trackId)
+                            val sender = uri?.let {
+                                trackRepository.createWriteRequestIntentSender(listOf(it))
+                            }
+                            withContext(Dispatchers.Main) {
+                                if (sender != null) {
+                                    _errorMessage.value = context.getString(R.string.error_write_access_grant_in_dialog)
+                                    _pendingWriteRequest.value = sender
+                                } else if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R &&
+                                    !trackRepository.hasLegacyStoragePermission()) {
+                                    // Android 10 and below: no write-request
+                                    // dialog exists; ask for the legacy storage
+                                    // permission instead of reporting a denial.
+                                    _pendingLegacyWritePermission.value = true
+                                } else {
+                                    _errorMessage.value = context.getString(R.string.error_write_access_denied)
+                                }
+                            }
+                            return@launch
                         }
+                        val result = trackRepository.saveBpmToFileMetadata(trackId, bpm.toFloat())
+                        _errorMessage.value = result.userMessage(context)
                     } catch (e: Exception) {
                         _errorMessage.value = context.getString(R.string.error_failed_save_bpm, e.message ?: "")
                     }

@@ -50,6 +50,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -67,7 +68,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.bpmapp.audio.R
 import com.bpmapp.audio.ui.theme.AppSpacing
-import com.bpmapp.audio.ui.theme.BpmGreenLight
+import com.bpmapp.audio.ui.theme.bpmSemanticColor
 import com.bpmapp.audio.ui.theme.ComponentSpacing
 import com.bpmapp.audio.ui.theme.TouchTargets
 import com.bpmapp.audio.ui.theme.speedFactorColor
@@ -442,7 +443,7 @@ fun DetectBpmTab(viewModel: BpmToolsViewModel) {
                         Text(
                             text = stringResource(R.string.bpmtools_detected_bpm, bpm),
                             style = MaterialTheme.typography.titleMedium,
-                            color = BpmGreenLight
+                            color = bpmSemanticColor
                         )
                     } ?: run {
                         Text(
@@ -557,6 +558,9 @@ fun ManualEntryTab(viewModel: BpmToolsViewModel) {
         contract = ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
         if (result.resultCode == android.app.Activity.RESULT_OK) {
+            // Persist the write grants so tag writing keeps working after
+            // process death / reboot (MediaStore write request, Android 11+)
+            com.bpmapp.audio.util.PermissionUtils.takePersistableWriteGrants(context, result.data)
             pendingFileWriteAction?.invoke()
         }
         pendingFileWriteAction = null
@@ -570,6 +574,31 @@ fun ManualEntryTab(viewModel: BpmToolsViewModel) {
             pendingFileWriteAction?.invoke()
         }
         pendingFileWriteAction = null
+    }
+
+    // Write-request event emitted by the ViewModel when the file is not
+    // writable yet: launch the MediaStore.createWriteRequest system dialog
+    // BEFORE attempting the tag write, then retry the save once granted.
+    val pendingWriteRequest by viewModel.pendingWriteRequest.collectAsState()
+    LaunchedEffect(pendingWriteRequest) {
+        pendingWriteRequest?.let { sender ->
+            viewModel.clearPendingWriteRequest()
+            pendingFileWriteAction = { viewModel.saveManualBpm() }
+            writeAccessLauncher.launch(
+                androidx.activity.result.IntentSenderRequest.Builder(sender).build()
+            )
+        }
+    }
+
+    // Android 10 and below: ask for the legacy storage permission instead of
+    // the MediaStore write-request dialog, then retry the save.
+    val pendingLegacyWritePermission by viewModel.pendingLegacyWritePermission.collectAsState()
+    LaunchedEffect(pendingLegacyWritePermission) {
+        if (pendingLegacyWritePermission) {
+            viewModel.clearPendingLegacyWritePermission()
+            pendingFileWriteAction = { viewModel.saveManualBpm() }
+            legacyWritePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        }
     }
     
     fun proceedWithFileWrite(access: com.bpmapp.audio.util.WriteAccess) {

@@ -294,11 +294,14 @@ fun LibraryScreen(
         contract = ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
         if (result.resultCode == android.app.Activity.RESULT_OK) {
+            // Persist the write grants so tag writing keeps working after
+            // process death / reboot (MediaStore write request, Android 11+)
+            PermissionUtils.takePersistableWriteGrants(context, result.data)
             pendingFileWriteAction?.invoke()
         }
         pendingFileWriteAction = null
     }
-    
+
     // Launcher for the legacy storage permission (Android 10 and below)
     val legacyWritePermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()

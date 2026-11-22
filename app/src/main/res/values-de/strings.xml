@@ -302,7 +302,6 @@
     <string name="settings_section_advanced">ERWEITERT</string>
     <string name="settings_section_help">HILFE</string>
     <string name="settings_section_about">INFO</string>
-    <string name="settings_section_language">SPRACHE</string>
     <string name="settings_auto_apply_title">Kadenz-Match automatisch anwenden</string>
     <string name="settings_auto_apply_desc">Kadenz-Matching automatisch anwenden beim Trackwechsel</string>
     <string name="settings_auto_scan_title">Beim Start automatisch scannen</string>
@@ -316,19 +315,17 @@
     <string name="settings_csv_format_spec">relative_path,filename,bpm,file_size_bytes[,title,artist,album,genre]</string>
     <string name="settings_csv_example">Beispiel: GoGo_Penguin/A_Humdrum_Star,1-2-Raven-320.mp3,152.0,12166665,Song Title,Artist Name,Album Name</string>
     <string name="settings_csv_quoted">Dateinamen mit Kommas müssen in Anführungszeichen gesetzt werden.</string>
+    <string name="settings_export_csv_title">Bibliothek als CSV exportieren</string>
+    <string name="settings_export_csv_desc">Alle Tracks mit BPM-Werten und Markierungen in eine CSV-Datei exportieren</string>
+    <string name="settings_export_button">Exportieren</string>
+    <string name="settings_exported_tracks">%1$d Tracks exportiert</string>
+    <string name="settings_export_failed">Export fehlgeschlagen</string>
     <string name="settings_version">Version</string>
     <string name="settings_license">App-Lizenz</string>
     <string name="settings_libraries">Bibliotheken</string>
     <string name="settings_libraries_desc">Von dieser App verwendete Drittanbieter-Bibliotheken</string>
     <string name="settings_view">Ansehen</string>
     <string name="settings_imported_tracks">%1$d Tracks importiert</string>
-    <string name="settings_language_title">App-Sprache</string>
-    <string name="settings_language_desc">Anzeigesprache der App wählen</string>
-    <string name="settings_language_system">Systemstandard</string>
-    <string name="settings_language_english">English</string>
-    <string name="settings_language_french">Français</string>
-    <string name="settings_language_german">Deutsch</string>
-    <string name="settings_language_spanish">Español</string>
 
     <!-- ==================== Cadence Matcher (domain) ==================== -->
     <string name="rhythm_quarter">Viertel</string>

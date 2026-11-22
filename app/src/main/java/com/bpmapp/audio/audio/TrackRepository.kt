@@ -511,16 +511,16 @@ class TrackRepository @Inject constructor(
 
     /**
      * Save BPM value to the audio file's metadata
-     * 
+     *
      * @param trackId The ID of the track
      * @param bpm The BPM value to save
-     * @return true if successful, false otherwise
+     * @return the detailed [TagWriteResult] describing success or the failure reason
      */
-    suspend fun saveBpmToFileMetadata(trackId: String, bpm: Float): Boolean {
+    suspend fun saveBpmToFileMetadata(trackId: String, bpm: Float): TagWriteResult {
         return withContext(Dispatchers.IO) {
             val track = trackDao.getTrackById(trackId).firstOrNull() ?: run {
                 Log.e(TAG, "Track not found: $trackId")
-                return@withContext false
+                return@withContext TagWriteResult.Other("Track not found: $trackId")
             }
 
             val uri = Uri.parse(track.id)
@@ -564,7 +564,7 @@ class TrackRepository @Inject constructor(
                 return@withContext false
             }
 
-            saveBpmToFileMetadata(trackId, bpm)
+            saveBpmToFileMetadata(trackId, bpm).isSuccess
         }
     }
 
@@ -621,16 +621,36 @@ class TrackRepository @Inject constructor(
     }
     
     /**
-     * Get the URIs of the given tracks that are not writable right now.
+     * Get the URIs of the given tracks that are not writable right now
+     * (neither via a URI grant nor via a resolved writable file path).
      * Used to decide whether a MediaStore write request is needed before
      * saving BPM tags to files.
      */
     suspend fun getUrisNeedingWriteAccess(trackIds: List<String>): List<Uri> = withContext(Dispatchers.IO) {
         trackIds.mapNotNull { trackId ->
             trackDao.getTrackById(trackId).firstOrNull()?.let { track ->
-                Uri.parse(track.id)
+                // MediaStore.createWriteRequest only accepts content:// URIs;
+                // CSV-imported tracks carry file:// URIs, so map them first.
+                UriUtils.toMediaStoreAudioUri(context, Uri.parse(track.id))
             }
-        }.filter { !com.bpmapp.audio.util.PermissionUtils.canWriteUriNow(context, it) }
+        }.filter { UriUtils.existsInMediaStore(context, it) }
+            .filter { !metadataEditor.isFileWritable(it) }
+    }
+
+    /**
+     * Get the content URI of a track, or null when the track is unknown.
+     */
+    suspend fun getTrackUri(trackId: String): Uri? = withContext(Dispatchers.IO) {
+        trackDao.getTrackById(trackId).firstOrNull()?.let { Uri.parse(it.id) }
+    }
+
+    /**
+     * Check whether the track's file can be written right now (URI grant or
+     * writable resolved file path), without attempting any write.
+     */
+    suspend fun canWriteTrackFileNow(trackId: String): Boolean = withContext(Dispatchers.IO) {
+        val track = trackDao.getTrackById(trackId).firstOrNull() ?: return@withContext false
+        metadataEditor.isFileWritable(Uri.parse(track.id))
     }
     
     /**
@@ -645,7 +665,11 @@ class TrackRepository @Inject constructor(
      * given URIs (Android 11+), or null when not applicable
      */
     fun createWriteRequestIntentSender(uris: List<Uri>): android.content.IntentSender? {
-        return com.bpmapp.audio.util.PermissionUtils.createWriteRequestIntentSender(context, uris)
+        // Stale URIs (file gone from MediaStore) make the provider reject the
+        // whole request with "Invalid Uri"; drop them first.
+        val valid = uris.filter { UriUtils.existsInMediaStore(context, it) }
+        if (valid.isEmpty()) return null
+        return com.bpmapp.audio.util.PermissionUtils.createWriteRequestIntentSender(context, valid)
     }
     
     /**

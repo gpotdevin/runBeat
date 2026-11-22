@@ -303,7 +303,6 @@
     <string name="settings_section_advanced">AVANCÉ</string>
     <string name="settings_section_help">AIDE</string>
     <string name="settings_section_about">À PROPOS</string>
-    <string name="settings_section_language">LANGUE</string>
     <string name="settings_section_garmin">GARMIN</string>
     <string name="settings_auto_apply_title">Auto-appliquer la correspondance de cadence</string>
     <string name="settings_auto_apply_desc">Appliquer automatiquement la correspondance de cadence au changement de piste</string>
@@ -326,19 +325,17 @@
     <string name="settings_csv_format_spec">relative_path,filename,bpm,file_size_bytes[,title,artist,album,genre]</string>
     <string name="settings_csv_example">Exemple : GoGo_Penguin/A_Humdrum_Star,1-2-Raven-320.mp3,152.0,12166665,Song Title,Artist Name,Album Name</string>
     <string name="settings_csv_quoted">Les noms de fichiers contenant des virgules doivent être entre guillemets.</string>
+    <string name="settings_export_csv_title">Exporter la bibliothèque en CSV</string>
+    <string name="settings_export_csv_desc">Exporter tous les morceaux avec les valeurs BPM et les indicateurs dans un fichier CSV</string>
+    <string name="settings_export_button">Exporter</string>
+    <string name="settings_exported_tracks">%1$d morceaux exportés</string>
+    <string name="settings_export_failed">Échec de l\'export</string>
     <string name="settings_version">Version</string>
     <string name="settings_license">Licence de l\'application</string>
     <string name="settings_libraries">Bibliothèques</string>
     <string name="settings_libraries_desc">Bibliothèques tierces utilisées par cette application</string>
     <string name="settings_view">Voir</string>
     <string name="settings_imported_tracks">%1$d pistes importées</string>
-    <string name="settings_language_title">Langue de l\'application</string>
-    <string name="settings_language_desc">Choisir la langue d\'affichage de l\'application</string>
-    <string name="settings_language_system">Valeur par défaut du système</string>
-    <string name="settings_language_english">English</string>
-    <string name="settings_language_french">Français</string>
-    <string name="settings_language_german">Deutsch</string>
-    <string name="settings_language_spanish">Español</string>
 
     <!-- ==================== Cadence Matcher (domain) ==================== -->
     <string name="rhythm_quarter">Noire</string>
@@ -394,6 +391,12 @@
     <string name="info_bpm_saved_to_file">BPM enregistrés dans la piste et la balise ID3 du fichier</string>
     <string name="info_bpm_saved_library_only">BPM enregistrés dans la bibliothèque de pistes (impossible d\'écrire dans les métadonnées du fichier)</string>
     <string name="error_failed_save_bpm">Échec de l\'enregistrement des BPM : %1$s</string>
+    <string name="error_write_access_grant_in_dialog">Accordez l\'accès en écriture au fichier dans la boîte de dialogue système pour enregistrer le BPM dans sa balise ID3.</string>
+    <string name="error_tag_write_no_permission">Aucune autorisation d\'écriture pour le fichier (accordez l\'accès en écriture dans la boîte de dialogue système). BPM enregistré uniquement dans la bibliothèque.</string>
+    <string name="error_tag_write_security">Le système a bloqué l\'écriture dans le fichier (SecurityException). BPM enregistré uniquement dans la bibliothèque.</string>
+    <string name="error_tag_write_size_mismatch">Taille du fichier incohérente après l\'écriture de la balise (données résiduelles d\'une écriture non tronquante). BPM enregistré uniquement dans la bibliothèque.</string>
+    <string name="error_tag_write_commit_failed">Impossible d\'écrire la balise ID3 dans le fichier (échec de la validation de la balise). BPM enregistré uniquement dans la bibliothèque.</string>
+    <string name="error_tag_write_failed">Impossible d\'écrire dans le fichier : %1$s. BPM enregistré uniquement dans la bibliothèque.</string>
     <string name="error_player_error">Erreur : %1$s</string>
     <string name="error_player_permission">Accès audio refusé. Autorisez l\'accès à la musique dans les paramètres et réessayez.</string>
     <string name="error_could_not_prepare_media">Erreur : Impossible de préparer le média pour la lecture</string>

@@ -69,6 +69,68 @@ object UriUtils {
     }
 
     /**
+     * Resolve an absolute file path to its MediaStore audio content URI by
+     * matching the DATA column. Returns null when the path is not in the
+     * media database (e.g. app-private storage).
+     */
+    fun getAudioUriForFilePath(context: Context, filePath: String): Uri? {
+        return try {
+            context.contentResolver.query(
+                MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+                arrayOf(MediaStore.Audio.Media._ID),
+                MediaStore.Audio.Media.DATA + " = ?",
+                arrayOf(filePath),
+                null
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID))
+                    Uri.withAppendedPath(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id.toString())
+                } else {
+                    null
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error resolving file path to audio URI: $filePath", e)
+            null
+        }
+    }
+
+    /**
+     * Map a track URI to the MediaStore audio content URI when possible.
+     * Tracks imported from CSV carry file:// URIs; MediaStore write requests
+     * only accept content:// URIs, and scoped storage (Android 11+) blocks
+     * direct file-path writes anyway, so those must go through the content
+     * URI. URIs that are already content:// (or cannot be resolved) are
+     * returned unchanged.
+     */
+    fun toMediaStoreAudioUri(context: Context, uri: Uri): Uri {
+        if (uri.scheme != "file") return uri
+        val path = uri.path ?: return uri
+        return getAudioUriForFilePath(context, path) ?: uri
+    }
+
+    /**
+     * Check whether a content URI still resolves in the MediaStore audio
+     * database. Stale URIs (file deleted from storage but still referenced by
+     * the app database) make MediaStore.createWriteRequest reject the whole
+     * request with "Invalid Uri", so they must be filtered out beforehand.
+     */
+    fun existsInMediaStore(context: Context, uri: Uri): Boolean {
+        if (uri.scheme != "content") return true
+        return try {
+            context.contentResolver.query(
+                uri,
+                arrayOf(MediaStore.Audio.Media._ID),
+                null,
+                null,
+                null
+            )?.use { cursor -> cursor.moveToFirst() } ?: false
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    /**
      * Copy a content:// URI to a temporary file for processing
      * Returns the path to the temporary file, or null if copy failed
      */

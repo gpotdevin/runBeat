@@ -20,11 +20,13 @@ import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem
 import com.bpmapp.audio.audio.BpmResolver
 import com.bpmapp.audio.audio.CadenceMatcher
+import com.bpmapp.audio.audio.CsvExporter
 import com.bpmapp.audio.audio.M3uExporter
 import com.bpmapp.audio.audio.MediaItemFactory
 import com.bpmapp.audio.audio.MetadataEditor
 import com.bpmapp.audio.audio.PlayerRepository
 import com.bpmapp.audio.audio.TrackRepository
+import com.bpmapp.audio.audio.userMessage
 import com.bpmapp.audio.data.AppDatabase
 import com.bpmapp.audio.data.Playlist
 import com.bpmapp.audio.data.PlaylistDao
@@ -936,6 +938,28 @@ class LibraryViewModel @Inject constructor(
     }
 
     /**
+     * Export the whole library to a CSV file at the given (SAF) target URI.
+     * Returns the number of exported tracks on success.
+     */
+    suspend fun exportLibraryToCsv(targetUri: Uri): Result<Int> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val tracks = trackRepository.allTracks.firstOrNull().orEmpty()
+                val content = CsvExporter.buildCsvContent(tracks)
+                context.contentResolver.openOutputStream(targetUri)?.use { output ->
+                    output.write(content.toByteArray(Charsets.UTF_8))
+                    output.flush()
+                } ?: return@withContext Result.failure(IllegalStateException("Could not open output stream for $targetUri"))
+                Log.d(TAG, "Exported library (${tracks.size} tracks) to $targetUri")
+                Result.success(tracks.size)
+            } catch (e: Exception) {
+                Log.e(TAG, "CSV export error", e)
+                Result.failure(e)
+            }
+        }
+    }
+
+    /**
      * Add the currently selected tracks to a playlist (no-op if already present)
      */
     fun addSelectedTracksToPlaylist(playlistId: String, trackIds: List<String>) {
@@ -1311,11 +1335,11 @@ class LibraryViewModel @Inject constructor(
             _metadataError.value = null
 
             try {
-                val success = trackRepository.saveBpmToFileMetadata(trackId, bpm)
-                if (success) {
+                val result = trackRepository.saveBpmToFileMetadata(trackId, bpm)
+                if (result.isSuccess) {
                     _metadataSaveResults.value = 1
                 } else {
-                    _metadataError.value = context.getString(R.string.error_failed_save_bpm_metadata)
+                    _metadataError.value = result.userMessage(context)
                 }
             } catch (e: Exception) {
                 _metadataError.value = context.getString(R.string.error_saving_bpm, e.message ?: "")
