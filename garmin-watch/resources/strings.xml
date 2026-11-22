@@ -2,8 +2,7 @@
 <strings>
     <string id="AppName">RunBeat</string>
 
-    <!-- Data field names (shown in the field picker). -->
-    <string id="FieldTrack">RunBeat Track</string>
+    <!-- Data field name (shown in the field picker). -->
     <string id="FieldControls">RunBeat Controls</string>
     
     
@@ -12,6 +11,7 @@
     <!-- Status / display. -->
     <string id="NoPlayback">Nothing playing</string>
     <string id="PhoneNotConnected">Phone not connected</string>
+    <string id="PhoneNotSupported">Phone link not supported on this device</string>
     <string id="Connecting">Connecting...</string>
     <string id="NoValue">--</string>
     <string id="Playing">Playing</string>

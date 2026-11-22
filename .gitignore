@@ -21,6 +21,9 @@ Thumbs.db
 # Gradle
 .gradle/
 build/
+
+# Garmin watch .prg build artifacts
+garmin-watch/build/
 dist/
 
 # Local properties

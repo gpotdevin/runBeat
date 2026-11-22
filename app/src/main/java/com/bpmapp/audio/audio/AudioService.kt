@@ -149,6 +149,15 @@ class AudioService : MediaSessionService() {
             intent: Intent
         ): Boolean {
             val keyEvent = intent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT)
+            // Ignore media buttons forwarded by the Garmin watch (via Garmin
+            // Connect Mobile): auto-lap fires KEYCODE_MEDIA_NEXT on every km
+            // split, which would skip a track. Only accept buttons from real
+            // Bluetooth headsets / system controllers.
+            val pkg = controller.packageName
+            if (pkg != null && pkg.startsWith("com.garmin.")) {
+                Log.d("AudioService", "Ignoring media button from Garmin ($pkg): ${keyEvent?.keyCode}")
+                return true
+            }
             when (keyEvent?.keyCode) {
                 KeyEvent.KEYCODE_MEDIA_NEXT -> {
                     playerRepository.playNext()

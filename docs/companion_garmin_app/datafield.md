@@ -1,16 +1,8 @@
 # Data field architecture
 
-Two data field apps, each one full-screen rectangle on one activity screen.
-Only the visible screen's field runs at a time — one process.
+One data field app, one full-screen rectangle on an activity screen.
 
-## Screen 1 — RunBeat Track (`RunBeatTrackField`)
-```
- Playing              <- connection color
- |<    >/||    >|     <- tap zones, connection color
-```
-Tap left/center/right = prev / play-pause / next.
-
-## Screen 2 — RunBeat Controls (`RunBeatControlsField`)
+## Screen 1 — RunBeat Controls (`RunBeatControlsField`)
 ```
  Song Title           <- yellow if favorite, marquee scrolls on round screens
  Artist - Album
@@ -19,11 +11,21 @@ Tap left/center/right = prev / play-pause / next.
 ```
 Tap title/artist = favorite toggle. Three sections centered as a group.
 
+## Input
+
+Two input paths, one shared dispatch (`activateZone(index)`, zones 0-5 in reading
+order: title, `-`, num, `+`, avg, mark) so touch and buttons can never diverge.
+
+| Device | Interaction |
+|--------|-------------|
+| Touch (venu, fenix, epix, ...) | Tap a zone directly (hit-test -> `activateZone`) |
+| Buttons only (fr245, fr245m, ...) | `KEY_UP`/`KEY_DOWN` move a focus outline - a 2px white rectangle drawn around the focused zone in `draw()`, only when `System.getDeviceSettings().isTouchScreen == false` - wrapping across the six zones in visual reading order; `KEY_ENTER`/select activates the focused zone; `KEY_BACK` falls through to the system. Zones that are inactive (avg/mark while `source != "RunBeat"`) are skipped, mirroring the tap gating |
+
 ## Watch components
 
 | File | Role |
 |------|------|
-| `RunBeatFields.mc` | `RunBeatFieldBase` (shared: Communications, cadence sampling via `Activity.getActivityInfo().currentCadence`, conn color) + 2 field subclasses + 2 app entry classes + shared delegate |
+| `RunBeatFields.mc` | `RunBeatFieldBase` (shared: Communications, cadence sampling via `Activity.getActivityInfo().currentCadence`, conn color) + 1 field subclass + 1 app entry class + shared delegate |
 | `MessageHandler.mc` | JSON codec; injects `apiVersion` into every outgoing message; parses state/ack/playlists |
 | `WatchState.mc` | Latest phone state + `phoneApiVersion` |
 | `CadenceRingBuffer.mc` | 60 s rolling cadence average |
@@ -34,7 +36,7 @@ Tap title/artist = favorite toggle. Three sections centered as a group.
 onShow  -> registerForPhoneAppMessages + request_state
 onUpdate @1Hz (system-driven) -> sample cadence, draw
 onTimerStart/Resume -> request_state
-onTimerLap -> no-op (auto km splits fire this too — do NOT skip track)
+onTimerLap -> no-op (auto km/lap splits fire this too)
 onTimerStop/Pause -> bye + unregister
 onHide  -> bye + unregister
 ```
@@ -50,7 +52,7 @@ pushes. Bump both on incompatible changes.
 ## Build
 
 ```
-# per field, one .prg each:
-monkeybrains -f <jungle pointing to manifest-{track,controls}.xml> -d venu2 \
-  -y developer_key.der --override-devices-json devices-local -o venu2-{track,controls}.prg
+# one .prg for the controls field:
+monkeybrains -f <jungle pointing to manifest-controls.xml> -d venu2 \
+  -y developer_key.der --override-devices-json devices-local -o venu2-controls.prg
 ```

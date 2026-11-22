@@ -1,7 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <iq:manifest version="3" xmlns:iq="http://www.garmin.com/xml/connectiq">
 <iq:application id="06c14376-0c60-4e4c-a977-e93364ace3e2" type="datafield" name="@Strings.FieldControls" entry="RunBeatControlsApp" launcherIcon="@Drawables.LauncherIcon">
-    <iq:products><iq:product id="fr245"/><iq:product id="fr245m"/><iq:product id="fr255"/><iq:product id="fr255m"/><iq:product id="fr265"/><iq:product id="fr955"/><iq:product id="fr965"/><iq:product id="fenix7"/><iq:product id="fenix7s"/><iq:product id="fenix7x"/><iq:product id="fenix8solar47mm"/><iq:product id="fenix8solar51mm"/><iq:product id="fenix843mm"/><iq:product id="fenix847mm"/><iq:product id="epix2"/><iq:product id="venu2"/><iq:product id="venu3"/><iq:product id="venu3s"/></iq:products>
+    <!-- Excluded: CIQ < 5.0.0 devices (fr245m, fr645m, fr945, fr945lte) —
+         Communications in a data field requires API 5.0.0+; on older CIQ
+         registerForPhoneAppMessages crashes uncatchably. Also excluded:
+         32 KB datafield-limit devices (fr245, fr645, vivoactive_hr–4s)
+         which OOM at runtime. -->
+    <iq:products><iq:product id="fr165"/><iq:product id="fr165m"/><iq:product id="fr255"/><iq:product id="fr255m"/><iq:product id="fr255s"/><iq:product id="fr255sm"/><iq:product id="fr265"/><iq:product id="fr265s"/><iq:product id="fr955"/><iq:product id="fr965"/><iq:product id="fr970"/><iq:product id="vivoactive5"/><iq:product id="vivoactive6"/><iq:product id="fenix7"/><iq:product id="fenix7s"/><iq:product id="fenix7x"/><iq:product id="fenix8solar47mm"/><iq:product id="fenix8solar51mm"/><iq:product id="fenix843mm"/><iq:product id="fenix847mm"/><iq:product id="epix2"/><iq:product id="venu2"/><iq:product id="venu3"/><iq:product id="venu3s"/></iq:products>
     <iq:permissions><iq:uses-permission id="Communications"/></iq:permissions>
     <iq:languages><iq:language>eng</iq:language></iq:languages>
 </iq:application>

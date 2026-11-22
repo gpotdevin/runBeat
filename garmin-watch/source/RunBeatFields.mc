@@ -7,13 +7,11 @@ import Toybox.Math;
 import Toybox.System;
 import Toybox.WatchUi;
 
-// RunBeat data fields — TWO full-screen data field apps.
+// RunBeat data field — ONE full-screen data field app.
 //
-// Field 1 "RunBeat Track":    play state, title, artist/album, transport |< >/|| >|
-// Field 2 "RunBeat Controls": target cadence [- num +], AVG/60s, NO GOOD RUN
+// "RunBeat Controls": target cadence [- num +], AVG/60s, NO GOOD RUN
 //
-// Add each to a separate full-screen data screen in the run activity.
-// Only the visible screen's field runs, so one process at a time.
+// Add it to a full-screen data screen in the run activity.
 
 // ============================================================
 // Shared base
@@ -30,6 +28,7 @@ class RunBeatFieldBase extends WatchUi.DataField {
     protected var _strNoValue as String;
     protected var _strConnecting as String;
     protected var _strPhoneNotConnected as String;
+    protected var _strPhoneNotSupported as String;
 
     function initialize() {
         WatchUi.DataField.initialize();
@@ -41,20 +40,53 @@ class RunBeatFieldBase extends WatchUi.DataField {
         _strNoValue = WatchUi.loadResource(Rez.Strings.NoValue) as String;
         _strConnecting = WatchUi.loadResource(Rez.Strings.Connecting) as String;
         _strPhoneNotConnected = WatchUi.loadResource(Rez.Strings.PhoneNotConnected) as String;
+        _strPhoneNotSupported = WatchUi.loadResource(Rez.Strings.PhoneNotSupported) as String;
     }
 
+    // True once registerForPhoneAppMessages has succeeded. On old CIQ API
+    // levels (fr245 = 3.3.1) the call throws an UNCATCHABLE "Permission
+    // Required" system error in a data-field context — the try/catch does
+    // not suppress it — so we must guard proactively: only attempt the
+    // registration on devices known to support it (CIQ >= 3.4.0). The
+    // fr245 is the only target below that.
+    private var _phoneOk as Boolean = false;
+
     function onShow() as Void {
-        try {
-            Communications.registerForPhoneAppMessages(_messages.method(:onPhoneMessage));
-            _messages.sendRequestState();
-        } catch (e) {}
+        var supported = phoneMessagingSupported();
+        _messages.phoneEnabled = supported;
+        if (supported) {
+            try {
+                Communications.registerForPhoneAppMessages(_messages.method(:onPhoneMessage));
+                _phoneOk = true;
+                _messages.sendRequestState();
+            } catch (e) {}
+        }
     }
 
     function onHide() as Void {
+        if (_phoneOk) {
+            try {
+                _messages.sendBye();
+                Communications.registerForPhoneAppMessages(null);
+            } catch (e) {}
+            _phoneOk = false;
+        }
+    }
+
+    // Toybox.Communications in a data field is only supported since CIQ
+    // API 5.0.0 (per SDK docs, App_Types.html footnote "**"). On devices
+    // running CIQ < 5.0.0, registerForPhoneAppMessages throws an
+    // uncatchable "Permission Required" system error. Detected via
+    // System.getDeviceSettings().monkeyVersion (available since API 1.0.0,
+    // returns [major, minor, patch]).
+    protected function phoneMessagingSupported() as Boolean {
         try {
-            _messages.sendBye();
-            Communications.registerForPhoneAppMessages(null);
+            var v = System.getDeviceSettings().monkeyVersion;
+            if (v != null && (v as Array)[0] < 5) {
+                return false;
+            }
         } catch (e) {}
+        return true;
     }
 
     function onUpdate(dc as Graphics.Dc) as Void {
@@ -66,15 +98,20 @@ class RunBeatFieldBase extends WatchUi.DataField {
     function onTimerStart() as Void { safeReq(); }
     function onTimerResume() as Void { safeReq(); }
     function onTimerLap() as Void {
-        // Auto km/lap splits also fire onTimerLap — do NOT skip track here.
+        // Auto km/lap splits also fire onTimerLap — keep this a no-op.
     }
     function onTimerStop() as Void {
-        try { _messages.sendBye(); Communications.registerForPhoneAppMessages(null); } catch (e) {}
+        if (_phoneOk) {
+            try { _messages.sendBye(); Communications.registerForPhoneAppMessages(null); } catch (e) {}
+            _phoneOk = false;
+        }
     }
-    function onTimerPause() as Void { try { _messages.sendBye(); } catch (e) {} }
+    function onTimerPause() as Void { if (_phoneOk) { try { _messages.sendBye(); } catch (e) {} } }
 
     protected function safeReq() as Void {
-        try { _messages.sendRequestState(); } catch (e) {}
+        if (_phoneOk) {
+            try { _messages.sendRequestState(); } catch (e) {}
+        }
     }
 
     protected function sampleCadence(now as Number) as Void {
@@ -88,10 +125,29 @@ class RunBeatFieldBase extends WatchUi.DataField {
     }
 
     protected function connColor() as Number {
+        if (!phoneMessagingSupported()) {
+            return Graphics.COLOR_DK_GRAY;
+        }
         if (!_state.hasConnected() || _state.isStale(System.getTimer())) {
             return Graphics.COLOR_YELLOW;
         }
         return _state.isRunBeatActive() ? Graphics.COLOR_GREEN : Graphics.COLOR_LT_GRAY;
+    }
+
+    // Status line shown when the phone link is unavailable: a distinct
+    // message on devices that cannot do phone messaging at all (fr245 /
+    // fr245m, CIQ 3.3.1) so the user can tell the field did start.
+    protected function connText() as String {
+        if (!phoneMessagingSupported()) {
+            return _strPhoneNotSupported;
+        }
+        if (!_state.hasConnected()) {
+            return _strConnecting;
+        }
+        if (_state.isStale(System.getTimer())) {
+            return _strPhoneNotConnected;
+        }
+        return _strAppName;
     }
 
     protected function hitTest(rect, x as Number, y as Number) as Boolean {
@@ -115,107 +171,7 @@ class RunBeatFieldBase extends WatchUi.DataField {
 }
 
 // ============================================================
-// Field 1: TRACK — full screen
-//   top: play state (connection color)
-//   center: title (big) + artist - album
-//   bottom: transport |<  >/||  >|  (tap zones, connection color)
-// ============================================================
-
-class RunBeatTrackField extends RunBeatFieldBase {
-
-    private var _strPlaying as String;
-    private var _strPaused as String;
-    private var _zones as Array = [];
-
-    function initialize() {
-        RunBeatFieldBase.initialize();
-        _strPlaying = WatchUi.loadResource(Rez.Strings.Playing) as String;
-        _strPaused = WatchUi.loadResource(Rez.Strings.Paused) as String;
-    }
-
-    function draw(dc as Graphics.Dc, now as Number) as Void {
-        var w = dc.getWidth();
-        var h = dc.getHeight();
-        dc.setColor(Graphics.COLOR_BLACK, Graphics.COLOR_BLACK);
-        dc.clear();
-
-        var fhTiny = dc.getFontHeight(Graphics.FONT_TINY);
-        var fhSmall = dc.getFontHeight(Graphics.FONT_SMALL);
-        var fhLarge = dc.getFontHeight(Graphics.FONT_LARGE);
-        var fhNum = dc.getFontHeight(Graphics.FONT_NUMBER_MEDIUM);
-        var runBeat = _state.isRunBeatActive();
-        var color = connColor();
-
-        // Top: play state.
-        var st = runBeat ? (_state.isPlaying ? _strPlaying : _strPaused) : _strNoPlayback;
-        dc.setColor(color, Graphics.COLOR_BLACK);
-        dc.drawText(w / 2, fhSmall / 2 + 4, Graphics.FONT_SMALL, st,
-            Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
-
-        // Center: title (big) + artist/album.
-        var midY = fhSmall + 8 + (h - fhSmall - fhNum - 16) / 2;
-        if (runBeat) {
-            var title = _state.title.length() > 0 ? _state.title : _strNoValue;
-            dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_BLACK);
-            dc.drawText(w / 2, midY, Graphics.FONT_LARGE,
-                truncate(dc, title, Graphics.FONT_LARGE, (w * 0.94).toNumber()),
-                Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
-            var sub = _state.artist;
-            if (_state.album.length() > 0) {
-                sub = sub.length() > 0 ? sub + " - " + _state.album : _state.album;
-            }
-            if (sub.length() > 0) {
-                dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
-                dc.drawText(w / 2, midY + fhLarge / 2 + 4 + fhTiny / 2, Graphics.FONT_TINY,
-                    truncate(dc, sub, Graphics.FONT_TINY, (w * 0.90).toNumber()),
-                    Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
-            }
-        } else {
-            dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
-            dc.drawText(w / 2, midY, Graphics.FONT_LARGE, _strNoPlayback,
-                Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
-        }
-
-        // Bottom: transport row.
-        var tY = h - fhNum - 8;
-        var zw = (w / 3).toNumber();
-        dc.setColor(color, Graphics.COLOR_BLACK);
-        dc.drawText((zw / 2).toNumber(), tY + fhNum / 2, Graphics.FONT_NUMBER_MEDIUM, "|<",
-            Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
-        var pl = _state.isPlaying ? "||" : ">";
-        dc.drawText(zw + (zw / 2).toNumber(), tY + fhNum / 2, Graphics.FONT_NUMBER_MEDIUM, pl,
-            Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
-        dc.drawText(zw * 2 + (zw / 2).toNumber(), tY + fhNum / 2, Graphics.FONT_NUMBER_MEDIUM, ">|",
-            Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
-
-        _zones = [
-            [0, tY, zw, fhNum + 8],
-            [zw, tY, zw, fhNum + 8],
-            [zw * 2, tY, w - zw * 2, fhNum + 8]
-        ];
-    }
-
-    function onTap(x as Number, y as Number) as Boolean {
-        var z = _zones;
-        if (z.size() >= 3) {
-            if (hitTest(z[0], x, y)) { _messages.sendPrev(); return true; }
-            if (hitTest(z[1], x, y)) { _messages.sendToggle(); return true; }
-            if (hitTest(z[2], x, y)) { _messages.sendNext(); return true; }
-        }
-        return false;
-    }
-}
-
-class RunBeatTrackApp extends Application.AppBase {
-    function initialize() { AppBase.initialize(); }
-    function getInitialView() {
-        var f = new RunBeatTrackField();
-        return [f, new RunBeatFieldDelegate(f)];
-    }
-}
-
-// ============================================================
-// Field 2: CONTROLS — full screen
+// CONTROLS — full screen
 //   Row 1: TARGET  [-] [num] [+]   num tap = toggle speed corr (green/gray)
 //   Row 2: AVG/60s (blue, tap=set target)  |  NO GOOD RUN (red, tap=mark)
 // ============================================================
@@ -232,6 +188,7 @@ class RunBeatControlsField extends RunBeatFieldBase {
     private var _zonesB as Array = [];  // [avg, mark]
     private var _scrollTitle as Number = 0;  // marquee offset of the title line
     private var _scrollSub as Number = 0;    // marquee offset of the artist/album line
+    private var _focus as Number = 0;        // focused zone index for button navigation
 
     function initialize() {
         RunBeatFieldBase.initialize();
@@ -282,8 +239,13 @@ class RunBeatControlsField extends RunBeatFieldBase {
 
             }
         } else {
-            dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_BLACK);
-            dc.drawText(w / 2, topCy, Graphics.FONT_SMALL, _strNoPlayback,
+            // When the phone link is unavailable on this device entirely
+            // (fr245/fr245m, CIQ 3.3.1), show that instead of "Nothing
+            // playing" so the user can tell the field did start.
+            var msg = phoneMessagingSupported() ? _strNoPlayback : connText();
+            dc.setColor(phoneMessagingSupported() ? Graphics.COLOR_LT_GRAY : Graphics.COLOR_DK_GRAY,
+                Graphics.COLOR_BLACK);
+            dc.drawText(w / 2, topCy, Graphics.FONT_SMALL, msg,
                 Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
         }
         _zoneTop = [0, topY, w, topH];
@@ -334,6 +296,18 @@ class RunBeatControlsField extends RunBeatFieldBase {
             [0, botY, halfW, botH],
             [halfW, botY, halfW, botH]
         ];
+
+        // Focus outline on button-only devices (fr245/fr245m); touch
+        // devices keep the tap-only UI with no indicator.
+        if (!System.getDeviceSettings().isTouchScreen) {
+            var fr = focusRect();
+            if (fr != null) {
+                dc.setPenWidth(2);
+                dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_BLACK);
+                dc.drawRectangle(fr[0] as Number, fr[1] as Number,
+                    fr[2] as Number, fr[3] as Number);
+            }
+        }
     }
 
     // Draws one line of the top section. Text that fits is centered; wider
@@ -381,31 +355,95 @@ class RunBeatControlsField extends RunBeatFieldBase {
         if (next > tw) { next = 0; }
         return next;
     }
-    function onTap(x as Number, y as Number) as Boolean {
-        // Top zone first: title/artist tap = favorite toggle.
-        if (_zoneTop != null && hitTest(_zoneTop, x, y)) {
-            _messages.sendFavoriteToggle();
-            return true;
-        }
-        var zt = _zonesT;
-        if (zt.size() >= 3) {
-            if (hitTest(zt[0], x, y)) { _messages.sendCadenceDelta(-1); return true; }
-            if (hitTest(zt[1], x, y)) { _messages.sendSpeedCorrectionToggle(); return true; }
-            if (hitTest(zt[2], x, y)) { _messages.sendCadenceDelta(1); return true; }
-        }
-        var zb = _zonesB;
-        if (zb.size() >= 2) {
-            if (hitTest(zb[0], x, y)) {
+    // Zone indices in visual reading order:
+    // 0=top(favorite), 1=minus, 2=num(speed-corr), 3=plus, 4=avg, 5=mark.
+    // Zones 4/5 only count while a RunBeat session is active.
+    function zoneCount() as Number {
+        return _state.isRunBeatActive() ? 6 : 4;
+    }
+
+    function focus() as Number { return _focus; }
+
+    // Shared dispatch for touch and buttons: sends exactly the same
+    // messages the old per-zone onTap branches sent.
+    function activateZone(index as Number) as Void {
+        switch (index) {
+            case 0:
+                _messages.sendFavoriteToggle();
+                break;
+            case 1:
+                _messages.sendCadenceDelta(-1);
+                break;
+            case 2:
+                _messages.sendSpeedCorrectionToggle();
+                break;
+            case 3:
+                _messages.sendCadenceDelta(1);
+                break;
+            case 4:
                 if (_state.isRunBeatActive()) {
                     var mean = _cadenceBuffer.mean(System.getTimer());
                     if (mean != null) { _messages.sendCadenceUseCurrent(mean as Float); }
                 }
-                return true;
-            }
-            if (hitTest(zb[1], x, y)) {
+                break;
+            case 5:
                 if (_state.isRunBeatActive()) { _messages.sendMarkNotForRunning(); }
-                return true;
-            }
+                break;
+        }
+        try { WatchUi.requestUpdate(); } catch (e) {}
+    }
+
+    private function zoneAt(x as Number, y as Number) as Number {
+        if (_zoneTop != null && hitTest(_zoneTop, x, y)) { return 0; }
+        var zt = _zonesT;
+        if (zt.size() >= 3) {
+            if (hitTest(zt[0], x, y)) { return 1; }
+            if (hitTest(zt[1], x, y)) { return 2; }
+            if (hitTest(zt[2], x, y)) { return 3; }
+        }
+        var zb = _zonesB;
+        if (zb.size() >= 2) {
+            if (hitTest(zb[0], x, y)) { return 4; }
+            if (hitTest(zb[1], x, y)) { return 5; }
+        }
+        return -1;
+    }
+
+    private function focusRect() {
+        var n = zoneCount();
+        if (_focus < 0 || _focus >= n) { return null; }
+        switch (_focus) {
+            case 0: return _zoneTop;
+            case 1: return _zonesT.size() >= 1 ? _zonesT[0] : null;
+            case 2: return _zonesT.size() >= 2 ? _zonesT[1] : null;
+            case 3: return _zonesT.size() >= 3 ? _zonesT[2] : null;
+            case 4: return _zonesB.size() >= 1 ? _zonesB[0] : null;
+            case 5: return _zonesB.size() >= 2 ? _zonesB[1] : null;
+        }
+        return null;
+    }
+
+    function onTap(x as Number, y as Number) as Boolean {
+        var idx = zoneAt(x, y);
+        if (idx < 0) { return false; }
+        activateZone(idx);
+        return true;
+    }
+
+    // Button input on button-only devices: UP/DOWN move the focus with
+    // wrap-around over the active zone list, ENTER activates it.
+    function onKeyEvent(keyEvent as WatchUi.KeyEvent) as Boolean {
+        var key = keyEvent.getKey();
+        if (key == WatchUi.KEY_UP || key == WatchUi.KEY_DOWN) {
+            var n = zoneCount();
+            if (_focus >= n) { _focus = 0; }
+            _focus = (_focus + (key == WatchUi.KEY_UP ? -1 : 1) + n) % n;
+            try { WatchUi.requestUpdate(); } catch (e) {}
+            return true;
+        }
+        if (key == WatchUi.KEY_ENTER) {
+            activateZone(_focus);
+            return true;
         }
         return false;
     }
@@ -433,16 +471,14 @@ class RunBeatFieldDelegate extends WatchUi.BehaviorDelegate {
     }
 
     function onSelect() as Boolean {
-        _field.onTap(-1, -1);
+        _field.activateZone(_field.focus());
         return true;
     }
 
     function onKey(keyEvent as WatchUi.KeyEvent) as Boolean {
-        if (keyEvent.getKey() == WatchUi.KEY_ENTER) {
-            _field.onTap(-1, -1);
-            return true;
-        }
-        return false;
+        // UP/DOWN/ENTER are handled by the field; anything else (incl.
+        // BACK) falls through to the system default.
+        return _field.onKeyEvent(keyEvent);
     }
 
     function onTap(clickEvent as WatchUi.ClickEvent) as Boolean {

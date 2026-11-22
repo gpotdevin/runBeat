@@ -50,6 +50,11 @@ class MessageHandler {
 
     private var _state;   // WatchState
 
+    // False on devices where phone messaging is unavailable (fr245 / CIQ
+    // 3.3.1: Communications.transmit throws an uncatchable permission
+    // error). All outgoing sends are no-ops while false.
+    var phoneEnabled as Boolean = true;
+
     function initialize(state) {
         _state = state;
     }
@@ -358,6 +363,7 @@ class MessageHandler {
     }
 
     private function sendJson(json as String) as Void {
+        if (!phoneEnabled) { return; }
         // Inject apiVersion after the opening brace so the phone knows our protocol version.
         var payload = "{\"apiVersion\":" + API_VERSION.format("%d") + "," + json.substring(1, json.length());
         Communications.transmit(payload, null, new RunBeatConnectionListener(_state));

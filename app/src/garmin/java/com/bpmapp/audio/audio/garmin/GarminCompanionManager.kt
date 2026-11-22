@@ -750,7 +750,6 @@ class GarminCompanionManager @Inject constructor(
          * garmin-watch/manifest.xml.
          */
         val IQ_APP_IDS = listOf(
-            "06c14376-0c60-4e4c-a977-e93364ace3e1", // Track
             "06c14376-0c60-4e4c-a977-e93364ace3e2", // Controls
         )
 
